@@ -19,10 +19,11 @@ and SQL backends are **optional, lazy-loaded** drivers.
             └─────────────────────────────────────────────┘
 ```
 
-> **Status:** Transport core, `SqliteBackend` (single-box default),
-> `PostgresBackend` (distributed, atomic `claim`, real `LISTEN/NOTIFY` push),
-> and the `registerBackend()` plugin seam are implemented and tested. The
-> offline DuckDB/Parquet analytics export is planned — see
+> **Status:** The full transport stack is implemented and tested —
+> `SqliteBackend` (single-box default), `PostgresBackend` (distributed,
+> atomic `claim`, real `LISTEN/NOTIFY` push), and the `registerBackend()`
+> plugin seam for adding more. The offline DuckDB/Parquet analytics export
+> from the original brief is out of scope for now — see
 > [Roadmap](#roadmap).
 
 ## Install
@@ -267,8 +268,10 @@ Tracked against the original build plan:
    list+move / polling when absent. *Done.*
 3. ✅ **`PostgresBackend`** — distributed transport: `claim` via
    `SELECT … FOR UPDATE SKIP LOCKED`, push via `LISTEN/NOTIFY`. *Done.*
-4. ⏳ **Analytics export** — offline `archive export` to Parquet on S3/GCS, with
-   a DuckDB/DuckLake query recipe. Never on the hot path. *Planned.*
+4. ❌ **Analytics export** — offline `archive export` to Parquet on S3/GCS,
+   with a DuckDB/DuckLake query recipe. *Out of scope, by choice* — the
+   transport stack (1–3) covers the original gap; analytics was always the
+   lowest-priority, separable item.
 
 Also shipped, beyond the original brief: a **backend plugin registry**
 (`registerBackend()`) so third parties can add a new `--backend <scheme>://`
