@@ -1,0 +1,43 @@
+{
+  "name": "agentcomm",
+  "version": "0.1.0",
+  "description": "A tiny mailbox/message bus for AI agents that shell out to one CLI. Pluggable storage backends behind a single Backend interface.",
+  "type": "module",
+  "license": "MIT",
+  "author": "yonidavidson",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yonidavidson/agentcomm.git"
+  },
+  "keywords": ["agents", "message-bus", "mailbox", "cli", "sqlite", "ipc"],
+  "bin": {
+    "agentcomm": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@google-cloud/storage": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
