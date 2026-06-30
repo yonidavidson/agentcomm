@@ -35,6 +35,22 @@ npm install @google-cloud/storage     # gs://
 
 The local filesystem backend needs nothing beyond Node ≥ 18.
 
+### As a Claude Code plugin
+
+This repo is also a self-hosted Claude Code plugin marketplace — install it
+and Claude picks up a skill that knows the CLI's commands, flags, and
+backend tradeoffs, and uses them to coordinate with other agents/sessions:
+
+```
+/plugin marketplace add yonidavidson/agentcomm
+/plugin install agentcomm@yonidavidson-plugins
+```
+
+No global install or npm registry publish required — the plugin ships a
+prebuilt copy of the CLI (`dist/cli.js`) and the skill runs it with
+`node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" ...`, defaulting to the zero-dependency
+`file://` backend.
+
 ## Quick start
 
 ```bash
