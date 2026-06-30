@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agentcomm — a mailbox for AI agents</title>
+<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends (local, SQLite/WAL, S3, GCS) behind a single interface. Also a Claude Code plugin." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23060810'/%3E%3Ccircle cx='10' cy='12' r='3' fill='%236ee7ff'/%3E%3Ccircle cx='23' cy='10' r='2.4' fill='%23b794f6'/%3E%3Ccircle cx='22' cy='22' r='2.4' fill='%236ee7ff'/%3E%3Cline x1='10' y1='12' x2='23' y2='10' stroke='%23445' stroke-width='1'/%3E%3Cline x1='10' y1='12' x2='22' y2='22' stroke='%23445' stroke-width='1'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<canvas id="bg-canvas" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+
+<nav class="topbar">
+  <div class="brand"><span class="dot"></span> agentcomm</div>
+  <div class="nav-links">
+    <a href="#how-it-works">How it works</a>
+    <a href="#commands">Commands</a>
+    <a href="#backends">Backends</a>
+    <a href="#plugin">Plugin</a>
+    <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
+  </div>
+</nav>
+
+<main>
+  <section class="hero">
+    <div class="kicker">npm package · Claude Code plugin</div>
+    <h1 class="headline">Give your agents a mailbox.</h1>
+    <p class="subhead">
+      One CLI. <code>register</code>, <code>send</code>, <code>inbox</code>.
+      A single pluggable backend interface underneath — local disk by
+      default, SQLite or object storage when you need it.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
+      <a class="btn btn-ghost" href="#plugin">Use as a Claude Code plugin</a>
+    </div>
+    <div class="codeblock" style="margin-bottom:22px;">
+      <button class="copy-btn" data-copy="npm install agentcomm">Copy</button>
+      <div class="line">$ npm install agentcomm</div>
+    </div>
+    <div class="badges">
+      <span class="badge">MIT licensed</span>
+      <span class="badge">zero-dep local backend</span>
+      <span class="badge">SQLite · S3 · GCS</span>
+      <span class="badge">TypeScript</span>
+    </div>
+  </section>
+
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Architecture</div>
+        <h2 class="section-title">One seam, swappable transport</h2>
+        <p class="section-sub">
+          The Bus only ever talks to a tiny <code>Backend</code> interface —
+          put/get/list/delete/exists/move. Pick the implementation by
+          topology, never redesign the CLI on top of it.
+        </p>
+      </div>
+      <div class="diagram reveal">
+        <div class="diagram-box accent">agents&nbsp;→&nbsp;agentcomm CLI<span class="label-sub">unchanged interface</span></div>
+        <div class="diagram-arrow">↓</div>
+        <div class="diagram-box accent">Backend interface<span class="label-sub">put · get · list · delete · exists · move</span></div>
+        <div class="diagram-arrow">↓</div>
+        <div class="backend-grid">
+          <div class="diagram-box">Local<span class="label-sub">zero-dep default</span></div>
+          <div class="diagram-box">SQLite<span class="label-sub">single box, WAL</span></div>
+          <div class="diagram-box">S3<span class="label-sub">object store</span></div>
+          <div class="diagram-box">GCS<span class="label-sub">object store</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="commands">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Surface area</div>
+        <h2 class="section-title">Seven commands, nothing else</h2>
+        <p class="section-sub">
+          <code>--json</code> everywhere. <code>--backend</code> / <code>--as</code>
+          switch transport and identity without touching how agents call the CLI.
+        </p>
+      </div>
+      <div class="grid reveal">
+        <div class="card"><span class="cmd">register</span><p>Register / heartbeat the calling agent.</p></div>
+        <div class="card"><span class="cmd">agents</span><p>List registered agents.</p></div>
+        <div class="card"><span class="cmd">send &lt;to&gt; [body]</span><p>Send a message — body from the arg, or stdin.</p></div>
+        <div class="card"><span class="cmd">broadcast [body]</span><p>Send to every registered agent except yourself.</p></div>
+        <div class="card"><span class="cmd">inbox</span><p>Consume undelivered messages; archived under <code>read/</code>.</p></div>
+        <div class="card"><span class="cmd">peek</span><p>Show undelivered messages without consuming them.</p></div>
+        <div class="card"><span class="cmd">wait</span><p>Block until a message arrives. Exit 0 delivered, 2 timeout.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="backends">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Pick by topology</div>
+        <h2 class="section-title">The only fork that matters</h2>
+        <p class="section-sub">
+          One machine → SQLite. Across machines or containers → an
+          object store today, Postgres on the roadmap.
+        </p>
+      </div>
+      <div class="table-wrap reveal">
+        <table>
+          <thead>
+            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>Use when</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td>dev, single process, zero deps</td></tr>
+            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td>single machine (recommended)</td></tr>
+            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td>shared object store</td></tr>
+            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td>shared object store</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="plugin">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Claude Code</div>
+        <h2 class="section-title">Install it as a plugin</h2>
+        <p class="section-sub">This repo is its own marketplace — no npm publish required.</p>
+      </div>
+      <div class="plugin-panel reveal">
+        <div>
+          <h3>A skill that knows the CLI</h3>
+          <p>
+            Claude picks up a skill describing every command, flag, and
+            backend tradeoff above — and uses it whenever you ask it to
+            message, hand off to, or wait on another agent or session.
+          </p>
+          <ul>
+            <li>Ships a prebuilt CLI — no global install needed.</li>
+            <li>Skill-only: stays inert unless coordination is relevant.</li>
+            <li>Defaults to the zero-dependency <code>file://</code> backend.</li>
+          </ul>
+        </div>
+        <div class="codeblock">
+          <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
+/plugin install agentcomm@yonidavidson-plugins">Copy</button>
+          <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+          <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
+    <a href="https://github.com/yonidavidson/agentcomm#readme">Docs</a>
+    <a href="https://github.com/yonidavidson/agentcomm/blob/main/LICENSE">MIT License</a>
+  </div>
+  <div>agentcomm — built for agents talking to agents.</div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
