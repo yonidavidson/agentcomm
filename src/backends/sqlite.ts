@@ -1,4 +1,4 @@
-import { type Backend } from '../types.js';
+import { type Backend, type Claimable, type Message } from '../types.js';
 import { loadDriver } from './lazy.js';
 
 /**
@@ -6,6 +6,12 @@ import { loadDriver } from './lazy.js';
  * a single SQLite database file in WAL mode. This is the recommended default
  * for the single-machine topology: no daemon, ACID, atomic per-key writes and
  * atomic `move` via a transaction.
+ *
+ * Also implements {@link Claimable}: SQLite's transaction lock serializes
+ * concurrent `claim()` calls across processes (with `busy_timeout` smoothing
+ * over contention), so the shared-worker-queue pattern is race-free here too.
+ * It does NOT implement `Waitable` — per the project's pull-vs-push split,
+ * only Postgres gets real push; SQLite (like the object stores) polls.
  *
  * The `better-sqlite3` driver is an OPTIONAL, LAZY-loaded dependency — exactly
  * like the s3/gcs backends — so the local filesystem backend stays
@@ -15,7 +21,7 @@ import { loadDriver } from './lazy.js';
  * SQLite needs a real filesystem with byte-range locks; over object storage
  * its locking guarantees break and concurrent writes corrupt the file.
  */
-export class SqliteBackend implements Backend {
+export class SqliteBackend implements Backend, Claimable {
   private constructor(private readonly db: BetterSqlite3Database) {}
 
   /**
@@ -86,7 +92,11 @@ export class SqliteBackend implements Backend {
   }
 
   async move(src: string, dst: string): Promise<void> {
-    // One transaction: copy src -> dst, drop src. Atomic.
+    // One transaction: copy src -> dst, drop src. Atomic. Started IMMEDIATE
+    // (not deferred) — this transaction reads then writes, and a deferred
+    // read-then-write under concurrent writers can hit SQLITE_BUSY_SNAPSHOT
+    // (a stale read snapshot), which busy_timeout does not retry away.
+    // Taking the write lock upfront avoids that class of failure entirely.
     const tx = this.db.transaction((from: string, to: string) => {
       const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(from) as
         | { data: Buffer }
@@ -101,13 +111,50 @@ export class SqliteBackend implements Backend {
         .run(to, row.data);
       this.db.prepare('DELETE FROM blobs WHERE key = ?').run(from);
     });
-    tx(src, dst);
+    tx.immediate(src, dst);
     return Promise.resolve();
   }
 
   async close(): Promise<void> {
     this.db.close();
     return Promise.resolve();
+  }
+
+  /**
+   * Atomically dequeue the oldest message from `inbox/<queue>/` and archive
+   * it under `read/<queue>/` (same audit trail as `inbox`), in one
+   * transaction. Returns null if the queue is empty.
+   *
+   * `owner` is the caller's claim of responsibility — SQLite's minimal blob
+   * schema doesn't track who claimed what (no `owner`/`claimed_at` columns,
+   * unlike the richer Postgres `messages` table); the returned Message is
+   * the only record of the claim.
+   */
+  async claim(queue: string, _owner: string): Promise<Message | null> {
+    const prefix = `inbox/${queue}/`;
+    const upper = upperBound(prefix);
+    // IMMEDIATE for the same reason as move(): this is a read-then-write
+    // transaction, and deferred mode risks SQLITE_BUSY_SNAPSHOT under
+    // concurrent claimers racing on the same queue.
+    const tx = this.db.transaction((): Message | null => {
+      const row = (
+        upper === null
+          ? this.db.prepare('SELECT key, data FROM blobs WHERE key >= ? ORDER BY key LIMIT 1').get(prefix)
+          : this.db
+              .prepare('SELECT key, data FROM blobs WHERE key >= ? AND key < ? ORDER BY key LIMIT 1')
+              .get(prefix, upper)
+      ) as { key: string; data: Buffer } | undefined;
+      if (!row) return null;
+
+      const dst = 'read/' + row.key.slice('inbox/'.length);
+      this.db
+        .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
+        .run(dst, row.data);
+      this.db.prepare('DELETE FROM blobs WHERE key = ?').run(row.key);
+
+      return JSON.parse(toBuffer(row.data).toString('utf8')) as Message;
+    });
+    return Promise.resolve(tx.immediate());
   }
 }
 
@@ -140,11 +187,17 @@ interface BetterSqlite3Statement {
   get(...params: unknown[]): unknown;
   all(...params: unknown[]): unknown[];
 }
+interface BetterSqlite3Transaction<A extends unknown[], R> {
+  (...args: A): R;
+  deferred(...args: A): R;
+  immediate(...args: A): R;
+  exclusive(...args: A): R;
+}
 interface BetterSqlite3Database {
   prepare(sql: string): BetterSqlite3Statement;
   exec(sql: string): unknown;
   pragma(source: string): unknown;
-  transaction<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void;
+  transaction<A extends unknown[], R>(fn: (...args: A) => R): BetterSqlite3Transaction<A, R>;
   close(): unknown;
 }
 interface BetterSqlite3Constructor {

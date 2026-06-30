@@ -17,6 +17,7 @@ Commands:
   inbox                    Consume undelivered messages (archived under read/)
   peek                     Show undelivered messages without consuming
   wait                     Block until a message arrives (exit 0) or timeout (exit 2)
+  claim                    Atomically dequeue one message from --queue (SQL backends only)
 
 Flags:
   --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
@@ -25,6 +26,7 @@ Flags:
   --subject <text>         Message subject (send/broadcast)
   --thread <id>            Thread id (send/broadcast)
   --timeout <ms>           wait timeout in ms (default 30000)
+  --queue <name>           Queue to claim from (claim) — same namespace as a recipient inbox
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -63,6 +65,8 @@ async function main(argv: string[]): Promise<number> {
         return await cmdPeek(bus, cfg);
       case 'wait':
         return await cmdWait(bus, cfg, flags.timeout ?? 30000);
+      case 'claim':
+        return await cmdClaim(bus, cfg, flags.queue);
       default:
         fail(`unknown command "${command}". Run with --help.`);
         return 1;
@@ -155,6 +159,23 @@ async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promis
   return 0; // delivered
 }
 
+async function cmdClaim(bus: Bus, cfg: ResolvedConfig, queue: string | undefined): Promise<number> {
+  const me = requireAgent(cfg);
+  if (!queue) {
+    fail('claim requires --queue <name>');
+  }
+  const msg = await bus.claim(queue, me);
+  if (cfg.json) {
+    emit(msg);
+  } else if (!msg) {
+    process.stdout.write('(queue empty)\n');
+  } else {
+    const subj = msg.subject ? ` [${msg.subject}]` : '';
+    process.stdout.write(`claimed ${msg.id} from ${msg.from}${subj}\n  ${msg.body}\n`);
+  }
+  return 0;
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function printMessages(messages: Message[], cfg: ResolvedConfig): void {
@@ -204,6 +225,8 @@ main(process.argv.slice(2))
     process.exitCode = code;
   })
   .catch((err) => {
-    process.stderr.write(`agentcomm: ${err instanceof Error ? err.message : String(err)}\n`);
+    const message = err instanceof Error ? err.message : String(err);
+    // Errors raised by Bus/backends are already prefixed; don't double it.
+    process.stderr.write(`${message.startsWith('agentcomm: ') ? '' : 'agentcomm: '}${message}\n`);
     process.exitCode = 1;
   });

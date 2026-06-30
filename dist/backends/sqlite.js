@@ -5,6 +5,12 @@ import { loadDriver } from './lazy.js';
  * for the single-machine topology: no daemon, ACID, atomic per-key writes and
  * atomic `move` via a transaction.
  *
+ * Also implements {@link Claimable}: SQLite's transaction lock serializes
+ * concurrent `claim()` calls across processes (with `busy_timeout` smoothing
+ * over contention), so the shared-worker-queue pattern is race-free here too.
+ * It does NOT implement `Waitable` — per the project's pull-vs-push split,
+ * only Postgres gets real push; SQLite (like the object stores) polls.
+ *
  * The `better-sqlite3` driver is an OPTIONAL, LAZY-loaded dependency — exactly
  * like the s3/gcs backends — so the local filesystem backend stays
  * zero-dependency. A missing driver produces a clear "install it" error.
@@ -69,7 +75,11 @@ export class SqliteBackend {
         return Promise.resolve(row !== undefined);
     }
     async move(src, dst) {
-        // One transaction: copy src -> dst, drop src. Atomic.
+        // One transaction: copy src -> dst, drop src. Atomic. Started IMMEDIATE
+        // (not deferred) — this transaction reads then writes, and a deferred
+        // read-then-write under concurrent writers can hit SQLITE_BUSY_SNAPSHOT
+        // (a stale read snapshot), which busy_timeout does not retry away.
+        // Taking the write lock upfront avoids that class of failure entirely.
         const tx = this.db.transaction((from, to) => {
             const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(from);
             if (!row) {
@@ -82,12 +92,45 @@ export class SqliteBackend {
                 .run(to, row.data);
             this.db.prepare('DELETE FROM blobs WHERE key = ?').run(from);
         });
-        tx(src, dst);
+        tx.immediate(src, dst);
         return Promise.resolve();
     }
     async close() {
         this.db.close();
         return Promise.resolve();
+    }
+    /**
+     * Atomically dequeue the oldest message from `inbox/<queue>/` and archive
+     * it under `read/<queue>/` (same audit trail as `inbox`), in one
+     * transaction. Returns null if the queue is empty.
+     *
+     * `owner` is the caller's claim of responsibility — SQLite's minimal blob
+     * schema doesn't track who claimed what (no `owner`/`claimed_at` columns,
+     * unlike the richer Postgres `messages` table); the returned Message is
+     * the only record of the claim.
+     */
+    async claim(queue, _owner) {
+        const prefix = `inbox/${queue}/`;
+        const upper = upperBound(prefix);
+        // IMMEDIATE for the same reason as move(): this is a read-then-write
+        // transaction, and deferred mode risks SQLITE_BUSY_SNAPSHOT under
+        // concurrent claimers racing on the same queue.
+        const tx = this.db.transaction(() => {
+            const row = (upper === null
+                ? this.db.prepare('SELECT key, data FROM blobs WHERE key >= ? ORDER BY key LIMIT 1').get(prefix)
+                : this.db
+                    .prepare('SELECT key, data FROM blobs WHERE key >= ? AND key < ? ORDER BY key LIMIT 1')
+                    .get(prefix, upper));
+            if (!row)
+                return null;
+            const dst = 'read/' + row.key.slice('inbox/'.length);
+            this.db
+                .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
+                .run(dst, row.data);
+            this.db.prepare('DELETE FROM blobs WHERE key = ?').run(row.key);
+            return JSON.parse(toBuffer(row.data).toString('utf8'));
+        });
+        return Promise.resolve(tx.immediate());
     }
 }
 /**

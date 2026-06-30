@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Backend, Message } from './types.js';
+import { isClaimable, isWaitable, type Backend, type Message } from './types.js';
 
 /**
  * The Bus implements the mailbox semantics on top of any {@link Backend}.
@@ -11,7 +11,12 @@ import type { Backend, Message } from './types.js';
  *   read/<recipient>/<seq>_<id>.json    archived after consumption
  *
  * `<seq>` is a zero-padded, monotonic, lexicographically-sortable prefix, so
- * `list()` returns messages in send order.
+ * `list()` returns messages in send order. It lives only in the key, never
+ * in the stored message body.
+ *
+ * A "queue" (for {@link claim}) is the same namespace as a recipient inbox —
+ * `send <queue> ...` populates it, `claim --queue <queue>` atomically
+ * dequeues from it instead of a single consumer reading via `inbox`.
  */
 export class Bus {
   constructor(private readonly backend: Backend) {}
@@ -59,7 +64,7 @@ export class Bus {
   async send(input: SendInput): Promise<Message> {
     assertName(input.to);
     const msg = this.materialize(input);
-    await this.backend.put(inboxKey(input.to, msg), encode(msg));
+    await this.backend.put(inboxKey(input.to, nextSeq(), msg.id), encode(msg));
     return msg;
   }
 
@@ -74,19 +79,15 @@ export class Bus {
   }
 
   private materialize(input: SendInput): Message {
-    const id = randomUUID().replace(/-/g, '').slice(0, 12);
-    const seq = nextSeq();
     return {
-      id,
+      id: randomUUID().replace(/-/g, '').slice(0, 12),
       from: input.from,
       to: input.to,
       ...(input.subject !== undefined ? { subject: input.subject } : {}),
       body: input.body,
       ts: new Date().toISOString(),
       ...(input.thread !== undefined ? { thread: input.thread } : {}),
-      // seq is encoded into the key, not the message body; keep both for sort
-      _seq: seq,
-    } as Message & { _seq: string };
+    };
   }
 
   // ── receiving ───────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ export class Bus {
       } catch {
         continue; // another consumer claimed it first
       }
-      out.push(stripInternal(msg));
+      out.push(msg);
     }
     return out;
   }
@@ -124,7 +125,7 @@ export class Bus {
     for (const key of keys) {
       if (!key.endsWith('.json')) continue;
       try {
-        out.push(stripInternal(decode<Message>(await this.backend.get(key))));
+        out.push(decode<Message>(await this.backend.get(key)));
       } catch {
         continue;
       }
@@ -134,17 +135,17 @@ export class Bus {
 
   /**
    * Block until at least one message is waiting for `recipient`, or timeout.
-   * Non-consuming (like peek) — returns the pending messages. Poll-based;
-   * push-capable backends are wired in a later task.
+   * Non-consuming (like peek) — returns the pending messages.
    *
-   * Resolves with [] on timeout so the CLI can map that to exit code 2.
+   * Uses the backend's push capability ({@link Waitable.waitPush}) when
+   * present; otherwise falls back to polling `peek`. Same contract either
+   * way: resolves with [] on timeout so the CLI can map that to exit code 2.
    */
-  async wait(
-    recipient: string,
-    timeoutMs: number,
-    pollMs = 250,
-  ): Promise<Message[]> {
+  async wait(recipient: string, timeoutMs: number, pollMs = 250): Promise<Message[]> {
     assertName(recipient);
+    if (isWaitable(this.backend)) {
+      return this.backend.waitPush(recipient, timeoutMs);
+    }
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const pending = await this.peek(recipient);
@@ -152,6 +153,25 @@ export class Bus {
       if (Date.now() >= deadline) return [];
       await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
     }
+  }
+
+  // ── shared-queue claims ────────────────────────────────────────────────
+
+  /**
+   * Atomically claim one message from `queue` (the same namespace as a
+   * recipient inbox) on behalf of `owner`. Requires a backend implementing
+   * {@link Claimable} (SQL backends only) — throws a clear error otherwise.
+   * Returns null if the queue is currently empty.
+   */
+  async claim(queue: string, owner: string): Promise<Message | null> {
+    assertName(queue);
+    assertName(owner);
+    if (!isClaimable(this.backend)) {
+      throw new Error(
+        'agentcomm: this backend does not support claim() — use a SQL backend (sqlite:// or postgres://).',
+      );
+    }
+    return this.backend.claim(queue, owner);
   }
 }
 
@@ -163,8 +183,8 @@ function agentKey(name: string): string {
 function inboxPrefix(recipient: string): string {
   return `inbox/${recipient}/`;
 }
-function inboxKey(recipient: string, msg: Message & { _seq?: string }): string {
-  return `inbox/${recipient}/${msg._seq}_${msg.id}.json`;
+function inboxKey(recipient: string, seq: string, id: string): string {
+  return `inbox/${recipient}/${seq}_${id}.json`;
 }
 function readKeyFromInboxKey(inboxKey: string): string {
   return 'read/' + inboxKey.slice('inbox/'.length);
@@ -187,10 +207,6 @@ function encode(value: unknown): Buffer {
 }
 function decode<T>(buf: Buffer): T {
   return JSON.parse(buf.toString('utf8')) as T;
-}
-function stripInternal(msg: Message & { _seq?: string }): Message {
-  const { _seq, ...rest } = msg;
-  return rest;
 }
 
 function sleep(ms: number): Promise<void> {

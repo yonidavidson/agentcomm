@@ -100,4 +100,31 @@ describe('CLI e2e (sqlite backend)', () => {
     expect(r.code).toBe(1);
     expect(r.stderr).toMatch(/acting agent/);
   });
+
+  it('claim dequeues atomically and reports an empty queue', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+    await run(['send', 'work-queue', 'task-1', '--as', 'producer', '--backend', db]);
+
+    const claimed = await run(['claim', '--queue', 'work-queue', '--as', 'worker-1', '--backend', db, '--json']);
+    expect(claimed.code).toBe(0);
+    expect(JSON.parse(claimed.stdout).body).toBe('task-1');
+
+    const empty = await run(['claim', '--queue', 'work-queue', '--as', 'worker-1', '--backend', db, '--json']);
+    expect(empty.code).toBe(0);
+    expect(JSON.parse(empty.stdout)).toBeNull();
+  });
+
+  it('claim requires --queue', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+    const r = await run(['claim', '--as', 'worker-1', '--backend', db]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/--queue/);
+  });
+
+  it('claim errors cleanly on a non-SQL (file://) backend', async () => {
+    const dir = `file://${await mkTmp()}`;
+    const r = await run(['claim', '--queue', 'work-queue', '--as', 'worker-1', '--backend', dir]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/does not support claim/);
+  });
 });

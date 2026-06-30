@@ -1,4 +1,4 @@
-import type { Backend, Message } from './types.js';
+import { type Backend, type Message } from './types.js';
 /**
  * The Bus implements the mailbox semantics on top of any {@link Backend}.
  * It only ever uses the blob primitives, so every backend works identically.
@@ -9,7 +9,12 @@ import type { Backend, Message } from './types.js';
  *   read/<recipient>/<seq>_<id>.json    archived after consumption
  *
  * `<seq>` is a zero-padded, monotonic, lexicographically-sortable prefix, so
- * `list()` returns messages in send order.
+ * `list()` returns messages in send order. It lives only in the key, never
+ * in the stored message body.
+ *
+ * A "queue" (for {@link claim}) is the same namespace as a recipient inbox —
+ * `send <queue> ...` populates it, `claim --queue <queue>` atomically
+ * dequeues from it instead of a single consumer reading via `inbox`.
  */
 export declare class Bus {
     private readonly backend;
@@ -27,12 +32,20 @@ export declare class Bus {
     peek(recipient: string): Promise<Message[]>;
     /**
      * Block until at least one message is waiting for `recipient`, or timeout.
-     * Non-consuming (like peek) — returns the pending messages. Poll-based;
-     * push-capable backends are wired in a later task.
+     * Non-consuming (like peek) — returns the pending messages.
      *
-     * Resolves with [] on timeout so the CLI can map that to exit code 2.
+     * Uses the backend's push capability ({@link Waitable.waitPush}) when
+     * present; otherwise falls back to polling `peek`. Same contract either
+     * way: resolves with [] on timeout so the CLI can map that to exit code 2.
      */
     wait(recipient: string, timeoutMs: number, pollMs?: number): Promise<Message[]>;
+    /**
+     * Atomically claim one message from `queue` (the same namespace as a
+     * recipient inbox) on behalf of `owner`. Requires a backend implementing
+     * {@link Claimable} (SQL backends only) — throws a clear error otherwise.
+     * Returns null if the queue is currently empty.
+     */
+    claim(queue: string, owner: string): Promise<Message | null>;
 }
 export interface SendInput {
     from: string;

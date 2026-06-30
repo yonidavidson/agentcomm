@@ -112,5 +112,45 @@ for (const [name, factory] of Object.entries(factories)) {
       expect(m!.subject).toBe('plan');
       expect(m!.thread).toBe('t-1');
     });
+
+    it('send/inbox/peek results carry no internal fields (e.g. _seq)', async () => {
+      const bus = new Bus(await factory());
+      const sent = await bus.send({ from: 'alice', to: 'bob', body: 'x' });
+      expect(Object.keys(sent).sort()).toEqual(['body', 'from', 'id', 'to', 'ts']);
+      const [peeked] = await bus.peek('bob');
+      expect(Object.keys(peeked!).sort()).toEqual(['body', 'from', 'id', 'to', 'ts']);
+      const [consumed] = await bus.inbox('bob');
+      expect(Object.keys(consumed!).sort()).toEqual(['body', 'from', 'id', 'to', 'ts']);
+    });
+
+    if (name === 'SqliteBackend') {
+      it('claim atomically dequeues the oldest message, FIFO, archives under read/', async () => {
+        const backend = await factory();
+        const bus = new Bus(backend);
+        await bus.send({ from: 'alice', to: 'queue-a', body: 'first' });
+        await bus.send({ from: 'alice', to: 'queue-a', body: 'second' });
+
+        const first = await bus.claim('queue-a', 'worker-1');
+        expect(first?.body).toBe('first');
+        const second = await bus.claim('queue-a', 'worker-1');
+        expect(second?.body).toBe('second');
+        const empty = await bus.claim('queue-a', 'worker-1');
+        expect(empty).toBeNull();
+
+        expect((await backend.list('read/queue-a/')).length).toBe(2);
+        expect((await backend.list('inbox/queue-a/')).length).toBe(0);
+      });
+
+      it('claim on an empty/unknown queue returns null, not an error', async () => {
+        const bus = new Bus(await factory());
+        expect(await bus.claim('nonexistent', 'worker-1')).toBeNull();
+      });
+    } else {
+      it('claim throws a clear error on a non-Claimable backend', async () => {
+        const bus = new Bus(await factory());
+        await bus.send({ from: 'alice', to: 'queue-a', body: 'x' });
+        await expect(bus.claim('queue-a', 'worker-1')).rejects.toThrow(/does not support claim/);
+      });
+    }
   });
 }

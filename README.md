@@ -18,10 +18,11 @@ and SQL backends are **optional, lazy-loaded** drivers.
             └─────────────────────────────────────────────┘
 ```
 
-> **Status:** Transport core + `SqliteBackend` (single-box default) are
-> implemented and tested. The distributed `PostgresBackend` (atomic `claim`,
-> `LISTEN/NOTIFY` push) and the offline DuckDB/Parquet analytics export are
-> planned — see [Roadmap](#roadmap).
+> **Status:** Transport core, `SqliteBackend` (single-box default), and the
+> `Claimable` shared-queue capability (atomic `claim`, race-free across
+> processes) are implemented and tested. The distributed `PostgresBackend`
+> (`claim` + `LISTEN/NOTIFY` push) and the offline DuckDB/Parquet analytics
+> export are planned — see [Roadmap](#roadmap).
 
 ## Install
 
@@ -64,6 +65,10 @@ agentcomm send bob "ship it" --as alice --subject plan
 agentcomm inbox --as bob --json        # consumes; archives under read/
 agentcomm peek  --as bob               # non-consuming
 agentcomm wait  --as bob --timeout 30000   # exit 0 on delivery, 2 on timeout
+
+# shared-worker-queue pattern (multiple workers, one queue) — SQL backends only
+agentcomm send work-queue "task-1" --as producer
+agentcomm claim --queue work-queue --as worker-1   # atomic; null when empty
 ```
 
 `send`/`broadcast` read the body from the trailing argument, or from **stdin**
@@ -84,6 +89,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 | `inbox`            | **Consume** undelivered messages; archives them under `read/`.      |
 | `peek`             | Show undelivered messages **without** consuming.                    |
 | `wait`             | Block until a message arrives (**exit 0**) or timeout (**exit 2**). |
+| `claim`            | Atomically dequeue one message from `--queue` (**SQL backends only**). |
 
 ### Flags
 
@@ -94,6 +100,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 | `--subject <text>` | Message subject (`send`/`broadcast`).                          |
 | `--thread <id>`    | Thread id (`send`/`broadcast`).                                |
 | `--timeout <ms>`   | `wait` timeout in ms (default `30000`).                        |
+| `--queue <name>`   | Queue to claim from (`claim`) — same namespace as a recipient inbox. |
 | `--json`           | Machine-readable JSON output (available on every command).     |
 
 ## Backends
@@ -103,7 +110,7 @@ Choose transport by **topology** — that's the only fork that matters.
 | Backend     | URI                          | Driver (optional)      | Atomic `move` | `claim` (shared queue) | Push (`wait`) | Use when                         |
 | ----------- | ---------------------------- | ---------------------- | :-----------: | :--------------------: | :-----------: | -------------------------------- |
 | **Local**   | `file:///path/dir`, bare dir | — (built in)           | ✅ (rename)   | ❌                     | poll          | dev, single process, zero deps   |
-| **SQLite**  | `sqlite:///path.db`, `*.db`  | `better-sqlite3`       | ✅ (txn)      | ❌ (planned)           | poll          | **single machine** (recommended) |
+| **SQLite**  | `sqlite:///path.db`, `*.db`  | `better-sqlite3`       | ✅ (txn)      | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **Postgres**| `postgres://…` *(planned)*   | `pg`                   | ✅ (txn)      | ✅ `SKIP LOCKED`       | **push**      | **across machines/containers**   |
@@ -139,13 +146,17 @@ read/<recipient>/<seq>_<id>.json    archived after consumption (audit trail)
 
 `<seq>` is a zero-padded, monotonic, lexicographically-sortable prefix, so a
 `list()` returns messages in **send order**. Consuming a message `move()`s it
-from `inbox/` to `read/` — messages are archived, never hard-deleted.
+from `inbox/` to `read/` — messages are archived, never hard-deleted. A
+**queue** (for `claim`) is the same namespace as a recipient inbox — `send`
+populates it, `claim` atomically dequeues from it instead of a single
+consumer reading via `inbox`.
 
 ### Design notes (intentional constraints)
 
 - **Single-consumer-per-inbox is a feature.** It's what makes the object-store
-  backends race-free without locks. Only SQL backends get the shared-queue
-  `claim` path.
+  backends race-free without locks. Only SQL backends implement `Claimable`
+  for the shared-queue `claim` path; `LocalBackend`/`S3Backend`/`GCSBackend`
+  don't, and `claim` errors clearly rather than faking it with locks.
 - **Don't put SQLite on object storage.** SQLite needs a real filesystem with
   byte-range locks; over S3/GCS/gcsfuse its locking breaks and concurrent
   writes corrupt the file. `sqlite://` is for local/persistent disk only.
@@ -180,18 +191,21 @@ npm run build               # emit dist/
 ```
 
 The test suite runs the **same backend-contract and bus tests** against both
-`LocalBackend` and `SqliteBackend`, plus a real two-process concurrent-append
-test proving WAL lets independent writers proceed, and CLI end-to-end tests
-covering the `wait` exit codes and the missing-driver error path.
+`LocalBackend` and `SqliteBackend`, plus two-process concurrency tests proving
+WAL lets independent writers proceed and that N concurrent workers calling
+`claim` on one shared queue get disjoint messages (none dropped, none
+double-delivered), and CLI end-to-end tests covering the `wait` exit codes,
+the `claim` error/empty/success paths, and the missing-driver error path.
 
 ## Roadmap
 
 Tracked against the original build plan:
 
 1. ✅ **`SqliteBackend`** — drop-in single-box transport (WAL). *Done.*
-2. ⏳ **Capability interfaces** — `Claimable` (atomic shared-queue `claim`) and
-   `Waitable` (push). The Bus feature-detects them and falls back to
-   list+move / polling when absent. *Planned.*
+2. ✅ **Capability interfaces** — `Claimable` (atomic shared-queue `claim`,
+   implemented by `SqliteBackend`) and `Waitable` (push; wired into `Bus.wait`,
+   no backend implements it yet). The Bus feature-detects both and falls back
+   to list+move / polling when absent. *Done.*
 3. ⏳ **`PostgresBackend`** — distributed transport: `claim` via
    `SELECT … FOR UPDATE SKIP LOCKED`, push via `LISTEN/NOTIFY`. *Planned.*
 4. ⏳ **Analytics export** — offline `archive export` to Parquet on S3/GCS, with

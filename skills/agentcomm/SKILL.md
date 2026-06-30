@@ -50,14 +50,26 @@ broadcast [body]          Send to every registered agent except yourself
 inbox                     Consume undelivered messages (archives them; one-time read)
 peek                      Show undelivered messages WITHOUT consuming them
 wait                      Block until a message arrives, or until --timeout
+claim                     Atomically dequeue one message from --queue (SQL backends only)
 ```
 
 Flags: `--backend <uri>`, `--as <name>`, `--subject <text>`, `--thread <id>`,
-`--timeout <ms>` (for `wait`, default 30000), `--json` (machine-readable
-output on every command).
+`--timeout <ms>` (for `wait`, default 30000), `--queue <name>` (for `claim`),
+`--json` (machine-readable output on every command).
 
 `wait` exits **0** when a message arrived, **2** on timeout — check the exit
 code rather than parsing output when scripting a wait loop.
+
+### Shared-worker-queue pattern (multiple workers, one queue)
+
+A "queue" is the same namespace as a recipient inbox — `send <queue> ...`
+populates it, `claim --queue <queue> --as <owner>` atomically dequeues one
+message from it (returns null/no output when empty). Use this instead of
+`inbox`/`wait` when several workers should split work from one queue without
+double-processing a message. **Only SQL backends (`sqlite://`, future
+`postgres://`) support `claim`** — on `file://`/`s3://`/`gs://` it errors
+clearly; don't fall back to `inbox`/`peek` and call that equivalent, since
+those don't give atomic, race-free dequeuing across processes.
 
 ## Typical flow
 

@@ -81,7 +81,7 @@
     <div class="wrap">
       <div class="section-head reveal">
         <div class="kicker">Surface area</div>
-        <h2 class="section-title">Seven commands, nothing else</h2>
+        <h2 class="section-title">A small, fixed set of commands</h2>
         <p class="section-sub">
           <code>--json</code> everywhere. <code>--backend</code> / <code>--as</code>
           switch transport and identity without touching how agents call the CLI.
@@ -95,6 +95,7 @@
         <div class="card"><span class="cmd">inbox</span><p>Consume undelivered messages; archived under <code>read/</code>.</p></div>
         <div class="card"><span class="cmd">peek</span><p>Show undelivered messages without consuming them.</p></div>
         <div class="card"><span class="cmd">wait</span><p>Block until a message arrives. Exit 0 delivered, 2 timeout.</p></div>
+        <div class="card"><span class="cmd">claim</span><p>Atomically dequeue one message from a shared queue. SQL backends only.</p></div>
       </div>
     </div>
   </section>
@@ -112,13 +113,13 @@
       <div class="table-wrap reveal">
         <table>
           <thead>
-            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>Use when</th></tr>
+            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>claim</th><th>Use when</th></tr>
           </thead>
           <tbody>
-            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td>dev, single process, zero deps</td></tr>
-            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td>single machine (recommended)</td></tr>
-            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td>shared object store</td></tr>
-            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td>shared object store</td></tr>
+            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td>dev, single process, zero deps</td></tr>
+            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td>single machine (recommended)</td></tr>
+            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td>shared object store</td></tr>
+            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td>shared object store</td></tr>
           </tbody>
         </table>
       </div>
