@@ -134,6 +134,33 @@ s3://bucket/optional/prefix   S3
 gs://bucket/optional/prefix   GCS
 ```
 
+### Writing a backend plugin
+
+`createBackend` doesn't special-case the four built-ins — they're registered
+through the exact same seam any third-party package uses:
+
+```ts
+import { registerBackend } from 'agentcomm';
+import type { Backend } from 'agentcomm';
+
+class RedisBackend implements Backend { /* put/get/list/delete/exists/move */ }
+
+registerBackend('redis', async (uri) => new RedisBackend(uri));
+```
+
+Publish that as its own npm package (e.g. `agentcomm-backend-redis`) with a
+side-effecting import. Users opt in without touching agentcomm:
+
+```bash
+npm install agentcomm-backend-redis
+AGENTCOMM_BACKEND_PLUGINS=agentcomm-backend-redis agentcomm send bob hi --backend redis://localhost --as alice
+```
+
+`AGENTCOMM_BACKEND_PLUGINS` is a comma/whitespace-separated list of module
+specifiers the CLI imports before resolving `--backend`. Implement
+`Claimable`/`Waitable` too if the store can support atomic claims or push —
+the Bus feature-detects both, no registration needed beyond `Backend` itself.
+
 ## How it works
 
 The bus is just a key layout on top of the blob `Backend`:

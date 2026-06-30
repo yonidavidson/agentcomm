@@ -7,10 +7,49 @@ import { GCSBackend } from './gcs.js';
 
 export { LocalBackend, SqliteBackend, S3Backend, GCSBackend };
 
+/** Builds a {@link Backend} from a full backend URI (including its scheme). */
+export type BackendFactory = (uri: string) => Promise<Backend>;
+
+const registry = new Map<string, BackendFactory>();
+
+/**
+ * Register a backend factory for a URI scheme, e.g. `registerBackend('redis',
+ * factory)` enables `--backend redis://...`. This is the plugin seam: a
+ * third-party package implementing {@link Backend} (optionally `Claimable`
+ * and/or `Waitable`) calls this — typically as a side effect of being
+ * imported — to add a new backend with no changes to agentcomm itself.
+ *
+ * The CLI loads such packages from `AGENTCOMM_BACKEND_PLUGINS` (a
+ * comma/whitespace-separated list of module specifiers) before resolving
+ * `--backend`. See "Writing a backend plugin" in the README.
+ *
+ * The four built-in backends are registered through this exact mechanism
+ * below — there is no separate, more-privileged path for them.
+ */
+export function registerBackend(scheme: string, factory: BackendFactory): void {
+  registry.set(scheme.toLowerCase(), factory);
+}
+
+/** Currently registered URI schemes, sorted. */
+export function registeredSchemes(): string[] {
+  return [...registry.keys()].sort();
+}
+
+registerBackend('file', (uri) => Promise.resolve(new LocalBackend(filePath(uri))));
+registerBackend('sqlite', (uri) => SqliteBackend.open(sqlitePath(uri)));
+registerBackend('s3', (uri) => {
+  const { bucket, prefix } = bucketAndPrefix(uri, 's3');
+  return S3Backend.open(bucket, prefix);
+});
+registerBackend('gs', (uri) => {
+  const { bucket, prefix } = bucketAndPrefix(uri, 'gs');
+  return GCSBackend.open(bucket, prefix);
+});
+
 /**
  * Resolve a backend URI into a concrete {@link Backend}.
  *
- * Supported forms:
+ * Supported forms out of the box:
  *   file:///abs/path/dir        filesystem (LocalBackend)
  *   file://relative/dir         filesystem, relative to cwd
  *   /abs/path or ./rel          bare path → filesystem
@@ -18,34 +57,28 @@ export { LocalBackend, SqliteBackend, S3Backend, GCSBackend };
  *   *.db                        bare path ending in .db → SqliteBackend
  *   s3://bucket/optional/prefix S3 (lazy @aws-sdk/client-s3)
  *   gs://bucket/optional/prefix GCS (lazy @google-cloud/storage)
+ *
+ * Plus any scheme registered via {@link registerBackend} (built-in or
+ * third-party plugin).
  */
 export async function createBackend(uri: string): Promise<Backend> {
   const scheme = schemeOf(uri);
 
-  switch (scheme) {
-    case 'sqlite':
-      return SqliteBackend.open(sqlitePath(uri));
-    case 'file':
-      return new LocalBackend(filePath(uri));
-    case 's3': {
-      const { bucket, prefix } = bucketAndPrefix(uri, 's3');
-      return S3Backend.open(bucket, prefix);
-    }
-    case 'gs': {
-      const { bucket, prefix } = bucketAndPrefix(uri, 'gs');
-      return GCSBackend.open(bucket, prefix);
-    }
-    case null: {
-      // No scheme → bare path. `.db` means SQLite; anything else is a directory.
-      if (uri.endsWith('.db')) return SqliteBackend.open(path.resolve(uri));
-      return new LocalBackend(path.resolve(uri));
-    }
-    default:
-      throw new Error(
-        `agentcomm: unsupported backend URI "${uri}". ` +
-          `Use file://, sqlite://, s3://, gs:// or a bare path.`,
-      );
+  if (scheme === null) {
+    // No scheme → bare path. `.db` means SQLite; anything else is a directory.
+    if (uri.endsWith('.db')) return SqliteBackend.open(path.resolve(uri));
+    return new LocalBackend(path.resolve(uri));
   }
+
+  const factory = registry.get(scheme);
+  if (!factory) {
+    throw new Error(
+      `agentcomm: unsupported backend URI "${uri}". ` +
+        `Known schemes: ${registeredSchemes().join(', ')}. ` +
+        `Third-party backends can add more via registerBackend() — see the README.`,
+    );
+  }
+  return factory(uri);
 }
 
 function schemeOf(uri: string): string | null {

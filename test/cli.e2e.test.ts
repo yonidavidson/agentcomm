@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
@@ -26,10 +26,11 @@ interface RunResult {
   stderr: string;
 }
 
-function run(args: string[], input?: string): Promise<RunResult> {
+function run(args: string[], input?: string, env?: NodeJS.ProcessEnv): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', cli, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: env ?? process.env,
     });
     let stdout = '';
     let stderr = '';
@@ -126,5 +127,39 @@ describe('CLI e2e (sqlite backend)', () => {
     const r = await run(['claim', '--queue', 'work-queue', '--as', 'worker-1', '--backend', dir]);
     expect(r.code).toBe(1);
     expect(r.stderr).toMatch(/does not support claim/);
+  });
+
+  it('AGENTCOMM_BACKEND_PLUGINS loads a third-party backend module before resolving --backend', async () => {
+    // Simulates an external npm package: a standalone module whose only job,
+    // on import, is to call registerBackend() for a brand-new URI scheme.
+    // agentcomm itself never references "pluginfs" anywhere.
+    const root = await mkTmp();
+    const dataDir = path.join(root, 'data');
+    const pluginPath = path.join(root, 'plugin.mjs');
+    const indexUrl = pathToFileURL(path.join(here, '..', 'src', 'backends', 'index.ts')).href;
+    const localUrl = pathToFileURL(path.join(here, '..', 'src', 'backends', 'local.ts')).href;
+    await fs.writeFile(
+      pluginPath,
+      [
+        `import { registerBackend } from ${JSON.stringify(indexUrl)};`,
+        `import { LocalBackend } from ${JSON.stringify(localUrl)};`,
+        `registerBackend('pluginfs', async () => new LocalBackend(${JSON.stringify(dataDir)}));`,
+      ].join('\n'),
+    );
+
+    const env = { ...process.env, AGENTCOMM_BACKEND_PLUGINS: pathToFileURL(pluginPath).href };
+    const reg = await run(['register', '--as', 'alice', '--backend', 'pluginfs://ignored'], undefined, env);
+    expect(reg.code).toBe(0);
+    expect(reg.stdout).toMatch(/registered alice/);
+
+    // Proves the plugin's factory actually ran: data landed in dataDir.
+    const written = await fs.readdir(path.join(dataDir, 'agents'));
+    expect(written).toContain('alice.json');
+  });
+
+  it('an unknown scheme lists the currently registered ones in the error', async () => {
+    const r = await run(['inbox', '--as', 'alice', '--backend', 'redis://localhost']);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/Known schemes: file, gs, s3, sqlite/);
   });
 });

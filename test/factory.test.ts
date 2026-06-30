@@ -3,10 +3,10 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createBackend } from '../src/backends/index.js';
+import { createBackend, registerBackend, registeredSchemes } from '../src/backends/index.js';
 import { LocalBackend, SqliteBackend, S3Backend, GCSBackend } from '../src/backends/index.js';
 import { loadDriver } from '../src/backends/lazy.js';
-import { MissingDriverError } from '../src/types.js';
+import { MissingDriverError, type Backend } from '../src/types.js';
 
 const tmpRoots: string[] = [];
 async function mkTmp(): Promise<string> {
@@ -60,6 +60,48 @@ describe('createBackend URI factory', () => {
     const b = await createBackend('gs://my-bucket/prefix').catch((e) => e as Error);
     if (b instanceof Error) expect(b).toBeInstanceOf(MissingDriverError);
     else expect(b).toBeInstanceOf(GCSBackend);
+  });
+});
+
+describe('registerBackend — the plugin seam', () => {
+  it('the four built-ins are registered through registerBackend, not a private path', () => {
+    expect(registeredSchemes()).toEqual(['file', 'gs', 's3', 'sqlite']);
+  });
+
+  it('a third party can add a new URI scheme with zero changes to createBackend', async () => {
+    class FakeBackend implements Backend {
+      public lastUri = '';
+      put(): Promise<void> {
+        return Promise.resolve();
+      }
+      get(): Promise<Buffer> {
+        return Promise.resolve(Buffer.alloc(0));
+      }
+      list(): Promise<string[]> {
+        return Promise.resolve([]);
+      }
+      delete(): Promise<void> {
+        return Promise.resolve();
+      }
+      exists(): Promise<boolean> {
+        return Promise.resolve(false);
+      }
+      move(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+    let captured: FakeBackend | undefined;
+    registerBackend('memtest', (uri) => {
+      const b = new FakeBackend();
+      b.lastUri = uri;
+      captured = b;
+      return Promise.resolve(b);
+    });
+
+    expect(registeredSchemes()).toContain('memtest');
+    const b = await createBackend('memtest://anything/goes-here');
+    expect(b).toBe(captured);
+    expect(captured?.lastUri).toBe('memtest://anything/goes-here');
   });
 });
 

@@ -28,6 +28,12 @@ Flags:
   --json                   Machine-readable JSON output
   --help                   Show this help
 
+Env:
+  AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
+                             import before resolving --backend, so a
+                             third-party package can register a new URI
+                             scheme via registerBackend() (see README)
+
 Examples:
   agentcomm register --as alice --backend sqlite:///tmp/bus.db
   agentcomm send bob "ship it" --as alice --backend sqlite:///tmp/bus.db
@@ -42,6 +48,7 @@ async function main(argv) {
         process.stdout.write(USAGE);
         return command ? 0 : 1;
     }
+    await loadBackendPlugins();
     const backend = await createBackend(cfg.backendUri);
     const bus = new Bus(backend);
     try {
@@ -162,6 +169,24 @@ async function cmdClaim(bus, cfg, queue) {
         process.stdout.write(`claimed ${msg.id} from ${msg.from}${subj}\n  ${msg.body}\n`);
     }
     return 0;
+}
+/**
+ * Import every module listed in AGENTCOMM_BACKEND_PLUGINS so its
+ * registerBackend() side effect runs before --backend is resolved.
+ */
+async function loadBackendPlugins() {
+    const spec = process.env.AGENTCOMM_BACKEND_PLUGINS;
+    if (!spec)
+        return;
+    for (const mod of spec.split(/[,\s]+/).filter(Boolean)) {
+        try {
+            await import(mod);
+        }
+        catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            throw new Error(`agentcomm: failed to load backend plugin "${mod}": ${reason}`);
+        }
+    }
 }
 // ── helpers ─────────────────────────────────────────────────────────────────
 function printMessages(messages, cfg) {
