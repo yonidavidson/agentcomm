@@ -4,8 +4,9 @@ import { LocalBackend } from './local.js';
 import { SqliteBackend } from './sqlite.js';
 import { S3Backend } from './s3.js';
 import { GCSBackend } from './gcs.js';
+import { PostgresBackend } from './postgres.js';
 
-export { LocalBackend, SqliteBackend, S3Backend, GCSBackend };
+export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend };
 
 /** Builds a {@link Backend} from a full backend URI (including its scheme). */
 export type BackendFactory = (uri: string) => Promise<Backend>;
@@ -45,6 +46,8 @@ registerBackend('gs', (uri) => {
   const { bucket, prefix } = bucketAndPrefix(uri, 'gs');
   return GCSBackend.open(bucket, prefix);
 });
+registerBackend('postgres', (uri) => PostgresBackend.open(uri));
+registerBackend('postgresql', (uri) => PostgresBackend.open(uri));
 
 /**
  * Resolve a backend URI into a concrete {@link Backend}.
@@ -57,6 +60,7 @@ registerBackend('gs', (uri) => {
  *   *.db                        bare path ending in .db → SqliteBackend
  *   s3://bucket/optional/prefix S3 (lazy @aws-sdk/client-s3)
  *   gs://bucket/optional/prefix GCS (lazy @google-cloud/storage)
+ *   postgres(ql)://...          Postgres (lazy pg)
  *
  * Plus any scheme registered via {@link registerBackend} (built-in or
  * third-party plugin).

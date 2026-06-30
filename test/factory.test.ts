@@ -65,7 +65,7 @@ describe('createBackend URI factory', () => {
 
 describe('registerBackend — the plugin seam', () => {
   it('the four built-ins are registered through registerBackend, not a private path', () => {
-    expect(registeredSchemes()).toEqual(['file', 'gs', 's3', 'sqlite']);
+    expect(registeredSchemes()).toEqual(['file', 'gs', 'postgres', 'postgresql', 's3', 'sqlite']);
   });
 
   it('a third party can add a new URI scheme with zero changes to createBackend', async () => {

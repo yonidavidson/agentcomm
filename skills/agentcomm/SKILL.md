@@ -29,7 +29,8 @@ Every agent that should be able to talk to each other must point at the
 | --- | --- | --- |
 | Same machine, just trying this out | `file:///tmp/agentcomm` (or any shared dir) | works with **zero dependencies** — default if nothing else is specified |
 | Same machine, multiple processes writing concurrently | `sqlite:///tmp/agentcomm/bus.db` | requires `npm install better-sqlite3` in the working project; falls back with a clear error if missing |
-| Different machines/containers sharing a bucket | `s3://bucket/prefix` or `gs://bucket/prefix` | requires the matching cloud SDK installed |
+| Different machines/containers, need a shared store but not push/claim | `s3://bucket/prefix` or `gs://bucket/prefix` | requires the matching cloud SDK installed |
+| Different machines/containers, want atomic claims and instant push | `postgres://user:pass@host:5432/db` | requires `npm install pg`; `wait` resolves within ~ms of a `send` instead of polling |
 
 Pass it explicitly on every call with `--backend <uri>`, or export
 `AGENTCOMM_BACKEND` once for the session so you don't have to repeat it.
@@ -66,10 +67,14 @@ A "queue" is the same namespace as a recipient inbox — `send <queue> ...`
 populates it, `claim --queue <queue> --as <owner>` atomically dequeues one
 message from it (returns null/no output when empty). Use this instead of
 `inbox`/`wait` when several workers should split work from one queue without
-double-processing a message. **Only SQL backends (`sqlite://`, future
-`postgres://`) support `claim`** — on `file://`/`s3://`/`gs://` it errors
-clearly; don't fall back to `inbox`/`peek` and call that equivalent, since
-those don't give atomic, race-free dequeuing across processes.
+double-processing a message. **Only SQL backends (`sqlite://`, `postgres://`)
+support `claim`** — on `file://`/`s3://`/`gs://` it errors clearly; don't
+fall back to `inbox`/`peek` and call that equivalent, since those don't give
+atomic, race-free dequeuing across processes.
+
+On `postgres://`, `wait` is also real push (`LISTEN/NOTIFY`) instead of
+polling — same CLI, same exit codes, just faster. No syntax difference; this
+happens automatically based on `--backend`.
 
 ## Typical flow
 
@@ -100,6 +105,10 @@ node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" send planner "done" --as worker --thread 
   (e.g. gcsfuse) — its locking guarantees break there. Use `file://`, a real
   local disk for `sqlite://`, or `s3://`/`gs://` directly instead.
 - If a backend's optional driver isn't installed (`better-sqlite3` for
-  `sqlite://`, the AWS/GCS SDKs for `s3://`/`gs://`), the CLI prints exactly
-  which package to `npm install` — relay that to the user rather than
-  guessing.
+  `sqlite://`, the AWS/GCS SDKs for `s3://`/`gs://`, `pg` for `postgres://`),
+  the CLI prints exactly which package to `npm install` — relay that to the
+  user rather than guessing.
+- A third party can add a brand-new `--backend <scheme>://` via
+  `registerBackend()` without any agentcomm changes (set
+  `AGENTCOMM_BACKEND_PLUGINS` to load it) — mention this if the user asks
+  about a backend that isn't file/sqlite/s3/gs/postgres.

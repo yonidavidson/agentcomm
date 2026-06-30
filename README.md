@@ -14,24 +14,30 @@ and SQL backends are **optional, lazy-loaded** drivers.
             │   ├─ LocalBackend   — zero-dep default          │
             │   ├─ SqliteBackend  — single box (recommended)  │  TRANSPORT
             │   ├─ S3Backend      — object store               │  (live, hot path)
-            │   └─ GCSBackend     — object store               │
+            │   ├─ GCSBackend     — object store               │
+            │   └─ PostgresBackend — distributed, push         │
             └─────────────────────────────────────────────┘
 ```
 
-> **Status:** Transport core, `SqliteBackend` (single-box default), and the
-> `Claimable` shared-queue capability (atomic `claim`, race-free across
-> processes) are implemented and tested. The distributed `PostgresBackend`
-> (`claim` + `LISTEN/NOTIFY` push) and the offline DuckDB/Parquet analytics
-> export are planned — see [Roadmap](#roadmap).
+> **Status:** Transport core, `SqliteBackend` (single-box default),
+> `PostgresBackend` (distributed, atomic `claim`, real `LISTEN/NOTIFY` push),
+> and the `registerBackend()` plugin seam are implemented and tested. The
+> offline DuckDB/Parquet analytics export is planned — see
+> [Roadmap](#roadmap).
 
 ## Install
 
+Not on the npm registry (yet) — install straight from GitHub. `dist/` is
+committed to the repo, so this needs no build step:
+
 ```bash
-npm install agentcomm
+npm install github:yonidavidson/agentcomm
+
 # optional drivers, installed only if you use that backend:
 npm install better-sqlite3            # sqlite://
 npm install @aws-sdk/client-s3        # s3://
 npm install @google-cloud/storage     # gs://
+npm install pg                        # postgres://
 ```
 
 The local filesystem backend needs nothing beyond Node ≥ 18.
@@ -69,6 +75,10 @@ agentcomm wait  --as bob --timeout 30000   # exit 0 on delivery, 2 on timeout
 # shared-worker-queue pattern (multiple workers, one queue) — SQL backends only
 agentcomm send work-queue "task-1" --as producer
 agentcomm claim --queue work-queue --as worker-1   # atomic; null when empty
+
+# distributed (across machines/containers) — real push, not poll
+export AGENTCOMM_BACKEND=postgres://user:pass@host:5432/agentcomm
+agentcomm wait --as bob --timeout 30000   # resolves within ~ms of a send, via LISTEN/NOTIFY
 ```
 
 `send`/`broadcast` read the body from the trailing argument, or from **stdin**
@@ -113,14 +123,14 @@ Choose transport by **topology** — that's the only fork that matters.
 | **SQLite**  | `sqlite:///path.db`, `*.db`  | `better-sqlite3`       | ✅ (txn)      | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
-| **Postgres**| `postgres://…` *(planned)*   | `pg`                   | ✅ (txn)      | ✅ `SKIP LOCKED`       | **push**      | **across machines/containers**   |
+| **Postgres**| `postgres://…` / `postgresql://…` | `pg`             | ✅ (txn)      | ✅ `SKIP LOCKED`       | ✅ **push**   | **across machines/containers**   |
 
 **Rule of thumb:**
 
 - **One machine → `sqlite://`.** WAL mode gives you ACID, atomic per-key writes
   and an atomic `move`, with no daemon. This is the recommended default.
-- **Across machines/containers → `postgres://`** (planned) for race-free shared
-  queues and real push.
+- **Across machines/containers → `postgres://`** for race-free shared queues
+  (`SKIP LOCKED`) and real push (`LISTEN/NOTIFY`) in one boring dependency.
 
 ### URI formats
 
@@ -132,6 +142,7 @@ sqlite:///abs/path/to.db      single-file SQLite (WAL)
 ./bus.db                      bare path ending in .db → SQLite
 s3://bucket/optional/prefix   S3
 gs://bucket/optional/prefix   GCS
+postgres://user:pass@host/db  Postgres (postgresql:// also accepted)
 ```
 
 ### Writing a backend plugin
@@ -188,10 +199,16 @@ consumer reading via `inbox`.
   byte-range locks; over S3/GCS/gcsfuse its locking breaks and concurrent
   writes corrupt the file. `sqlite://` is for local/persistent disk only.
 - **`wait`'s contract is identical on every backend** (exit 0 delivered / 2
-  timeout), whether it polls (Local/SQLite/object stores) or, eventually,
-  pushes (Postgres).
+  timeout), whether it polls (Local/SQLite/object stores) or pushes
+  (Postgres, via `LISTEN/NOTIFY`).
 - **New drivers are optional + lazy.** A missing driver produces a clear
   `install X` message, not a crash — so `LocalBackend` stays zero-dependency.
+- **PostgresBackend uses one schema for everything.** Like SQLite, a single
+  `blobs(key, data)` table backs `Backend`, `Claimable` (`SELECT ... FOR
+  UPDATE SKIP LOCKED`), and `Waitable` (`put()` issues `pg_notify()` when the
+  key is under `inbox/<recipient>/`) — no separate `messages` table with
+  `owner`/`claimed_at` columns. Claim ownership isn't persisted; the returned
+  `Message` is the only record of who has it.
 
 ## Library use
 
@@ -212,31 +229,50 @@ await backend.close?.();
 ```bash
 npm install                 # dev toolchain (cloud SDKs are optional)
 npm install better-sqlite3  # to run the SQLite tests locally
+npm install pg              # to run the Postgres tests locally
 npm run typecheck
-npm test                    # vitest: backend contract, bus, CLI e2e, WAL concurrency
+npm test                    # vitest: backend contract, bus, CLI e2e, WAL/Postgres concurrency
 npm run build               # emit dist/
 ```
 
-The test suite runs the **same backend-contract and bus tests** against both
-`LocalBackend` and `SqliteBackend`, plus two-process concurrency tests proving
-WAL lets independent writers proceed and that N concurrent workers calling
-`claim` on one shared queue get disjoint messages (none dropped, none
-double-delivered), and CLI end-to-end tests covering the `wait` exit codes,
-the `claim` error/empty/success paths, and the missing-driver error path.
+The Postgres tests (`test/postgres.test.ts`) need a real database — they
+skip themselves with a console warning if none is reachable. Spin one up
+with Docker:
+
+```bash
+docker run -d --name agentcomm-pg-test -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=agentcomm -p 55432:5432 postgres:16-alpine
+# defaults to postgresql://postgres:test@localhost:55432/agentcomm;
+# override with AGENTCOMM_TEST_POSTGRES_URL
+```
+
+The test suite runs the **same backend-contract and bus tests** against
+`LocalBackend`, `SqliteBackend`, and `PostgresBackend`, plus concurrency tests
+proving: WAL lets independent SQLite writers proceed; N concurrent processes
+calling `claim` on one shared queue (SQLite or Postgres) get disjoint
+messages, none dropped, none double-delivered; and `wait` on Postgres
+resolves within tens of ms of a `send` from a **separate OS process** (real
+push via `LISTEN/NOTIFY`, not a poll interval). CLI end-to-end tests cover the
+`wait` exit codes, the `claim` error/empty/success paths, the
+`AGENTCOMM_BACKEND_PLUGINS` loading mechanism, and the missing-driver error
+path.
 
 ## Roadmap
 
 Tracked against the original build plan:
 
 1. ✅ **`SqliteBackend`** — drop-in single-box transport (WAL). *Done.*
-2. ✅ **Capability interfaces** — `Claimable` (atomic shared-queue `claim`,
-   implemented by `SqliteBackend`) and `Waitable` (push; wired into `Bus.wait`,
-   no backend implements it yet). The Bus feature-detects both and falls back
-   to list+move / polling when absent. *Done.*
-3. ⏳ **`PostgresBackend`** — distributed transport: `claim` via
-   `SELECT … FOR UPDATE SKIP LOCKED`, push via `LISTEN/NOTIFY`. *Planned.*
+2. ✅ **Capability interfaces** — `Claimable` (atomic shared-queue `claim`)
+   and `Waitable` (push). The Bus feature-detects both and falls back to
+   list+move / polling when absent. *Done.*
+3. ✅ **`PostgresBackend`** — distributed transport: `claim` via
+   `SELECT … FOR UPDATE SKIP LOCKED`, push via `LISTEN/NOTIFY`. *Done.*
 4. ⏳ **Analytics export** — offline `archive export` to Parquet on S3/GCS, with
    a DuckDB/DuckLake query recipe. Never on the hot path. *Planned.*
+
+Also shipped, beyond the original brief: a **backend plugin registry**
+(`registerBackend()`) so third parties can add a new `--backend <scheme>://`
+without any agentcomm changes — see "Writing a backend plugin" above.
 
 ## License
 

@@ -1,7 +1,7 @@
 {
   "name": "agentcomm",
   "description": "Multi-agent mailbox CLI (register/send/inbox/peek/wait/broadcast) so Claude can coordinate with other agents or sessions sharing a backend.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Yoni Davidson",
     "email": "yonidavidson@tabnine.com"

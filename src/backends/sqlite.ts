@@ -1,5 +1,6 @@
 import { type Backend, type Claimable, type Message } from '../types.js';
 import { loadDriver } from './lazy.js';
+import { upperBound } from './range.js';
 
 /**
  * SqliteBackend — a faithful blob implementation of {@link Backend} backed by
@@ -156,24 +157,6 @@ export class SqliteBackend implements Backend, Claimable {
     });
     return Promise.resolve(tx.immediate());
   }
-}
-
-/**
- * Smallest key that is strictly greater than every key with `prefix`.
- * Increments the last byte; returns null if the prefix is empty or all 0xff
- * (in which case there is no upper bound and the caller scans to the end).
- */
-function upperBound(prefix: string): string | null {
-  if (prefix.length === 0) return null;
-  const bytes = Buffer.from(prefix, 'utf8');
-  for (let i = bytes.length - 1; i >= 0; i--) {
-    if (bytes[i]! < 0xff) {
-      const head = bytes.subarray(0, i + 1);
-      head[i]! += 1;
-      return head.toString('utf8');
-    }
-  }
-  return null;
 }
 
 function toBuffer(data: Buffer | Uint8Array): Buffer {

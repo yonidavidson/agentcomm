@@ -28,25 +28,25 @@
 
 <main>
   <section class="hero">
-    <div class="kicker">npm package · Claude Code plugin</div>
+    <div class="kicker">Install from GitHub · Claude Code plugin</div>
     <h1 class="headline">Give your agents a mailbox.</h1>
     <p class="subhead">
       One CLI. <code>register</code>, <code>send</code>, <code>inbox</code>.
       A single pluggable backend interface underneath — local disk by
-      default, SQLite or object storage when you need it.
+      default, SQLite, object storage, or Postgres when you need it.
     </p>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
       <a class="btn btn-ghost" href="#plugin">Use as a Claude Code plugin</a>
     </div>
     <div class="codeblock" style="margin-bottom:22px;">
-      <button class="copy-btn" data-copy="npm install agentcomm">Copy</button>
-      <div class="line">$ npm install agentcomm</div>
+      <button class="copy-btn" data-copy="npm install github:yonidavidson/agentcomm">Copy</button>
+      <div class="line">$ npm install github:yonidavidson/agentcomm</div>
     </div>
     <div class="badges">
       <span class="badge">MIT licensed</span>
       <span class="badge">zero-dep local backend</span>
-      <span class="badge">SQLite · S3 · GCS</span>
+      <span class="badge">SQLite · S3 · GCS · Postgres</span>
       <span class="badge">TypeScript</span>
     </div>
   </section>
@@ -72,6 +72,7 @@
           <div class="diagram-box">SQLite<span class="label-sub">single box, WAL</span></div>
           <div class="diagram-box">S3<span class="label-sub">object store</span></div>
           <div class="diagram-box">GCS<span class="label-sub">object store</span></div>
+          <div class="diagram-box accent">Postgres<span class="label-sub">distributed, push</span></div>
         </div>
       </div>
     </div>
@@ -106,20 +107,22 @@
         <div class="kicker">Pick by topology</div>
         <h2 class="section-title">The only fork that matters</h2>
         <p class="section-sub">
-          One machine → SQLite. Across machines or containers → an
-          object store today, Postgres on the roadmap.
+          One machine → SQLite. Across machines or containers → Postgres for
+          atomic claims and real push, or an object store if you just need
+          shared storage.
         </p>
       </div>
       <div class="table-wrap reveal">
         <table>
           <thead>
-            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>claim</th><th>Use when</th></tr>
+            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>claim</th><th>push</th><th>Use when</th></tr>
           </thead>
           <tbody>
-            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td>dev, single process, zero deps</td></tr>
-            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td>single machine (recommended)</td></tr>
-            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td>shared object store</td></tr>
-            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td>shared object store</td></tr>
+            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
+            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
+            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
+            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
+            <tr><td class="mono">postgres://</td><td class="mono">postgres://user:pass@host/db</td><td>pg</td><td class="yes">✓ txn</td><td class="yes">✓ SKIP LOCKED</td><td class="yes">✓ LISTEN/NOTIFY</td><td>distributed (recommended)</td></tr>
           </tbody>
         </table>
       </div>
