@@ -59,7 +59,52 @@ Flags: `--backend <uri>`, `--as <name>`, `--subject <text>`, `--thread <id>`,
 `--json` (machine-readable output on every command).
 
 `wait` exits **0** when a message arrived, **2** on timeout — check the exit
-code rather than parsing output when scripting a wait loop.
+code rather than parsing output when scripting a wait loop. In any scripted
+or looping usage, add `--json` and parse that; the human-readable output is
+not a stable format.
+
+## Communication discipline
+
+Sending is the easy half. What makes multi-agent work actually converge:
+
+- **Register before anything else**, and verify your counterpart exists:
+  run `agents` and check the name you're about to `send` to is listed. A
+  message to a misspelled or never-registered name lands in a mailbox
+  nobody reads — no error is raised.
+- **Check your inbox at three moments**: when you start a collaborative
+  task (there may be instructions already waiting), at natural checkpoints
+  between work phases, and **always before reporting your work done** — a
+  correction or scope change may have arrived while you worked.
+- **Prefer `wait` over sleep-and-poll.** `wait --timeout <ms>` blocks
+  efficiently (real push on `postgres://`); a `sleep`/`peek` loop burns
+  time and can miss ordering.
+- **`wait` does not consume.** It shows the pending messages and exits;
+  they stay in the inbox until you run `inbox`. The reliable pattern is
+  `wait` (get notified) → `inbox` (consume and act). Don't `wait` again
+  without consuming first — it returns instantly with the same messages.
+- **Acknowledge and close the loop.** When you receive a task, send a short
+  ack on the same thread so the sender knows it was picked up; when you
+  finish, send an explicit status: `done`, `blocked: <why>`, or
+  `question: <what>`. Silence is indistinguishable from a crashed agent.
+
+## Message conventions
+
+- `--subject` — short intent label (`task`, `ack`, `done`, `question`,
+  `status`). The receiver should be able to triage from `peek` output alone.
+- `--thread` — correlation id. The task sender picks one (e.g. `auth-42`);
+  **every reply about that task carries the same `--thread`**, so both sides
+  can match acks/results to requests when several tasks are in flight.
+- Body: plain text for humans, or a single JSON object when the receiver is
+  scripted — don't mix both in one message.
+
+### When `wait` times out (exit 2)
+
+A timeout is information, not an error: the other agent hasn't replied yet.
+Decide explicitly — re-`wait` (bounded: give up after a few rounds, don't
+spin forever), proceed without the answer if you safely can, or stop and
+report. Whatever you choose, **tell the user the coordination state** ("no
+reply from worker-1 after 2×60s, proceeding with defaults") rather than
+stalling silently.
 
 ### Shared-worker-queue pattern (multiple workers, one queue)
 
@@ -78,21 +123,33 @@ happens automatically based on `--backend`.
 
 ## Typical flow
 
+A full handoff between two agents, showing the conventions above
+(`AC` stands in for `node "$CLAUDE_PLUGIN_ROOT/dist/cli.js"`):
+
 ```bash
 B="--backend sqlite:///tmp/agentcomm/bus.db"
 
 # each agent registers once
-node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" register --as planner $B
-node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" register --as worker  $B
+AC register --as planner $B
+AC register --as worker  $B
 
-# planner hands off work
-node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" send worker "build the auth module" --as planner --subject task $B
+# planner verifies the counterpart is really there, then hands off work
+AC agents $B --json                # confirm "worker" appears
+AC send worker "build the auth module" --as planner --subject task --thread auth-1 $B
 
-# worker checks for work, blocking up to 60s
-node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" wait --as worker --timeout 60000 $B --json
+# worker blocks for work (exit 0 = message, exit 2 = timeout), acks on-thread
+AC wait --as worker --timeout 60000 $B --json
+AC send planner "ack: starting auth module" --as worker --subject ack --thread auth-1 $B
 
-# worker reports back
-node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" send planner "done" --as worker --thread task-1 $B
+# ... worker does the work ...
+
+# worker drains its inbox BEFORE reporting done (a correction may have arrived),
+# then closes the loop on the same thread
+AC inbox --as worker $B --json
+AC send planner "done: auth module built, tests green" --as worker --subject done --thread auth-1 $B
+
+# planner collects the ack + result, correlated by thread=auth-1
+AC inbox --as planner $B --json
 ```
 
 ## Notes
