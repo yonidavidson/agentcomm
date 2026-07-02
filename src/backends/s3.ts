@@ -23,7 +23,13 @@ export class S3Backend implements Backend {
       '@aws-sdk/client-s3',
       'the S3 backend',
     );
-    const client = new sdk.S3Client({});
+    // Endpoint, credentials and region flow in via the standard AWS env vars
+    // (AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID, ...). Path-style addressing has
+    // no standard env var, but S3-compatible servers (Garage, MinIO, ...)
+    // usually require it — hence this one escape hatch.
+    const client = new sdk.S3Client(
+      process.env.AGENTCOMM_S3_FORCE_PATH_STYLE ? { forcePathStyle: true } : {},
+    );
     const prefix = basePrefix && !basePrefix.endsWith('/') ? `${basePrefix}/` : basePrefix;
     return new S3Backend(client, sdk, bucket, prefix);
   }

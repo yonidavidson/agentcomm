@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # Live services for the e2e suites: Garage (S3, Rust), fake-gcs-server
+      # (GCS) and Postgres. The suites self-skip without them — starting the
+      # stack is what makes CI actually exercise all five backends.
+      - name: Start e2e services
+        run: npm run test:e2e:up
+
+      - name: Test (all backends)
+        run: npm test
+
+      - name: Stop e2e services
+        if: always()
+        run: npm run test:e2e:down
