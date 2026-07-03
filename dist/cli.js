@@ -225,7 +225,9 @@ async function readStdin() {
     for await (const chunk of process.stdin) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
-    return Buffer.concat(chunks).toString('utf8').trim();
+    // Strip only the trailing newline a shell pipe appends — leading whitespace
+    // is content (preformatted bodies like ASCII art must arrive intact).
+    return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
 }
 main(process.argv.slice(2))
     .then((code) => {
