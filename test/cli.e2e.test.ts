@@ -81,6 +81,14 @@ describe('CLI e2e (sqlite backend)', () => {
     expect((JSON.parse(inbox.stdout) as { body: string }[])[0]!.body).toBe('from stdin');
   });
 
+  it('send via stdin preserves leading whitespace and internal formatting, stripping only the trailing pipe newline', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+    const art = '   |\\\n   | \\\n___|__\\__';
+    await run(['send', 'bob', '--as', 'alice', '--backend', db], art + '\n');
+    const inbox = await run(['inbox', '--as', 'bob', '--backend', db, '--json']);
+    expect((JSON.parse(inbox.stdout) as { body: string }[])[0]!.body).toBe(art);
+  });
+
   it('wait exits 0 when a message is pending', async () => {
     const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
     await run(['send', 'bob', 'hello', '--as', 'alice', '--backend', db]);
