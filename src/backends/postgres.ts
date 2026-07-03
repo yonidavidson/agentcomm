@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { type Backend, type Claimable, type Message, type Waitable } from '../types.js';
 import { loadDriver } from './lazy.js';
 import { upperBound } from './range.js';
@@ -33,66 +34,85 @@ import { upperBound } from './range.js';
  * every other backend.
  */
 export class PostgresBackend implements Backend, Claimable, Waitable {
-  private constructor(private readonly client: PgClientLike, private readonly pg: PgModule) {}
+  private constructor(
+    private readonly client: PgClientLike,
+    private readonly pg: PgModule,
+    /** '' for the root channel, or 'channels/<name>/' for a carved channel. */
+    private readonly keyPrefix: string,
+    /** Raw channel name ('' = root) — namespaces NOTIFY identifiers. */
+    private readonly channel: string,
+  ) {}
 
-  static async open(connectionUri: string): Promise<PostgresBackend> {
+  /**
+   * `channel` carves an isolated bus out of one database: every key is
+   * namespaced under `channels/<channel>/` and NOTIFY identifiers are
+   * channel-scoped, so N channels share a database without cross-talk.
+   * '' (default) is the root channel — wire-compatible with data written
+   * before channels existed.
+   */
+  static async open(connectionUri: string, channel = ''): Promise<PostgresBackend> {
     const pg = await loadDriver<PgModule>('pg', 'pg', 'the Postgres backend');
     const client = new pg.Client({ connectionString: connectionUri });
     await client.connect();
     await client.query('CREATE TABLE IF NOT EXISTS blobs (key TEXT PRIMARY KEY, data BYTEA NOT NULL)');
-    return new PostgresBackend(client, pg);
+    return new PostgresBackend(client, pg, channel ? `channels/${channel}/` : '', channel);
+  }
+
+  private k(key: string): string {
+    return this.keyPrefix + key;
   }
 
   async put(key: string, data: Buffer): Promise<void> {
     await this.client.query(
       'INSERT INTO blobs (key, data) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET data = excluded.data',
-      [key, data],
+      [this.k(key), data],
     );
     const recipient = recipientOfInboxKey(key);
     if (recipient) {
-      await this.client.query('SELECT pg_notify($1, $2)', [channelFor(recipient), '']);
+      await this.client.query('SELECT pg_notify($1, $2)', [channelFor(this.channel, recipient), '']);
     }
   }
 
   async get(key: string): Promise<Buffer> {
-    const res = await this.client.query('SELECT data FROM blobs WHERE key = $1', [key]);
+    const res = await this.client.query('SELECT data FROM blobs WHERE key = $1', [this.k(key)]);
     const row = res.rows[0] as { data: Buffer } | undefined;
     if (!row) throw notFound(key);
     return toBuffer(row.data);
   }
 
   async list(prefix: string): Promise<string[]> {
-    const upper = upperBound(prefix);
+    const full = this.k(prefix);
+    const upper = upperBound(full);
     const res =
       upper === null
-        ? await this.client.query('SELECT key FROM blobs WHERE key >= $1 ORDER BY key', [prefix])
+        ? await this.client.query('SELECT key FROM blobs WHERE key >= $1 ORDER BY key', [full])
         : await this.client.query('SELECT key FROM blobs WHERE key >= $1 AND key < $2 ORDER BY key', [
-            prefix,
+            full,
             upper,
           ]);
-    return (res.rows as { key: string }[]).map((r) => r.key);
+    return (res.rows as { key: string }[]).map((r) => r.key.slice(this.keyPrefix.length));
   }
 
   async delete(key: string): Promise<void> {
-    await this.client.query('DELETE FROM blobs WHERE key = $1', [key]);
+    await this.client.query('DELETE FROM blobs WHERE key = $1', [this.k(key)]);
   }
 
   async exists(key: string): Promise<boolean> {
-    const res = await this.client.query('SELECT 1 FROM blobs WHERE key = $1', [key]);
+    const res = await this.client.query('SELECT 1 FROM blobs WHERE key = $1', [this.k(key)]);
     return res.rows.length > 0;
   }
 
   async move(src: string, dst: string): Promise<void> {
     await this.client.query('BEGIN');
     try {
-      const res = await this.client.query('SELECT data FROM blobs WHERE key = $1 FOR UPDATE', [src]);
+      const res = await this.client.query('SELECT data FROM blobs WHERE key = $1 FOR UPDATE', [this.k(src)]);
       const row = res.rows[0] as { data: Buffer } | undefined;
       if (!row) throw notFound(src);
       await this.client.query(
         'INSERT INTO blobs (key, data) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET data = excluded.data',
-        [dst, row.data],
+        [this.k(dst), row.data],
       );
-      await this.client.query('DELETE FROM blobs WHERE key = $1', [src]);
+      await this.client.query('DELETE FROM blobs WHERE key = $1', [this.k(src)]);
       await this.client.query('COMMIT');
     } catch (err) {
       await this.client.query('ROLLBACK').catch(() => {});
@@ -102,7 +122,7 @@ export class PostgresBackend implements Backend, Claimable, Waitable {
 
   /** Atomically dequeue the oldest message in `inbox/<queue>/`. See class doc. */
   async claim(queue: string, _owner: string): Promise<Message | null> {
-    const prefix = `inbox/${queue}/`;
+    const prefix = this.k(`inbox/${queue}/`);
     const upper = upperBound(prefix);
     await this.client.query('BEGIN');
     try {
@@ -121,7 +141,8 @@ export class PostgresBackend implements Backend, Claimable, Waitable {
         await this.client.query('COMMIT');
         return null;
       }
-      const dst = 'read/' + row.key.slice('inbox/'.length);
+      const logical = row.key.slice(this.keyPrefix.length);
+      const dst = this.k('read/' + logical.slice('inbox/'.length));
       await this.client.query(
         'INSERT INTO blobs (key, data) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET data = excluded.data',
         [dst, row.data],
@@ -137,7 +158,7 @@ export class PostgresBackend implements Backend, Claimable, Waitable {
 
   /** Push-driven wait: LISTEN on the recipient's channel, NOTIFY'd by put(). See class doc. */
   async waitPush(recipient: string, timeoutMs: number): Promise<Message[]> {
-    const channel = channelFor(recipient);
+    const channel = channelFor(this.channel, recipient);
     await this.client.query(`LISTEN ${this.pg.escapeIdentifier(channel)}`);
 
     const prefix = `inbox/${recipient}/`;
@@ -184,8 +205,22 @@ function recipientOfInboxKey(key: string): string | null {
   return m ? m[1]! : null;
 }
 
-function channelFor(recipient: string): string {
-  return `agentcomm_${recipient}`;
+/**
+ * NOTIFY identifier for (bus-channel, recipient). Postgres identifiers cap at
+ * 63 bytes; when the readable form would exceed that, fall back to a hash of
+ * the exact pair so distinct pairs can never collide after truncation.
+ * (Sanitization can alias readable names — e.g. `team-a`/`team.a` — which
+ * only ever causes a spurious wake-up: waitPush re-lists its own key-isolated
+ * inbox on every notification, so delivery is never wrong.)
+ */
+function channelFor(busChannel: string, recipient: string): string {
+  const readable = `agentcomm_${busChannel ? `${busChannel}_` : ''}${recipient}`.replace(
+    /[^A-Za-z0-9_]/g,
+    '_',
+  );
+  if (Buffer.byteLength(readable) <= 63) return readable;
+  const digest = createHash('sha1').update(`${busChannel} ${recipient}`).digest('hex');
+  return `agentcomm_h${digest}`;
 }
 
 function toBuffer(data: Buffer | Uint8Array): Buffer {

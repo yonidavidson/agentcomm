@@ -23,13 +23,22 @@ import { upperBound } from './range.js';
  * its locking guarantees break and concurrent writes corrupt the file.
  */
 export class SqliteBackend implements Backend, Claimable {
-  private constructor(private readonly db: BetterSqlite3Database) {}
+  private constructor(
+    private readonly db: BetterSqlite3Database,
+    /** '' for the root channel, or 'channels/<name>/' for a carved channel. */
+    private readonly keyPrefix: string,
+  ) {}
 
   /**
    * Open (or create) the database at `filePath` and prepare the schema.
    * Lazy-imports better-sqlite3; throws {@link MissingDriverError} if absent.
+   *
+   * `channel` carves an isolated bus out of the file: every key is
+   * transparently namespaced under `channels/<channel>/`, so N channels share
+   * one .db without seeing each other. '' (default) is the root channel —
+   * wire-compatible with data written before channels existed.
    */
-  static async open(filePath: string): Promise<SqliteBackend> {
+  static async open(filePath: string, channel = ''): Promise<SqliteBackend> {
     // Lazy, optional import. Resolved only when a sqlite:// URI is used.
     const mod = await loadDriver<{ default: BetterSqlite3Constructor }>(
       'better-sqlite3',
@@ -45,18 +54,22 @@ export class SqliteBackend implements Backend, Claimable {
     db.pragma('synchronous = NORMAL');
     db.exec('CREATE TABLE IF NOT EXISTS blobs (key TEXT PRIMARY KEY, data BLOB NOT NULL)');
 
-    return new SqliteBackend(db);
+    return new SqliteBackend(db, channel ? `channels/${channel}/` : '');
+  }
+
+  private k(key: string): string {
+    return this.keyPrefix + key;
   }
 
   async put(key: string, data: Buffer): Promise<void> {
     this.db
       .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
-      .run(key, data);
+      .run(this.k(key), data);
     return Promise.resolve();
   }
 
   async get(key: string): Promise<Buffer> {
-    const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(key) as
+    const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(this.k(key)) as
       | { data: Buffer }
       | undefined;
     if (!row) {
@@ -70,25 +83,26 @@ export class SqliteBackend implements Backend, Claimable {
   async list(prefix: string): Promise<string[]> {
     // Range scan so the PRIMARY KEY index is used (no full scan, no LIKE).
     // Upper bound = prefix with its last byte incremented.
-    const upper = upperBound(prefix);
+    const full = this.k(prefix);
+    const upper = upperBound(full);
     const rows =
       upper === null
-        ? (this.db.prepare('SELECT key FROM blobs WHERE key >= ? ORDER BY key').all(prefix) as {
+        ? (this.db.prepare('SELECT key FROM blobs WHERE key >= ? ORDER BY key').all(full) as {
             key: string;
           }[])
         : (this.db
             .prepare('SELECT key FROM blobs WHERE key >= ? AND key < ? ORDER BY key')
-            .all(prefix, upper) as { key: string }[]);
-    return Promise.resolve(rows.map((r) => r.key));
+            .all(full, upper) as { key: string }[]);
+    return Promise.resolve(rows.map((r) => r.key.slice(this.keyPrefix.length)));
   }
 
   async delete(key: string): Promise<void> {
-    this.db.prepare('DELETE FROM blobs WHERE key = ?').run(key);
+    this.db.prepare('DELETE FROM blobs WHERE key = ?').run(this.k(key));
     return Promise.resolve();
   }
 
   async exists(key: string): Promise<boolean> {
-    const row = this.db.prepare('SELECT 1 FROM blobs WHERE key = ?').get(key);
+    const row = this.db.prepare('SELECT 1 FROM blobs WHERE key = ?').get(this.k(key));
     return Promise.resolve(row !== undefined);
   }
 
@@ -112,7 +126,7 @@ export class SqliteBackend implements Backend, Claimable {
         .run(to, row.data);
       this.db.prepare('DELETE FROM blobs WHERE key = ?').run(from);
     });
-    tx.immediate(src, dst);
+    tx.immediate(this.k(src), this.k(dst));
     return Promise.resolve();
   }
 
@@ -132,7 +146,7 @@ export class SqliteBackend implements Backend, Claimable {
    * the only record of the claim.
    */
   async claim(queue: string, _owner: string): Promise<Message | null> {
-    const prefix = `inbox/${queue}/`;
+    const prefix = this.k(`inbox/${queue}/`);
     const upper = upperBound(prefix);
     // IMMEDIATE for the same reason as move(): this is a read-then-write
     // transaction, and deferred mode risks SQLITE_BUSY_SNAPSHOT under
@@ -147,7 +161,8 @@ export class SqliteBackend implements Backend, Claimable {
       ) as { key: string; data: Buffer } | undefined;
       if (!row) return null;
 
-      const dst = 'read/' + row.key.slice('inbox/'.length);
+      const logical = row.key.slice(this.keyPrefix.length);
+      const dst = this.k('read/' + logical.slice('inbox/'.length));
       this.db
         .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
         .run(dst, row.data);

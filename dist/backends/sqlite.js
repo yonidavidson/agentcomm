@@ -22,14 +22,23 @@ import { upperBound } from './range.js';
  */
 export class SqliteBackend {
     db;
-    constructor(db) {
+    keyPrefix;
+    constructor(db, 
+    /** '' for the root channel, or 'channels/<name>/' for a carved channel. */
+    keyPrefix) {
         this.db = db;
+        this.keyPrefix = keyPrefix;
     }
     /**
      * Open (or create) the database at `filePath` and prepare the schema.
      * Lazy-imports better-sqlite3; throws {@link MissingDriverError} if absent.
+     *
+     * `channel` carves an isolated bus out of the file: every key is
+     * transparently namespaced under `channels/<channel>/`, so N channels share
+     * one .db without seeing each other. '' (default) is the root channel —
+     * wire-compatible with data written before channels existed.
      */
-    static async open(filePath) {
+    static async open(filePath, channel = '') {
         // Lazy, optional import. Resolved only when a sqlite:// URI is used.
         const mod = await loadDriver('better-sqlite3', 'better-sqlite3', 'the SQLite backend');
         const Database = mod.default;
@@ -39,16 +48,19 @@ export class SqliteBackend {
         db.pragma('busy_timeout = 5000');
         db.pragma('synchronous = NORMAL');
         db.exec('CREATE TABLE IF NOT EXISTS blobs (key TEXT PRIMARY KEY, data BLOB NOT NULL)');
-        return new SqliteBackend(db);
+        return new SqliteBackend(db, channel ? `channels/${channel}/` : '');
+    }
+    k(key) {
+        return this.keyPrefix + key;
     }
     async put(key, data) {
         this.db
             .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
-            .run(key, data);
+            .run(this.k(key), data);
         return Promise.resolve();
     }
     async get(key) {
-        const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(key);
+        const row = this.db.prepare('SELECT data FROM blobs WHERE key = ?').get(this.k(key));
         if (!row) {
             const err = new Error(`agentcomm: key not found: ${key}`);
             err.code = 'ENOENT';
@@ -59,20 +71,21 @@ export class SqliteBackend {
     async list(prefix) {
         // Range scan so the PRIMARY KEY index is used (no full scan, no LIKE).
         // Upper bound = prefix with its last byte incremented.
-        const upper = upperBound(prefix);
+        const full = this.k(prefix);
+        const upper = upperBound(full);
         const rows = upper === null
-            ? this.db.prepare('SELECT key FROM blobs WHERE key >= ? ORDER BY key').all(prefix)
+            ? this.db.prepare('SELECT key FROM blobs WHERE key >= ? ORDER BY key').all(full)
             : this.db
                 .prepare('SELECT key FROM blobs WHERE key >= ? AND key < ? ORDER BY key')
-                .all(prefix, upper);
-        return Promise.resolve(rows.map((r) => r.key));
+                .all(full, upper);
+        return Promise.resolve(rows.map((r) => r.key.slice(this.keyPrefix.length)));
     }
     async delete(key) {
-        this.db.prepare('DELETE FROM blobs WHERE key = ?').run(key);
+        this.db.prepare('DELETE FROM blobs WHERE key = ?').run(this.k(key));
         return Promise.resolve();
     }
     async exists(key) {
-        const row = this.db.prepare('SELECT 1 FROM blobs WHERE key = ?').get(key);
+        const row = this.db.prepare('SELECT 1 FROM blobs WHERE key = ?').get(this.k(key));
         return Promise.resolve(row !== undefined);
     }
     async move(src, dst) {
@@ -93,7 +106,7 @@ export class SqliteBackend {
                 .run(to, row.data);
             this.db.prepare('DELETE FROM blobs WHERE key = ?').run(from);
         });
-        tx.immediate(src, dst);
+        tx.immediate(this.k(src), this.k(dst));
         return Promise.resolve();
     }
     async close() {
@@ -111,7 +124,7 @@ export class SqliteBackend {
      * the only record of the claim.
      */
     async claim(queue, _owner) {
-        const prefix = `inbox/${queue}/`;
+        const prefix = this.k(`inbox/${queue}/`);
         const upper = upperBound(prefix);
         // IMMEDIATE for the same reason as move(): this is a read-then-write
         // transaction, and deferred mode risks SQLITE_BUSY_SNAPSHOT under
@@ -124,7 +137,8 @@ export class SqliteBackend {
                     .get(prefix, upper));
             if (!row)
                 return null;
-            const dst = 'read/' + row.key.slice('inbox/'.length);
+            const logical = row.key.slice(this.keyPrefix.length);
+            const dst = this.k('read/' + logical.slice('inbox/'.length));
             this.db
                 .prepare('INSERT INTO blobs (key, data) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data')
                 .run(dst, row.data);

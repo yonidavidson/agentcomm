@@ -123,10 +123,10 @@ Choose transport by **topology** — that's the only fork that matters.
 | Backend     | URI                          | Driver (optional)      | Atomic `move` | `claim` (shared queue) | Push (`wait`) | Use when                         |
 | ----------- | ---------------------------- | ---------------------- | :-----------: | :--------------------: | :-----------: | -------------------------------- |
 | **Local**   | `file:///path/dir`, bare dir | — (built in)           | ✅ (rename)   | ❌                     | poll          | dev, single process, zero deps   |
-| **SQLite**  | `sqlite:///path.db`, `*.db`  | `better-sqlite3`       | ✅ (txn)      | ✅ (txn)              | poll          | **single machine** (recommended) |
+| **SQLite**  | `sqlite:///path.db[?channel=x]`, `*.db` | `better-sqlite3` | ✅ (txn)   | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
-| **Postgres**| `postgres://…` / `postgresql://…` | `pg`             | ✅ (txn)      | ✅ `SKIP LOCKED`       | ✅ **push**   | **across machines/containers**   |
+| **Postgres**| `postgres://…/db[?channel=x]` | `pg`                | ✅ (txn)      | ✅ `SKIP LOCKED`       | ✅ **push**   | **across machines/containers**   |
 
 **Rule of thumb:**
 
@@ -142,10 +142,15 @@ same `--backend` URI. One store can host many isolated channels — for the
 path-carved backends, just append a segment:
 
 ```
-s3://acme-bus/team-a        s3://acme-bus/team-b        # two isolated buses, one bucket
-file:///shared/bus/team-a   file:///shared/bus/team-b   # same idea on a shared volume
-sqlite:///shared/team-a.db                              # SQL: one channel per db file / database
+s3://acme-bus/team-a          s3://acme-bus/team-b        # two isolated buses, one bucket
+file:///shared/bus/team-a     file:///shared/bus/team-b   # same idea on a shared volume
+postgres://…/bus?channel=team-a                           # SQL: carve by query param
+sqlite:///shared/bus.db?channel=team-a                    # (omit ?channel= = root channel)
 ```
+
+On SQL backends every channel keeps the full guarantees — atomic `claim` and
+(on Postgres) push `wait` are isolated per channel, and data written without
+`?channel=` stays untouched as the root channel.
 
 Don't memorize the per-scheme rules — ask the CLI:
 
@@ -175,10 +180,12 @@ file:///abs/path/dir          filesystem (absolute)
 file://relative/dir           filesystem (relative to cwd)
 /abs/path  or  ./rel          bare path → filesystem
 sqlite:///abs/path/to.db      single-file SQLite (WAL)
+sqlite:///path.db?channel=x   one channel carved out of that file
 ./bus.db                      bare path ending in .db → SQLite
 s3://bucket/optional/prefix   S3
 gs://bucket/optional/prefix   GCS
 postgres://user:pass@host/db  Postgres (postgresql:// also accepted)
+postgres://…/db?channel=x     one channel carved out of that database
 ```
 
 ### Writing a backend plugin

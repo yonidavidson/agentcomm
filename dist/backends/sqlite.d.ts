@@ -21,12 +21,20 @@ import { type Backend, type Claimable, type Message } from '../types.js';
  */
 export declare class SqliteBackend implements Backend, Claimable {
     private readonly db;
+    /** '' for the root channel, or 'channels/<name>/' for a carved channel. */
+    private readonly keyPrefix;
     private constructor();
     /**
      * Open (or create) the database at `filePath` and prepare the schema.
      * Lazy-imports better-sqlite3; throws {@link MissingDriverError} if absent.
+     *
+     * `channel` carves an isolated bus out of the file: every key is
+     * transparently namespaced under `channels/<channel>/`, so N channels share
+     * one .db without seeing each other. '' (default) is the root channel —
+     * wire-compatible with data written before channels existed.
      */
-    static open(filePath: string): Promise<SqliteBackend>;
+    static open(filePath: string, channel?: string): Promise<SqliteBackend>;
+    private k;
     put(key: string, data: Buffer): Promise<void>;
     get(key: string): Promise<Buffer>;
     list(prefix: string): Promise<string[]>;
