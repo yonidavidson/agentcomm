@@ -102,6 +102,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 | `wait`             | Block until a message arrives (**exit 0**) or timeout (**exit 2**). |
 | `claim`            | Atomically dequeue one message from `--queue` (**SQL backends only**). |
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
+| `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
 
 ### Flags
 
@@ -151,6 +152,15 @@ Don't memorize the per-scheme rules — ask the CLI:
 ```bash
 agentcomm describe --backend s3://acme-bus --json
 # → channel rule + template + example, capabilities (claim/push), caveats
+```
+
+And to join existing work, enumerate instead of guessing prefixes:
+
+```bash
+agentcomm channels --backend s3://acme-bus
+# channels on s3://acme-bus (2)
+#   s3://acme-bus/team-a  — 3 agents
+#   s3://acme-bus/team-b  — 1 agent
 ```
 
 Channels are **namespacing, not security**: everyone on a store shares its

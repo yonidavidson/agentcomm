@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { backendInfo, createBackend, schemeForUri } from './backends/index.js';
+import { discoverChannels } from './channels.js';
 import { Bus } from './bus.js';
 import { parseArgs, resolveConfig, type ResolvedConfig } from './config.js';
 import type { Message } from './types.js';
@@ -20,6 +21,8 @@ Commands:
   claim                    Atomically dequeue one message from --queue (SQL backends only)
   describe                 Explain the --backend scheme: how to carve channels,
                            and its capabilities — static, never connects
+  channels                 List the channels that already exist on the --backend
+                           store (scans for the agentcomm key layout)
 
 Flags:
   --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
@@ -82,6 +85,8 @@ async function main(argv: string[]): Promise<number> {
         return await cmdWait(bus, cfg, flags.timeout ?? 30000);
       case 'claim':
         return await cmdClaim(bus, cfg, flags.queue);
+      case 'channels':
+        return await cmdChannels(backend, cfg);
       default:
         fail(`unknown command "${command}". Run with --help.`);
         return 1;
@@ -126,6 +131,34 @@ function cmdDescribe(cfg: ResolvedConfig): number {
       '',
     ].join('\n'),
   );
+  return 0;
+}
+
+async function cmdChannels(backend: Awaited<ReturnType<typeof createBackend>>, cfg: ResolvedConfig): Promise<number> {
+  const found = await discoverChannels(backend);
+  const scheme = schemeForUri(cfg.backendUri);
+  // SQL stores can't express a sub-prefix in their URI (yet — see ?channel=);
+  // path-carved schemes just append the prefix.
+  const sqlScheme = scheme === 'sqlite' || scheme === 'postgres' || scheme === 'postgresql';
+  const rows = found.map(({ prefix, agents }) => ({
+    prefix,
+    agents,
+    uri: prefix === '' ? cfg.backendUri : sqlScheme ? null : `${cfg.backendUri.replace(/\/+$/, '')}/${prefix}`,
+  }));
+
+  if (cfg.json) {
+    emit(rows);
+    return 0;
+  }
+  if (rows.length === 0) {
+    process.stdout.write('no channels found (no agentcomm layout under this URI)\n');
+    return 0;
+  }
+  process.stdout.write(`channels on ${cfg.backendUri} (${rows.length})\n`);
+  for (const r of rows) {
+    const label = r.uri ?? `<prefix: ${r.prefix}> — not addressable on this backend yet`;
+    process.stdout.write(`  ${label}  — ${r.agents} agent${r.agents === 1 ? '' : 's'}\n`);
+  }
   return 0;
 }
 
