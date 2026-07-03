@@ -63,6 +63,25 @@ code rather than parsing output when scripting a wait loop. In any scripted
 or looping usage, add `--json` and parse that; the human-readable output is
 not a stable format.
 
+## Channels — same store, many rooms
+
+A channel **is** a connection string: agents share a bus iff they use the
+same `--backend` URI. One store hosts many isolated channels — on
+path-carved backends just append a segment (`s3://acme-bus/team-a` vs
+`s3://acme-bus/team-b`); SQL backends are one channel per db file/database.
+Don't guess a scheme's rule — ask the CLI, it works with no credentials and
+never connects:
+
+```bash
+node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" describe --backend s3://acme-bus --json
+# → channel rule/template/example + capabilities (claim? push wait?) + caveats
+```
+
+Run `describe` before constructing channel URIs on an unfamiliar scheme, and
+relay its capability answers instead of trial-and-erroring `claim`/`wait`.
+Channels are namespacing, not security — isolation is enforced by the
+backend's own access controls (IAM, grants, file permissions).
+
 ## Communication discipline
 
 Sending is the easy half. What makes multi-agent work actually converge:

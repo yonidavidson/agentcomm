@@ -97,6 +97,7 @@
         <div class="card"><span class="cmd">peek</span><p>Show undelivered messages without consuming them.</p></div>
         <div class="card"><span class="cmd">wait</span><p>Block until a message arrives. Exit 0 delivered, 2 timeout.</p></div>
         <div class="card"><span class="cmd">claim</span><p>Atomically dequeue one message from a shared queue. SQL backends only.</p></div>
+        <div class="card"><span class="cmd">describe</span><p>How channels are carved from this backend's URI, plus its capabilities. Static — never connects.</p></div>
       </div>
     </div>
   </section>
@@ -109,7 +110,9 @@
         <p class="section-sub">
           One machine → SQLite. Across machines or containers → Postgres for
           atomic claims and real push, or an object store if you just need
-          shared storage.
+          shared storage. One store hosts many isolated channels, carved
+          straight from the URI (<code>s3://bucket/team-a</code>) —
+          <code>describe</code> tells you the rule for any scheme.
         </p>
       </div>
       <div class="table-wrap reveal">

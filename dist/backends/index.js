@@ -13,6 +13,10 @@ const registry = new Map();
  * and/or `Waitable`) calls this — typically as a side effect of being
  * imported — to add a new backend with no changes to agentcomm itself.
  *
+ * Pass a {@link BackendInfo} as the third argument to make the scheme
+ * self-describing via `agentcomm describe` — how to carve channels, and
+ * which capabilities the backend has. Optional but strongly recommended.
+ *
  * The CLI loads such packages from `AGENTCOMM_BACKEND_PLUGINS` (a
  * comma/whitespace-separated list of module specifiers) before resolving
  * `--backend`. See "Writing a backend plugin" in the README.
@@ -20,25 +24,102 @@ const registry = new Map();
  * The four built-in backends are registered through this exact mechanism
  * below — there is no separate, more-privileged path for them.
  */
-export function registerBackend(scheme, factory) {
-    registry.set(scheme.toLowerCase(), factory);
+export function registerBackend(scheme, factory, info) {
+    registry.set(scheme.toLowerCase(), { factory, info });
 }
 /** Currently registered URI schemes, sorted. */
 export function registeredSchemes() {
     return [...registry.keys()].sort();
 }
-registerBackend('file', (uri) => Promise.resolve(new LocalBackend(filePath(uri))));
-registerBackend('sqlite', (uri) => SqliteBackend.open(sqlitePath(uri)));
+/**
+ * The {@link BackendInfo} a scheme registered, or undefined for schemes that
+ * registered without one (the CLI then tells the user to consult the
+ * plugin's own docs). Throws the same unsupported-scheme error as
+ * {@link createBackend} for schemes nobody registered.
+ */
+export function backendInfo(scheme) {
+    const entry = registry.get(scheme.toLowerCase());
+    if (!entry) {
+        throw new Error(`agentcomm: unsupported backend scheme "${scheme}". ` +
+            `Known schemes: ${registeredSchemes().join(', ')}. ` +
+            `Third-party backends can add more via registerBackend() — see the README.`);
+    }
+    return entry.info;
+}
+/**
+ * Resolve the scheme a URI would be served by, applying the same bare-path
+ * rules as {@link createBackend}: `*.db` → sqlite, any other bare path →
+ * file. Purely syntactic — never touches the backend.
+ */
+export function schemeForUri(uri) {
+    const scheme = schemeOf(uri);
+    if (scheme !== null)
+        return scheme;
+    return uri.endsWith('.db') ? 'sqlite' : 'file';
+}
+const FILE_INFO = {
+    kind: 'filesystem',
+    capabilities: { claim: false, push: false },
+    channel: {
+        rule: 'Every directory is its own isolated channel — append a subdirectory to carve one.',
+        template: 'file:///shared/bus/<channel>',
+        example: 'file:///tmp/agentcomm/team-a',
+    },
+    notes: ['Zero dependencies — the default backend.', 'wait polls; single consumer per inbox.'],
+};
+const SQLITE_INFO = {
+    kind: 'sqlite',
+    capabilities: { claim: true, push: false },
+    channel: {
+        rule: 'One channel per database file — use a different .db path per channel.',
+        template: 'sqlite:///shared/bus/<channel>.db',
+        example: 'sqlite:///tmp/agentcomm/team-a.db',
+    },
+    notes: [
+        'Requires better-sqlite3 (npm install better-sqlite3).',
+        'claim is atomic across processes (WAL).',
+        'Keep the .db on a real local disk — not a network/object-mounted filesystem.',
+    ],
+};
+const objectStoreInfo = (scheme, sdk) => ({
+    kind: 'object-store',
+    capabilities: { claim: false, push: false },
+    channel: {
+        rule: 'Every key prefix under the bucket is an isolated channel — append path segments to carve one (nesting is safe).',
+        template: `${scheme}://<bucket>/<channel>`,
+        example: `${scheme}://acme-bus/team-a`,
+    },
+    notes: [
+        `Requires ${sdk} (npm install ${sdk}).`,
+        'No claim — object-store moves are not atomic; give each consumer its own inbox.',
+        'wait polls (no push).',
+    ],
+});
+const POSTGRES_INFO = {
+    kind: 'postgres',
+    capabilities: { claim: true, push: true },
+    channel: {
+        rule: 'One channel per database today — point at a different database per channel.',
+        template: 'postgres://user:pass@host:5432/<database>',
+        example: 'postgres://bus:pw@db.internal:5432/agentcomm_team_a',
+    },
+    notes: [
+        'Requires pg (npm install pg).',
+        'claim is atomic (FOR UPDATE SKIP LOCKED); wait is real push (LISTEN/NOTIFY).',
+    ],
+};
+registerBackend('file', (uri) => Promise.resolve(new LocalBackend(filePath(uri))), FILE_INFO);
+registerBackend('sqlite', (uri) => SqliteBackend.open(sqlitePath(uri)), SQLITE_INFO);
 registerBackend('s3', (uri) => {
     const { bucket, prefix } = bucketAndPrefix(uri, 's3');
     return S3Backend.open(bucket, prefix);
-});
+}, objectStoreInfo('s3', '@aws-sdk/client-s3'));
 registerBackend('gs', (uri) => {
     const { bucket, prefix } = bucketAndPrefix(uri, 'gs');
     return GCSBackend.open(bucket, prefix);
-});
-registerBackend('postgres', (uri) => PostgresBackend.open(uri));
-registerBackend('postgresql', (uri) => PostgresBackend.open(uri));
+}, objectStoreInfo('gs', '@google-cloud/storage'));
+registerBackend('postgres', (uri) => PostgresBackend.open(uri), POSTGRES_INFO);
+registerBackend('postgresql', (uri) => PostgresBackend.open(uri), POSTGRES_INFO);
 /**
  * Resolve a backend URI into a concrete {@link Backend}.
  *
@@ -63,13 +144,13 @@ export async function createBackend(uri) {
             return SqliteBackend.open(path.resolve(uri));
         return new LocalBackend(path.resolve(uri));
     }
-    const factory = registry.get(scheme);
-    if (!factory) {
+    const entry = registry.get(scheme);
+    if (!entry) {
         throw new Error(`agentcomm: unsupported backend URI "${uri}". ` +
             `Known schemes: ${registeredSchemes().join(', ')}. ` +
             `Third-party backends can add more via registerBackend() — see the README.`);
     }
-    return factory(uri);
+    return entry.factory(uri);
 }
 function schemeOf(uri) {
     const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//.exec(uri);
