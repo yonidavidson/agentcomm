@@ -233,21 +233,43 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
     it(
       'wait is push-driven across real OS processes (CLI subprocess send while another CLI subprocess waits)',
       async () => {
-        // Generous process-level timeouts: on a cold CI runner, tsx boot for
-        // each child takes seconds. The latency assertion below is measured
-        // from the moment the send process EXITS (send committed), so child
-        // startup time never counts against it — this test proves delivery
-        // across real processes; the tight push-latency bound is the
-        // in-process test above.
+        // On a loaded CI runner, booting a tsx child can take tens of
+        // seconds, so never race the waiter's startup: spawn it, wait until
+        // its LISTEN is actually visible in pg_stat_activity, and only then
+        // send. The latency assertion is measured from the moment the send
+        // process EXITS (send committed) — child startup never counts.
         const waitChild = spawn(
           process.execPath,
-          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '30000'],
+          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '60000'],
           { stdio: ['ignore', 'pipe', 'pipe'] },
         );
         let stdout = '';
+        let stderr = '';
         waitChild.stdout.on('data', (d) => (stdout += d.toString()));
+        waitChild.stderr.on('data', (d) => (stderr += d.toString()));
 
-        await new Promise((r) => setTimeout(r, 400));
+        // The waiter LISTENs on agentcomm_<recipient> (see channelFor);
+        // its session shows up in pg_stat_activity with that query text.
+        const admin = new pg.Client({ connectionString: PG_URL });
+        await admin.connect();
+        try {
+          const deadline = Date.now() + 60000;
+          for (;;) {
+            const res = await admin.query(
+              `SELECT 1 FROM pg_stat_activity
+               WHERE pid <> pg_backend_pid() AND query ILIKE '%LISTEN%agentcomm_cross-process-bob%'`,
+            );
+            if (res.rowCount) break;
+            if (Date.now() > deadline) {
+              waitChild.kill();
+              throw new Error(`waiter never issued LISTEN within 60s; waiter stderr: ${stderr}`);
+            }
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        } finally {
+          await admin.end();
+        }
+
         await new Promise<void>((resolve, reject) => {
           const sendChild = spawn(
             process.execPath,
@@ -266,11 +288,11 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
 
         expect(exitCode).toBe(0);
         expect(stdout).toContain('cross process push');
-        // Far under the waiter's own 30s timeout: proves the waiter was
+        // Far under the waiter's own 60s timeout: proves the waiter was
         // released by the send, not by running out its clock.
         expect(elapsed).toBeLessThan(3000);
       },
-      60000,
+      150000,
     );
   });
 
