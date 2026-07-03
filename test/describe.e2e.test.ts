@@ -51,11 +51,11 @@ async function describeJson(backend: string, env?: NodeJS.ProcessEnv): Promise<D
 }
 
 describe('CLI describe (static backend self-description)', () => {
-  it('sqlite: channel = the .db file, claim yes, push no', async () => {
+  it('sqlite: channels carved by ?channel=, claim yes, push no', async () => {
     const d = await describeJson('sqlite:///tmp/whatever/bus.db');
     expect(d.scheme).toBe('sqlite');
     expect(d.info!.capabilities).toEqual({ claim: true, push: false });
-    expect(d.info!.channel.template).toContain('<channel>.db');
+    expect(d.info!.channel.template).toBe('sqlite:///shared/bus.db?channel=<channel>');
   });
 
   it('s3: works with no credentials and no SDK loaded; channel = key prefix; no claim', async () => {
