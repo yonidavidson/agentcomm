@@ -28,9 +28,9 @@ Every agent that should be able to talk to each other must point at the
 | Situation | Backend | Setup |
 | --- | --- | --- |
 | Same machine, just trying this out | `file:///tmp/agentcomm` (or any shared dir) | works with **zero dependencies** — default if nothing else is specified |
-| Same machine, multiple processes writing concurrently | `sqlite:///tmp/agentcomm/bus.db` | requires `npm install better-sqlite3` in the working project; falls back with a clear error if missing |
+| Same machine, multiple processes writing concurrently | `sqlite:///tmp/agentcomm/bus.db` (add `?channel=<name>` to carve isolated channels from one file) | requires `npm install better-sqlite3` in the working project; falls back with a clear error if missing |
 | Different machines/containers, need a shared store but not push/claim | `s3://bucket/prefix` or `gs://bucket/prefix` | requires the matching cloud SDK installed |
-| Different machines/containers, want atomic claims and instant push | `postgres://user:pass@host:5432/db` | requires `npm install pg`; `wait` resolves within ~ms of a `send` instead of polling |
+| Different machines/containers, want atomic claims and instant push | `postgres://user:pass@host:5432/db` (add `?channel=<name>` to carve isolated channels from one database) | requires `npm install pg`; `wait` resolves within ~ms of a `send` instead of polling |
 
 Pass it explicitly on every call with `--backend <uri>`, or export
 `AGENTCOMM_BACKEND` once for the session so you don't have to repeat it.
@@ -67,8 +67,10 @@ not a stable format.
 
 A channel **is** a connection string: agents share a bus iff they use the
 same `--backend` URI. One store hosts many isolated channels — on
-path-carved backends just append a segment (`s3://acme-bus/team-a` vs
-`s3://acme-bus/team-b`); SQL backends are one channel per db file/database.
+path-carved backends append a segment (`s3://acme-bus/team-a` vs
+`s3://acme-bus/team-b`); on SQL backends append `?channel=<name>`
+(`postgres://…/db?channel=team-a`), which keeps claim/push guarantees
+isolated per channel.
 Don't guess a scheme's rule — ask the CLI, it works with no credentials and
 never connects:
 

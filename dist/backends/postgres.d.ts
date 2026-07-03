@@ -32,8 +32,20 @@ import { type Backend, type Claimable, type Message, type Waitable } from '../ty
 export declare class PostgresBackend implements Backend, Claimable, Waitable {
     private readonly client;
     private readonly pg;
+    /** '' for the root channel, or 'channels/<name>/' for a carved channel. */
+    private readonly keyPrefix;
+    /** Raw channel name ('' = root) — namespaces NOTIFY identifiers. */
+    private readonly channel;
     private constructor();
-    static open(connectionUri: string): Promise<PostgresBackend>;
+    /**
+     * `channel` carves an isolated bus out of one database: every key is
+     * namespaced under `channels/<channel>/` and NOTIFY identifiers are
+     * channel-scoped, so N channels share a database without cross-talk.
+     * '' (default) is the root channel — wire-compatible with data written
+     * before channels existed.
+     */
+    static open(connectionUri: string, channel?: string): Promise<PostgresBackend>;
+    private k;
     put(key: string, data: Buffer): Promise<void>;
     get(key: string): Promise<Buffer>;
     list(prefix: string): Promise<string[]>;

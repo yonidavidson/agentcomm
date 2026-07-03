@@ -109,9 +109,9 @@ const SQLITE_INFO: BackendInfo = {
   kind: 'sqlite',
   capabilities: { claim: true, push: false },
   channel: {
-    rule: 'One channel per database file — use a different .db path per channel.',
-    template: 'sqlite:///shared/bus/<channel>.db',
-    example: 'sqlite:///tmp/agentcomm/team-a.db',
+    rule: 'Append ?channel=<name> to carve isolated channels from one database file (omitting it is the root channel). A different .db path per channel works too.',
+    template: 'sqlite:///shared/bus.db?channel=<channel>',
+    example: 'sqlite:///tmp/agentcomm/bus.db?channel=team-a',
   },
   notes: [
     'Requires better-sqlite3 (npm install better-sqlite3).',
@@ -139,18 +139,37 @@ const POSTGRES_INFO: BackendInfo = {
   kind: 'postgres',
   capabilities: { claim: true, push: true },
   channel: {
-    rule: 'One channel per database today — point at a different database per channel.',
-    template: 'postgres://user:pass@host:5432/<database>',
-    example: 'postgres://bus:pw@db.internal:5432/agentcomm_team_a',
+    rule: 'Append ?channel=<name> to carve isolated channels from one database (omitting it is the root channel). Push and claim guarantees hold per channel.',
+    template: 'postgres://user:pass@host:5432/db?channel=<channel>',
+    example: 'postgres://bus:pw@db.internal:5432/agentcomm?channel=team-a',
   },
   notes: [
     'Requires pg (npm install pg).',
     'claim is atomic (FOR UPDATE SKIP LOCKED); wait is real push (LISTEN/NOTIFY).',
+    'Other query params (e.g. sslmode) pass through to pg untouched.',
   ],
 };
 
-registerBackend('file', (uri) => Promise.resolve(new LocalBackend(filePath(uri))), FILE_INFO);
-registerBackend('sqlite', (uri) => SqliteBackend.open(sqlitePath(uri)), SQLITE_INFO);
+registerBackend(
+  'file',
+  (uri) => {
+    if (/[?&]channel=/.test(uri)) {
+      throw new Error(
+        'agentcomm: file:// carves channels by path — append /<channel> to the directory instead of ?channel=.',
+      );
+    }
+    return Promise.resolve(new LocalBackend(filePath(uri)));
+  },
+  FILE_INFO,
+);
+registerBackend(
+  'sqlite',
+  (uri) => {
+    const { rest, channel } = splitChannelParam(uri.slice('sqlite://'.length));
+    return SqliteBackend.open(path.resolve(rest), channel);
+  },
+  SQLITE_INFO,
+);
 registerBackend(
   's3',
   (uri) => {
@@ -167,8 +186,17 @@ registerBackend(
   },
   objectStoreInfo('gs', '@google-cloud/storage'),
 );
-registerBackend('postgres', (uri) => PostgresBackend.open(uri), POSTGRES_INFO);
-registerBackend('postgresql', (uri) => PostgresBackend.open(uri), POSTGRES_INFO);
+const postgresFactory: BackendFactory = (uri) => {
+  // Lift ONLY the channel param out of the URI; everything else (sslmode,
+  // application_name, ...) must reach pg untouched.
+  const url = new URL(uri);
+  const channel = url.searchParams.get('channel') ?? '';
+  if (channel) validateChannelName(channel);
+  url.searchParams.delete('channel');
+  return PostgresBackend.open(url.toString(), channel);
+};
+registerBackend('postgres', postgresFactory, POSTGRES_INFO);
+registerBackend('postgresql', postgresFactory, POSTGRES_INFO);
 
 /**
  * Resolve a backend URI into a concrete {@link Backend}.
@@ -217,10 +245,31 @@ function filePath(uri: string): string {
   return path.resolve(rest);
 }
 
-function sqlitePath(uri: string): string {
-  // sqlite:///abs/x.db → /abs/x.db ; sqlite://rel/x.db → rel/x.db
-  const rest = uri.slice('sqlite://'.length);
-  return path.resolve(rest);
+/**
+ * Split a `?channel=<name>` suffix (used by the SQL backends) off a URI
+ * remainder, validating the name. Rejects any other query params — SQL paths
+ * have no other meaningful ones, and silently eating typos would be worse.
+ */
+function splitChannelParam(rest: string): { rest: string; channel: string } {
+  const q = rest.indexOf('?');
+  if (q === -1) return { rest, channel: '' };
+  const params = new URLSearchParams(rest.slice(q + 1));
+  const channel = params.get('channel') ?? '';
+  params.delete('channel');
+  const leftover = [...params.keys()];
+  if (leftover.length > 0) {
+    throw new Error(`agentcomm: unsupported query parameter(s) ${leftover.join(', ')} — only ?channel=<name> is recognized here.`);
+  }
+  if (channel) validateChannelName(channel);
+  return { rest: rest.slice(0, q), channel };
+}
+
+function validateChannelName(name: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error(
+      `agentcomm: invalid channel name "${name}". Use letters, digits, '.', '_' or '-'.`,
+    );
+  }
 }
 
 function bucketAndPrefix(uri: string, scheme: string): { bucket: string; prefix: string } {

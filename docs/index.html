@@ -123,10 +123,10 @@
           </thead>
           <tbody>
             <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
-            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
+            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db?channel=team-a</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
             <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
             <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
-            <tr><td class="mono">postgres://</td><td class="mono">postgres://user:pass@host/db</td><td>pg</td><td class="yes">✓ txn</td><td class="yes">✓ SKIP LOCKED</td><td class="yes">✓ LISTEN/NOTIFY</td><td>distributed (recommended)</td></tr>
+            <tr><td class="mono">postgres://</td><td class="mono">postgres://user:pass@host/db?channel=team-a</td><td>pg</td><td class="yes">✓ txn</td><td class="yes">✓ SKIP LOCKED</td><td class="yes">✓ LISTEN/NOTIFY</td><td>distributed (recommended)</td></tr>
           </tbody>
         </table>
       </div>

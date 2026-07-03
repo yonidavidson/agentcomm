@@ -122,13 +122,23 @@ function cmdDescribe(cfg) {
 async function cmdChannels(backend, cfg) {
     const found = await discoverChannels(backend);
     const scheme = schemeForUri(cfg.backendUri);
-    // SQL stores can't express a sub-prefix in their URI (yet — see ?channel=);
-    // path-carved schemes just append the prefix.
+    // Path-carved schemes append the prefix; SQL schemes address carved
+    // channels via ?channel=<name> (their keys live under channels/<name>/).
     const sqlScheme = scheme === 'sqlite' || scheme === 'postgres' || scheme === 'postgresql';
+    const sqlChannelUri = (prefix) => {
+        const m = /^channels\/([^/]+)$/.exec(prefix);
+        if (!m)
+            return null; // manually nested beyond the ?channel= convention
+        return `${cfg.backendUri}${cfg.backendUri.includes('?') ? '&' : '?'}channel=${m[1]}`;
+    };
     const rows = found.map(({ prefix, agents }) => ({
         prefix,
         agents,
-        uri: prefix === '' ? cfg.backendUri : sqlScheme ? null : `${cfg.backendUri.replace(/\/+$/, '')}/${prefix}`,
+        uri: prefix === ''
+            ? cfg.backendUri
+            : sqlScheme
+                ? sqlChannelUri(prefix)
+                : `${cfg.backendUri.replace(/\/+$/, '')}/${prefix}`,
     }));
     if (cfg.json) {
         emit(rows);

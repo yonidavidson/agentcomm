@@ -286,6 +286,89 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
     );
   });
 
+  describe('Channels (?channel= — N isolated buses in one database)', () => {
+    it('keys, agents and messages are fully isolated between channels and the root', async () => {
+      const root = new Bus(await freshBackend());
+      const a = new Bus(await PostgresBackend.open(PG_URL, 'team-a'));
+      const b = new Bus(await PostgresBackend.open(PG_URL, 'team-b'));
+
+      await root.register('carol');
+      await a.register('alice');
+      await b.register('bob');
+      expect((await root.agents()).map((x) => x.name)).toEqual(['carol']);
+      expect((await a.agents()).map((x) => x.name)).toEqual(['alice']);
+      expect((await b.agents()).map((x) => x.name)).toEqual(['bob']);
+
+      await a.send({ from: 'alice', to: 'shared', body: 'for team-a' });
+      expect(await b.inbox('shared')).toEqual([]);
+      expect((await a.inbox('shared')).map((m) => m.body)).toEqual(['for team-a']);
+    });
+
+    it('the ?channel= URI form works end-to-end through createBackend', async () => {
+      const { createBackend } = await import('../src/backends/index.js');
+      const viaUri = new Bus(await createBackend(`${PG_URL}?channel=uri-chan`));
+      await viaUri.send({ from: 'alice', to: 'bob', body: 'via uri' });
+      const direct = new Bus(await PostgresBackend.open(PG_URL, 'uri-chan'));
+      expect((await direct.inbox('bob')).map((m) => m.body)).toEqual(['via uri']);
+    });
+
+    it('same queue name claims independently per channel', async () => {
+      const a = new Bus(await PostgresBackend.open(PG_URL, 'team-a'));
+      const b = new Bus(await PostgresBackend.open(PG_URL, 'team-b'));
+      await a.send({ from: 'p', to: 'work-queue', body: 'task-a' });
+      await b.send({ from: 'p', to: 'work-queue', body: 'task-b' });
+
+      expect((await a.claim('work-queue', 'w'))?.body).toBe('task-a');
+      expect(await a.claim('work-queue', 'w')).toBeNull();
+      expect((await b.claim('work-queue', 'w'))?.body).toBe('task-b');
+    });
+
+    it('NOTIFY is channel-scoped: a send on channel B must not deliver to a waiter on channel A (cross-wake regression)', async () => {
+      const a = new Bus(await PostgresBackend.open(PG_URL, 'chan-a'));
+      const b = new Bus(await PostgresBackend.open(PG_URL, 'chan-b'));
+
+      const t0 = Date.now();
+      const waitP = a.wait('shared-name', 1500);
+      await new Promise((r) => setTimeout(r, 200));
+      await b.send({ from: 'alice', to: 'shared-name', body: 'wrong room' });
+
+      const msgs = await waitP;
+      expect(msgs).toEqual([]); // ran to its deadline — nothing delivered
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(1400);
+
+      // ...and the same-channel push still works, promptly.
+      const waiter = new Bus(await PostgresBackend.open(PG_URL, 'chan-a'));
+      const t1 = Date.now();
+      const waitP2 = waiter.wait('shared-name', 5000);
+      await new Promise((r) => setTimeout(r, 200));
+      await a.send({ from: 'alice', to: 'shared-name', body: 'right room' });
+      const got = await waitP2;
+      // chan-b's "wrong room" message must not appear here — only chan-a's own.
+      expect(got.map((m) => m.body)).toEqual(['right room']);
+      expect(Date.now() - t1).toBeLessThan(1500);
+    });
+
+    it('channel names past the 63-byte NOTIFY cap stay distinct (hash fallback)', async () => {
+      const longBase = 'a-very-long-channel-name-that-blows-past-the-postgres-limit-';
+      const chanA = new Bus(await PostgresBackend.open(PG_URL, `${longBase}one`));
+      const chanB = new Bus(await PostgresBackend.open(PG_URL, `${longBase}two`));
+
+      const t0 = Date.now();
+      const waitP = chanA.wait('bob', 1500);
+      await new Promise((r) => setTimeout(r, 200));
+      await chanB.send({ from: 'alice', to: 'bob', body: 'for two' });
+      expect(await waitP).toEqual([]); // truncation must not alias them
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(1400);
+
+      const waitP2 = chanA.wait('bob', 5000);
+      await new Promise((r) => setTimeout(r, 200));
+      const t1 = Date.now();
+      await chanA.send({ from: 'alice', to: 'bob', body: 'for one' });
+      expect((await waitP2).map((m) => m.body)).toEqual(['for one']);
+      expect(Date.now() - t1).toBeLessThan(1500);
+    });
+  });
+
   describe('Connection errors', () => {
     it('opening with an unreachable Postgres surfaces a clear, rejected error (not a hang)', async () => {
       await expect(PostgresBackend.open('postgresql://postgres:test@localhost:1/agentcomm')).rejects.toThrow();
