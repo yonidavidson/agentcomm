@@ -89,6 +89,18 @@ if omitted:
 echo "from a pipe" | agentcomm send bob --as alice
 ```
 
+## What people build with it
+
+Mixed **cloud + local worker fleets** splitting one queue, a **CD pipeline you
+can ask "what's the status of the build?" mid-deploy**, **IoT edge agents**
+(a camera answering "what do you see?", weather sensors reporting humidity to
+one broadcast) needing nothing but outbound HTTPS to a bucket, and **two AI
+tools pairing on one machine** (Claude Code implements, Cursor reviews).
+Illustrated with runnable commands on the
+[use-cases page](https://yonidavidson.github.io/agentcomm/#use-cases) — plus
+why the security story is *subtraction*: your storage's auth is the bus's
+auth.
+
 ## Commands
 
 | Command            | What it does                                                        |
