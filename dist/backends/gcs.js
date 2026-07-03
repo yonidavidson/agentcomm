@@ -15,7 +15,12 @@ export class GCSBackend {
     }
     static async open(bucketName, basePrefix = '') {
         const sdk = await loadDriver('@google-cloud/storage', '@google-cloud/storage', 'the GCS backend');
-        const storage = new sdk.Storage();
+        // The standard STORAGE_EMULATOR_HOST env var is half-broken in the Node
+        // SDK (JSON ops use the host verbatim while uploads append a different
+        // path); the apiEndpoint option resolves both consistently — hence this
+        // escape hatch for pointing at emulators like fake-gcs-server.
+        const endpoint = process.env.AGENTCOMM_GCS_API_ENDPOINT;
+        const storage = new sdk.Storage(endpoint ? { apiEndpoint: endpoint } : undefined);
         const prefix = basePrefix && !basePrefix.endsWith('/') ? `${basePrefix}/` : basePrefix;
         return new GCSBackend(storage.bucket(bucketName), prefix);
     }
