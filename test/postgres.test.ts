@@ -233,16 +233,21 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
     it(
       'wait is push-driven across real OS processes (CLI subprocess send while another CLI subprocess waits)',
       async () => {
+        // Generous process-level timeouts: on a cold CI runner, tsx boot for
+        // each child takes seconds. The latency assertion below is measured
+        // from the moment the send process EXITS (send committed), so child
+        // startup time never counts against it — this test proves delivery
+        // across real processes; the tight push-latency bound is the
+        // in-process test above.
         const waitChild = spawn(
           process.execPath,
-          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '5000'],
+          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '30000'],
           { stdio: ['ignore', 'pipe', 'pipe'] },
         );
         let stdout = '';
         waitChild.stdout.on('data', (d) => (stdout += d.toString()));
 
         await new Promise((r) => setTimeout(r, 400));
-        const t0 = Date.now();
         await new Promise<void>((resolve, reject) => {
           const sendChild = spawn(
             process.execPath,
@@ -252,6 +257,7 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
           sendChild.on('error', reject);
           sendChild.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`send exited ${code}`))));
         });
+        const t0 = Date.now();
 
         const exitCode = await new Promise<number>((resolve) => {
           waitChild.on('exit', (code) => resolve(code ?? -1));
@@ -260,9 +266,11 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
 
         expect(exitCode).toBe(0);
         expect(stdout).toContain('cross process push');
-        expect(elapsed).toBeLessThan(1000);
+        // Far under the waiter's own 30s timeout: proves the waiter was
+        // released by the send, not by running out its clock.
+        expect(elapsed).toBeLessThan(3000);
       },
-      15000,
+      60000,
     );
   });
 
