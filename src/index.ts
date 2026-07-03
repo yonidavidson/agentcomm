@@ -13,6 +13,8 @@ export {
   GCSBackend,
 } from './backends/index.js';
 export type { BackendFactory, BackendInfo } from './backends/index.js';
+export { discoverChannels } from './channels.js';
+export type { ChannelSummary } from './channels.js';
 export type { Backend, Message, Claimable, Waitable } from './types.js';
 export { isClaimable, isWaitable, MissingDriverError } from './types.js';
 export { resolveConfig, parseArgs } from './config.js';

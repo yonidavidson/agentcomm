@@ -79,6 +79,9 @@ node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" describe --backend s3://acme-bus --json
 
 Run `describe` before constructing channel URIs on an unfamiliar scheme, and
 relay its capability answers instead of trial-and-erroring `claim`/`wait`.
+To join existing work, enumerate instead of guessing prefixes:
+`channels --backend <store> --json` lists the channels already live on a
+store as ready-to-use URIs with agent counts (this one does connect).
 Channels are namespacing, not security — isolation is enforced by the
 backend's own access controls (IAM, grants, file permissions).
 

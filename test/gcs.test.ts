@@ -117,4 +117,22 @@ maybeDescribe('GCSBackend (requires the docker-compose.test.yml stack)', () => {
       await expect(bus.claim('work-queue', 'worker-1')).rejects.toThrow(/does not support claim/);
     });
   });
+
+  describe('channel discovery on GCS', () => {
+    it('two channels carved under one prefix are both found with agent counts', async () => {
+      const { discoverChannels } = await import('../src/channels.js');
+      const base = `disc-${randomUUID()}`;
+      const teamA = new Bus(await GCSBackend.open(BUCKET, `${base}/team-a`));
+      const teamB = new Bus(await GCSBackend.open(BUCKET, `${base}/team-b`));
+      await teamA.register('alice');
+      await teamA.register('bob');
+      await teamB.send({ from: 'producer', to: 'builder', body: 'task' });
+
+      const found = await discoverChannels(await GCSBackend.open(BUCKET, base));
+      expect(found).toEqual([
+        { prefix: 'team-a', agents: 2 },
+        { prefix: 'team-b', agents: 0 },
+      ]);
+    });
+  });
 });
