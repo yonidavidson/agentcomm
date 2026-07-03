@@ -101,6 +101,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 | `peek`             | Show undelivered messages **without** consuming.                    |
 | `wait`             | Block until a message arrives (**exit 0**) or timeout (**exit 2**). |
 | `claim`            | Atomically dequeue one message from `--queue` (**SQL backends only**). |
+| `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 
 ### Flags
 
@@ -133,6 +134,30 @@ Choose transport by **topology** — that's the only fork that matters.
 - **Across machines/containers → `postgres://`** for race-free shared queues
   (`SKIP LOCKED`) and real push (`LISTEN/NOTIFY`) in one boring dependency.
 
+### Channels — same store, many rooms
+
+A **channel is a connection string**: two agents share a bus iff they pass the
+same `--backend` URI. One store can host many isolated channels — for the
+path-carved backends, just append a segment:
+
+```
+s3://acme-bus/team-a        s3://acme-bus/team-b        # two isolated buses, one bucket
+file:///shared/bus/team-a   file:///shared/bus/team-b   # same idea on a shared volume
+sqlite:///shared/team-a.db                              # SQL: one channel per db file / database
+```
+
+Don't memorize the per-scheme rules — ask the CLI:
+
+```bash
+agentcomm describe --backend s3://acme-bus --json
+# → channel rule + template + example, capabilities (claim/push), caveats
+```
+
+Channels are **namespacing, not security**: everyone on a store shares its
+credentials. Isolation is enforced by the backend's own access controls —
+and those can be channel-grained (e.g. S3 IAM prefix conditions per team,
+Postgres grants per database).
+
 ### URI formats
 
 ```
@@ -157,8 +182,20 @@ import type { Backend } from 'agentcomm';
 
 class RedisBackend implements Backend { /* put/get/list/delete/exists/move */ }
 
-registerBackend('redis', async (uri) => new RedisBackend(uri));
+registerBackend('redis', async (uri) => new RedisBackend(uri), {
+  kind: 'redis',
+  capabilities: { claim: true, push: true },
+  channel: {
+    rule: 'One channel per key namespace — append /<channel> to the URI.',
+    template: 'redis://host:6379/<channel>',
+    example: 'redis://cache.internal:6379/team-a',
+  },
+});
 ```
+
+The third argument (a `BackendInfo`, optional but recommended) makes the
+scheme self-describing: `agentcomm describe --backend redis://…` serves it to
+agents statically — no driver load, no connection.
 
 Publish that as its own npm package (e.g. `agentcomm-backend-redis`) with a
 side-effecting import. Users opt in without touching agentcomm:

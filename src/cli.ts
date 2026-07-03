@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createBackend } from './backends/index.js';
+import { backendInfo, createBackend, schemeForUri } from './backends/index.js';
 import { Bus } from './bus.js';
 import { parseArgs, resolveConfig, type ResolvedConfig } from './config.js';
 import type { Message } from './types.js';
@@ -18,6 +18,8 @@ Commands:
   peek                     Show undelivered messages without consuming
   wait                     Block until a message arrives (exit 0) or timeout (exit 2)
   claim                    Atomically dequeue one message from --queue (SQL backends only)
+  describe                 Explain the --backend scheme: how to carve channels,
+                           and its capabilities — static, never connects
 
 Flags:
   --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
@@ -54,6 +56,12 @@ async function main(argv: string[]): Promise<number> {
   }
 
   await loadBackendPlugins();
+
+  // describe is static by design — it must answer "how would I connect?"
+  // before the user *can* connect, so it never loads a driver or opens the
+  // backend. Handle it before createBackend().
+  if (command === 'describe') return cmdDescribe(cfg);
+
   const backend = await createBackend(cfg.backendUri);
   const bus = new Bus(backend);
   try {
@@ -84,6 +92,42 @@ async function main(argv: string[]): Promise<number> {
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
+
+const CHANNEL_SECURITY_NOTE =
+  'Channels are namespacing, not security: everyone on this store shares its credentials. ' +
+  "Isolation is enforced by the backend's own access controls (IAM policies, database grants, file permissions).";
+
+function cmdDescribe(cfg: ResolvedConfig): number {
+  const scheme = schemeForUri(cfg.backendUri);
+  const info = backendInfo(scheme); // throws the known-schemes error for unregistered schemes
+
+  if (cfg.json) {
+    emit({ uri: cfg.backendUri, scheme, info: info ?? null, security: CHANNEL_SECURITY_NOTE });
+    return 0;
+  }
+  if (!info) {
+    process.stdout.write(
+      `scheme "${scheme}" is registered but published no description — consult the plugin's own docs.\n`,
+    );
+    return 0;
+  }
+  const cap = (on: boolean, yes: string, no: string) => (on ? `yes — ${yes}` : `no — ${no}`);
+  process.stdout.write(
+    [
+      `backend    ${cfg.backendUri}`,
+      `scheme     ${scheme} (${info.kind})`,
+      `claim      ${cap(info.capabilities.claim, 'atomic shared-queue dequeue', 'give each consumer its own inbox')}`,
+      `push wait  ${cap(info.capabilities.push, 'wait resolves on arrival', 'wait polls')}`,
+      `channel    ${info.channel.rule}`,
+      `           template: ${info.channel.template}`,
+      `           example:  ${info.channel.example}`,
+      ...(info.notes ?? []).map((n, i) => `${i === 0 ? 'notes      ' : '           '}- ${n}`),
+      `security   ${CHANNEL_SECURITY_NOTE}`,
+      '',
+    ].join('\n'),
+  );
+  return 0;
+}
 
 async function cmdRegister(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = requireAgent(cfg);
