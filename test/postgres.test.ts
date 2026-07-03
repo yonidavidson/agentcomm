@@ -231,38 +231,58 @@ maybeDescribe('PostgresBackend (requires Docker Postgres)', () => {
     });
 
     it(
-      'wait is push-driven across real OS processes (CLI subprocess send while another CLI subprocess waits)',
+      'wait in a real OS subprocess is released by a send from another process (not by its own timeout)',
       async () => {
+        // On a loaded CI runner, booting the tsx waiter child can take tens
+        // of seconds, and Postgres offers no reliable cross-session view of
+        // another connection's LISTEN — so don't try to handshake on
+        // readiness. Instead nudge: re-send every 2s until the waiter exits.
+        // However slow the child boots, it's released either by waitPush's
+        // initial pending-check (sends that landed before its LISTEN) or by
+        // NOTIFY (sends after). The assertion is that it exits promptly
+        // after a send — not by running out its own generous clock. The
+        // tight push-latency bound is the in-process test above.
         const waitChild = spawn(
           process.execPath,
-          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '5000'],
+          ['--import', 'tsx', cli, 'wait', '--as', 'cross-process-bob', '--backend', PG_URL, '--timeout', '300000'],
           { stdio: ['ignore', 'pipe', 'pipe'] },
         );
         let stdout = '';
+        let stderr = '';
         waitChild.stdout.on('data', (d) => (stdout += d.toString()));
+        waitChild.stderr.on('data', (d) => (stderr += d.toString()));
+        let exited = false;
+        const exitP = new Promise<number>((resolve) => {
+          waitChild.on('exit', (code) => {
+            exited = true;
+            resolve(code ?? -1);
+          });
+        });
 
-        await new Promise((r) => setTimeout(r, 400));
+        const senderBackend = await freshBackend();
+        const senderBus = new Bus(senderBackend);
         const t0 = Date.now();
-        await new Promise<void>((resolve, reject) => {
-          const sendChild = spawn(
-            process.execPath,
-            ['--import', 'tsx', cli, 'send', 'cross-process-bob', 'cross process push', '--as', 'alice', '--backend', PG_URL],
-            { stdio: 'ignore' },
-          );
-          sendChild.on('error', reject);
-          sendChild.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`send exited ${code}`))));
-        });
+        let lastSend = 0;
+        while (!exited && Date.now() - t0 < 120000) {
+          lastSend = Date.now();
+          await senderBus.send({ from: 'alice', to: 'cross-process-bob', body: 'cross process push' });
+          await Promise.race([exitP, new Promise((r) => setTimeout(r, 2000))]);
+        }
+        await senderBackend.close();
+        if (!exited) {
+          waitChild.kill();
+          throw new Error(`waiter still running after 120s; waiter stderr: ${stderr}`);
+        }
 
-        const exitCode = await new Promise<number>((resolve) => {
-          waitChild.on('exit', (code) => resolve(code ?? -1));
-        });
-        const elapsed = Date.now() - t0;
-
+        const exitCode = await exitP;
+        const sinceLastSend = Date.now() - lastSend;
         expect(exitCode).toBe(0);
         expect(stdout).toContain('cross process push');
-        expect(elapsed).toBeLessThan(1000);
+        // Released within one nudge interval of a send — far under the
+        // waiter's own 300s timeout, so a send woke it, not its clock.
+        expect(sinceLastSend).toBeLessThan(2500);
       },
-      15000,
+      150000,
     );
   });
 

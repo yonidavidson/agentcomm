@@ -1,0 +1,38 @@
+# Live services for the self-skipping e2e suites: test/s3.test.ts (Garage,
+# an S3-compatible object store written in Rust), test/gcs.test.ts
+# (fake-gcs-server) and test/postgres.test.ts.
+#
+#   npm run test:e2e:up     # start + provision (test/e2e/setup.sh)
+#   npm test
+#   npm run test:e2e:down
+services:
+  garage:
+    image: dxflrs/garage:v1.0.1
+    volumes:
+      - ./test/e2e/garage.toml:/etc/garage.toml:ro
+    ports:
+      - "3900:3900"
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server:1.52.2
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "127.0.0.1:4443"]
+    ports:
+      - "4443:4443"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: agentcomm
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentcomm"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

@@ -24,6 +24,8 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e:up": "docker compose -f docker-compose.test.yml up -d --wait && bash test/e2e/setup.sh",
+    "test:e2e:down": "docker compose -f docker-compose.test.yml down -v",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },

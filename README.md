@@ -236,19 +236,27 @@ npm test                    # vitest: backend contract, bus, CLI e2e, WAL/Postgr
 npm run build               # emit dist/
 ```
 
-The Postgres tests (`test/postgres.test.ts`) need a real database — they
-skip themselves with a console warning if none is reachable. Spin one up
-with Docker:
+The S3, GCS and Postgres tests (`test/s3.test.ts`, `test/gcs.test.ts`,
+`test/postgres.test.ts`) need live services — each suite skips itself with a
+console warning when its service is unreachable. One command brings everything
+up ([Garage](https://garagehq.deuxfleurs.fr/), an S3-compatible object store
+written in Rust; fake-gcs-server; and Postgres — buckets and keys provisioned
+by `test/e2e/setup.sh` with fixed throwaway credentials):
 
 ```bash
-docker run -d --name agentcomm-pg-test -e POSTGRES_PASSWORD=test \
-  -e POSTGRES_DB=agentcomm -p 55432:5432 postgres:16-alpine
-# defaults to postgresql://postgres:test@localhost:55432/agentcomm;
-# override with AGENTCOMM_TEST_POSTGRES_URL
+npm run test:e2e:up    # docker compose up + provision buckets/keys
+npm test               # now runs ALL suites, nothing skipped
+npm run test:e2e:down  # tear down (removes volumes)
+# point at other services with AGENTCOMM_TEST_S3_ENDPOINT,
+# AGENTCOMM_TEST_GCS_ENDPOINT or AGENTCOMM_TEST_POSTGRES_URL
 ```
 
+CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
+all five backends are exercised end-to-end.
+
 The test suite runs the **same backend-contract and bus tests** against
-`LocalBackend`, `SqliteBackend`, and `PostgresBackend`, plus concurrency tests
+`LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, and
+`PostgresBackend`, plus concurrency tests
 proving: WAL lets independent SQLite writers proceed; N concurrent processes
 calling `claim` on one shared queue (SQLite or Postgres) get disjoint
 messages, none dropped, none double-delivered; and `wait` on Postgres

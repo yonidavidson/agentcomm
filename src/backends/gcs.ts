@@ -20,7 +20,12 @@ export class GCSBackend implements Backend {
       '@google-cloud/storage',
       'the GCS backend',
     );
-    const storage = new sdk.Storage();
+    // The standard STORAGE_EMULATOR_HOST env var is half-broken in the Node
+    // SDK (JSON ops use the host verbatim while uploads append a different
+    // path); the apiEndpoint option resolves both consistently — hence this
+    // escape hatch for pointing at emulators like fake-gcs-server.
+    const endpoint = process.env.AGENTCOMM_GCS_API_ENDPOINT;
+    const storage = new sdk.Storage(endpoint ? { apiEndpoint: endpoint } : undefined);
     const prefix = basePrefix && !basePrefix.endsWith('/') ? `${basePrefix}/` : basePrefix;
     return new GCSBackend(storage.bucket(bucketName), prefix);
   }
@@ -83,5 +88,5 @@ interface GcsStorageLike {
   bucket(name: string): GcsBucketLike;
 }
 interface GcsSdk {
-  Storage: new () => GcsStorageLike;
+  Storage: new (options?: { apiEndpoint: string }) => GcsStorageLike;
 }
