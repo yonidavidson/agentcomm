@@ -27,6 +27,8 @@ export interface ParsedFlags {
   subject?: string;
   thread?: string;
   timeout?: number;
+  olderThan?: string;
+  dryRun: boolean;
   _: string[]; // positional args
 }
 
@@ -36,7 +38,7 @@ export interface ParsedFlags {
  * is a positional in `_`.
  */
 export function parseArgs(argv: string[]): ParsedFlags {
-  const flags: ParsedFlags = { json: false, _: [] };
+  const flags: ParsedFlags = { json: false, dryRun: false, _: [] };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i]!;
     if (!tok.startsWith('--')) {
@@ -73,6 +75,12 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'timeout':
         flags.timeout = Number(takeVal());
+        break;
+      case 'older-than':
+        flags.olderThan = takeVal();
+        break;
+      case 'dry-run':
+        flags.dryRun = true;
         break;
       case 'help':
         flags._.push('--help');

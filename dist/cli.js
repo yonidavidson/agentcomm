@@ -21,6 +21,8 @@ Commands:
                            and its capabilities — static, never connects
   channels                 List the channels that already exist on the --backend
                            store (scans for the agentcomm key layout)
+  purge                    Delete archived (read/) messages older than
+                           --older-than (e.g. 30d, 12h); --dry-run to preview
 
 Flags:
   --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
@@ -81,6 +83,8 @@ async function main(argv) {
                 return await cmdClaim(bus, cfg, flags.queue);
             case 'channels':
                 return await cmdChannels(backend, cfg);
+            case 'purge':
+                return await cmdPurge(backend, cfg, flags.olderThan, flags.dryRun);
             default:
                 fail(`unknown command "${command}". Run with --help.`);
                 return 1;
@@ -154,6 +158,51 @@ async function cmdChannels(backend, cfg) {
         process.stdout.write(`  ${label}  — ${r.agents} agent${r.agents === 1 ? '' : 's'}\n`);
     }
     return 0;
+}
+async function cmdPurge(backend, cfg, olderThan, dryRun) {
+    if (!olderThan) {
+        fail('purge requires --older-than <duration>, e.g. --older-than 30d (units: s, m, h, d)');
+        return 1;
+    }
+    const maxAgeMs = parseDuration(olderThan);
+    if (maxAgeMs === null) {
+        fail(`invalid --older-than "${olderThan}" — use <number><unit> with unit s, m, h or d (e.g. 30d, 12h)`);
+        return 1;
+    }
+    const cutoff = Date.now() - maxAgeMs;
+    // Only the archive is ever purged: pending inbox/ messages are undelivered
+    // mail and agents/ registrations are live state. Message age comes from the
+    // key's monotonic ms-timestamp prefix — no content reads needed.
+    const victims = (await backend.list('read/')).filter((key) => {
+        const ts = messageTimestamp(key);
+        return ts !== null && ts < cutoff;
+    });
+    if (!dryRun) {
+        for (const key of victims)
+            await backend.delete(key);
+    }
+    if (cfg.json) {
+        emit({ purged: !dryRun, dryRun, olderThan, count: victims.length, keys: victims });
+    }
+    else {
+        const verb = dryRun ? 'would purge' : 'purged';
+        process.stdout.write(`${verb} ${victims.length} archived message${victims.length === 1 ? '' : 's'} older than ${olderThan}\n`);
+    }
+    return 0;
+}
+/** "45s" | "30m" | "12h" | "30d" → milliseconds, or null when malformed. */
+function parseDuration(spec) {
+    const m = /^(\d+)(s|m|h|d)$/.exec(spec);
+    if (!m)
+        return null;
+    const n = Number(m[1]);
+    return n * { s: 1000, m: 60000, h: 3600000, d: 86400000 }[m[2]];
+}
+/** ms timestamp from an archive key's zero-padded seq prefix, or null. */
+function messageTimestamp(key) {
+    const file = key.slice(key.lastIndexOf('/') + 1);
+    const m = /^0*(\d+)-/.exec(file);
+    return m ? Number(m[1]) : null;
 }
 async function cmdRegister(bus, cfg) {
     const me = requireAgent(cfg);

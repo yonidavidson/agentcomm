@@ -18,6 +18,8 @@ export interface ParsedFlags {
     subject?: string;
     thread?: string;
     timeout?: number;
+    olderThan?: string;
+    dryRun: boolean;
     _: string[];
 }
 /**

@@ -1,11 +1,12 @@
 # agentcomm
 
-**🌐 Website: [yonidavidson.github.io/agentcomm](https://yonidavidson.github.io/agentcomm/)** — use cases, backends, and a live demo where two agents' conversation [is a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm).
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
-where the messages actually live. Local runs need **zero dependencies**; cloud
-and SQL backends are **optional, lazy-loaded** drivers.
+where the messages actually live. Local runs need **zero dependencies**; other
+backends are **optional, lazy-loaded** drivers — and `github://` needs no
+driver at all.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -13,20 +14,14 @@ and SQL backends are **optional, lazy-loaded** drivers.
             │      │                                         │
             │      ▼                                         │
             │  Backend interface  ◀── the seam               │
-            │   ├─ LocalBackend   — zero-dep default          │
-            │   ├─ SqliteBackend  — single box (recommended)  │  TRANSPORT
-            │   ├─ S3Backend      — object store               │  (live, hot path)
-            │   ├─ GCSBackend     — object store               │
-            │   └─ PostgresBackend — distributed, push         │
+            │   ├─ LocalBackend    — zero-dep default         │
+            │   ├─ GithubBackend   — the repo is the bus      │
+            │   ├─ SqliteBackend   — single box (recommended) │
+            │   ├─ S3Backend       — object store             │
+            │   ├─ GCSBackend      — object store             │
+            │   └─ PostgresBackend — distributed, push        │
             └─────────────────────────────────────────────┘
 ```
-
-> **Status:** The full transport stack is implemented and tested —
-> `SqliteBackend` (single-box default), `PostgresBackend` (distributed,
-> atomic `claim`, real `LISTEN/NOTIFY` push), and the `registerBackend()`
-> plugin seam for adding more. The offline DuckDB/Parquet analytics export
-> from the original brief is out of scope for now — see
-> [Roadmap](#roadmap).
 
 ## Install
 
@@ -93,18 +88,19 @@ echo "from a pipe" | agentcomm send bob --as alice
 
 ## What people build with it
 
-**Agents that share a GitHub repo talking through it** — `github://owner/repo`
-turns the repo itself into the bus (repo permissions are the ACL; every
-message is a commit you can watch in the web UI). Plus mixed
-**cloud + local worker fleets** splitting one queue, a **CD pipeline you
-can ask "what's the status of the build?" mid-deploy**, **IoT edge agents**
-(a camera answering "what do you see?", weather sensors reporting humidity to
-one broadcast) needing nothing but outbound HTTPS to a bucket, and **two AI
-tools pairing on one machine** (Claude Code implements, Cursor reviews).
-Illustrated with runnable commands on the
+- **Agents sharing a GitHub repo, talking through it** — `github://owner/repo`
+  makes the repo the bus: repo permissions are the ACL, every message is a
+  commit you can watch in the web UI.
+- **Cloud + local worker fleets** splitting one queue with atomic `claim`.
+- **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
+- **IoT edge agents** — a camera answering "what do you see?", weather sensors
+  reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
+- **Two AI tools pairing on one machine** (Claude Code implements, Cursor
+  reviews) over a SQLite file.
+
+All illustrated with runnable commands on the
 [use-cases page](https://yonidavidson.github.io/agentcomm/#use-cases) — plus
-why the security story is *subtraction*: your storage's auth is the bus's
-auth.
+why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 ## Commands
 
@@ -120,6 +116,7 @@ auth.
 | `claim`            | Atomically dequeue one message from `--queue` (**SQL backends only**). |
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
+| `purge`            | Delete archived (`read/`) messages older than `--older-than` (`30d`, `12h`, …). Never touches pending mail or registrations. |
 
 ### Flags
 
@@ -131,6 +128,8 @@ auth.
 | `--thread <id>`    | Thread id (`send`/`broadcast`).                                |
 | `--timeout <ms>`   | `wait` timeout in ms (default `30000`).                        |
 | `--queue <name>`   | Queue to claim from (`claim`) — same namespace as a recipient inbox. |
+| `--older-than <dur>` | Age threshold for `purge` (`45s`, `30m`, `12h`, `30d`).      |
+| `--dry-run`        | `purge` only lists what it would delete.                       |
 | `--json`           | Machine-readable JSON output (available on every command).     |
 
 ## Backends
@@ -216,9 +215,28 @@ browsable on github.com and repo collaborator permissions are the access
 control. No `claim` (moves are copy+commit); `wait` polls — poll gently, the
 REST quota (5,000/hr) is shared account-wide.
 
+### Housekeeping — who cleans the bus, and how
+
+The bus is **disposable coordination state, not code** — anyone with write
+access to the store owns cleanup (typically the repo/bucket owner, or a
+scheduled agent). Two layers:
+
+```bash
+# every backend: trim the archive (read/); pending mail + registrations are never touched
+agentcomm purge --older-than 30d --backend <uri>          # add --dry-run to preview
+
+# github:// full reset: purging files still ADDS commits (git never forgets),
+# so the real cleanup is deleting the orphan bus branch — one call erases the
+# whole bus history, and the branch is recreated fresh on the next write:
+gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/agentcomm
+```
+
+Nothing on the default branch depends on the bus branch — deleting it is
+always safe.
+
 ### Writing a backend plugin
 
-`createBackend` doesn't special-case the four built-ins — they're registered
+`createBackend` doesn't special-case the built-ins — they're registered
 through the exact same seam any third-party package uses:
 
 ```ts
@@ -342,8 +360,8 @@ CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
 all six backends are exercised end-to-end.
 
 The test suite runs the **same backend-contract and bus tests** against
-`LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, and
-`PostgresBackend`, plus concurrency tests
+`LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, `GithubBackend`,
+and `PostgresBackend`, plus concurrency tests
 proving: WAL lets independent SQLite writers proceed; N concurrent processes
 calling `claim` on one shared queue (SQLite or Postgres) get disjoint
 messages, none dropped, none double-delivered; and `wait` on Postgres
@@ -355,22 +373,12 @@ path.
 
 ## Roadmap
 
-Tracked against the original build plan:
-
-1. ✅ **`SqliteBackend`** — drop-in single-box transport (WAL). *Done.*
-2. ✅ **Capability interfaces** — `Claimable` (atomic shared-queue `claim`)
-   and `Waitable` (push). The Bus feature-detects both and falls back to
-   list+move / polling when absent. *Done.*
-3. ✅ **`PostgresBackend`** — distributed transport: `claim` via
-   `SELECT … FOR UPDATE SKIP LOCKED`, push via `LISTEN/NOTIFY`. *Done.*
-4. ❌ **Analytics export** — offline `archive export` to Parquet on S3/GCS,
-   with a DuckDB/DuckLake query recipe. *Out of scope, by choice* — the
-   transport stack (1–3) covers the original gap; analytics was always the
-   lowest-priority, separable item.
-
-Also shipped, beyond the original brief: a **backend plugin registry**
-(`registerBackend()`) so third parties can add a new `--backend <scheme>://`
-without any agentcomm changes — see "Writing a backend plugin" above.
+The transport stack is complete: six backends, capability interfaces
+(`Claimable`/`Waitable`, feature-detected), channels, self-describing schemes,
+and the `registerBackend()` plugin seam. What's next lives in the
+[issue tracker](https://github.com/yonidavidson/agentcomm/issues) — currently:
+a `gitlab://` sibling backend and a host-agnostic `git://` (any git remote)
+backend (#23).
 
 ## License
 
