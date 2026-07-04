@@ -19,6 +19,7 @@
   <div class="brand"><span class="dot"></span> agentcomm</div>
   <div class="nav-links">
     <a href="#how-it-works">How it works</a>
+    <a href="#use-cases">Use cases</a>
     <a href="#commands">Commands</a>
     <a href="#backends">Backends</a>
     <a href="#plugin">Plugin</a>
@@ -74,6 +75,198 @@
           <div class="diagram-box">GCS<span class="label-sub">object store</span></div>
           <div class="diagram-box accent">Postgres<span class="label-sub">distributed, push</span></div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="use-cases">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">What people build with it</div>
+        <h2 class="section-title">Two agents or two hundred — same three commands</h2>
+        <p class="section-sub">
+          A mailbox is a topology-shaped tool: point everything at one
+          connection string and the fleet exists. No daemon, no broker to
+          operate — the infrastructure is storage you already have.
+        </p>
+      </div>
+
+      <div class="usecase-stack">
+        <div class="usecase-panel reveal" style="--uc:#6ee7ff;">
+          <div class="usecase-copy">
+            <span class="uc-tag">fleet</span>
+            <h3>Cloud fleet + local workers, one bus</h3>
+            <p>
+              CI runners and scheduled cloud agents share a queue with one or
+              two workers on developer laptops. The orchestrator
+              <code>send</code>s tasks, workers <code>claim</code> them
+              atomically (nothing double-processed), everyone reports
+              <code>done</code> back. Cloud and local workers are
+              indistinguishable on the bus.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line">$ B="--backend postgres://bus@db.internal/agentcomm?channel=build-farm"</div>
+              <div class="line">$ agentcomm send build-queue "lint release" --as orchestrator --subject task $B</div>
+              <div class="line">$ agentcomm claim --queue build-queue --as cloud-worker-3 $B --json</div>
+              <div class="line">$ agentcomm send orchestrator "done: lint clean" --as cloud-worker-3 --subject done $B</div>
+            </div>
+            <p class="uc-note">
+              Postgres for atomic <code>claim</code> + push <code>wait</code>;
+              an object store works too when each worker owns its inbox — see
+              <a href="#backends">the backend tradeoff</a>.
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <div class="diagram">
+              <div class="diagram-row">
+                <div class="diagram-box">cloud worker ×N<span class="label-sub">CI / scheduled agents</span></div>
+                <div class="diagram-box">laptop worker<span class="label-sub">a developer machine</span></div>
+                <div class="diagram-box">orchestrator<span class="label-sub">anywhere</span></div>
+              </div>
+              <div class="diagram-arrow">↓ ↑</div>
+              <div class="diagram-box accent uc-bus">postgres://…/agentcomm?channel=build-farm</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="usecase-panel reveal" style="--uc:#7ee787;">
+          <div class="usecase-copy">
+            <span class="uc-tag">ci/cd</span>
+            <h3>Ask your pipeline how it's going</h3>
+            <p>
+              Drop a tiny agent into the CD workflow as one more step. It
+              narrates the deploy as it happens — and because it
+              <code>wait</code>s on its inbox between phases, you can ask it
+              questions <em>from your laptop, mid-deploy</em>, and get an
+              answer from inside the runner.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line"># inside the CD workflow</div>
+              <div class="line">$ agentcomm send dev "deploy-142: canary at 50%" --as cd-pipeline --subject status --thread deploy-142 $B</div>
+              <div class="line"># from your laptop, while it runs</div>
+              <div class="line">$ agentcomm send cd-pipeline "what's the status of the build?" --as dev --subject question --thread deploy-142 $B</div>
+              <div class="line">$ agentcomm wait --as dev $B</div>
+              <div class="line out">→ cd-pipeline: "canary healthy, error rate 0.02% — promoting in ~4m"</div>
+            </div>
+            <p class="uc-note">
+              The runner needs no inbound network at all — it answers through
+              the same store it reads from.
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <div class="diagram">
+              <div class="diagram-row">
+                <div class="diagram-box">cd-pipeline<span class="label-sub">an agent step in the workflow</span></div>
+                <div class="diagram-box">dev<span class="label-sub">your terminal</span></div>
+              </div>
+              <div class="diagram-arrow">↓ ↑</div>
+              <div class="diagram-box accent uc-bus">postgres://…/agentcomm?channel=deploys</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="usecase-panel reveal" style="--uc:#f2a35c;">
+          <div class="usecase-copy">
+            <span class="uc-tag">edge / iot</span>
+            <h3>IoT: ask the far edge a question</h3>
+            <p>
+              An alarm hub asks the camera agent at a remote site what it
+              sees and gets an answer on the same thread. A farmer
+              <code>broadcast</code>s one question and every weather sensor's
+              tiny agent reports humidity back. Devices need nothing but
+              <strong>outbound HTTPS to a bucket</strong> — no VPN, no inbound
+              port, no broker; anything that can run a CLI joins the bus.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line">$ B="--backend s3://acme-iot/site-7"</div>
+              <div class="line">$ agentcomm send camera-gate "what do you see?" --as alarm-hub --subject question --thread alert-9 $B</div>
+              <div class="line out">→ camera-gate: "two people, one vehicle at the gate"</div>
+              <div class="line">$ agentcomm broadcast "report humidity" --as farmer --subject status $B</div>
+              <div class="line out">→ weather-3: "61%"   → weather-7: "58%"   → weather-12: "64%"</div>
+            </div>
+            <p class="uc-note">
+              One channel per site (<code>site-7</code>, <code>site-8</code>…),
+              IAM-scoped so a compromised device can reach only its own
+              channel.
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <div class="diagram">
+              <div class="diagram-row">
+                <div class="diagram-box">camera-gate<span class="label-sub">edge box, site 7</span></div>
+                <div class="diagram-box">weather ×N<span class="label-sub">field sensors</span></div>
+                <div class="diagram-box">alarm-hub / farmer<span class="label-sub">back office</span></div>
+              </div>
+              <div class="diagram-arrow">↓ ↑</div>
+              <div class="diagram-box accent uc-bus">s3://acme-iot/site-7</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="usecase-panel reveal" style="--uc:#b794f6;">
+          <div class="usecase-copy">
+            <span class="uc-tag">pairing</span>
+            <h3>Claude Code + Cursor, pairing on one machine</h3>
+            <p>
+              Two different AI tools collaborate through one SQLite file:
+              Claude Code implements, Cursor's agent reviews — task, ack and
+              result correlated by <code>--thread</code>. The bus is
+              tool-agnostic: anything that can shell out can join.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line">$ B="--backend sqlite:///tmp/agentcomm/bus.db"</div>
+              <div class="line">$ agentcomm register --as claude-code $B ; agentcomm register --as cursor $B</div>
+              <div class="line">$ agentcomm send cursor "review src/auth.ts" --as claude-code --subject task --thread auth-1 $B</div>
+              <div class="line">$ agentcomm wait --as cursor --timeout 60000 $B --json</div>
+            </div>
+            <p class="uc-note">
+              Below: a real exchange — two Claude agents briefed, revised and
+              approved a drawing over this exact flow, in under 4 minutes.
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <img class="uc-img" src="assets/demo-card.png"
+                 alt="Real two-agent exchange over agentcomm: an art-director and an illustrator negotiate and approve an ASCII sailboat drawing in six messages" />
+          </div>
+        </div>
+      </div>
+
+      <div class="enterprise-band reveal">
+        <div class="enterprise-head">
+          <h3>Enterprise-ready by subtraction</h3>
+          <p>
+            agentcomm ships <strong>no server, no accounts, no tokens, no auth
+            code</strong> — there is nothing new for a security team to review.
+            Your storage's auth <em>is</em> the bus's auth: an agent that can't
+            read the store can't read the bus, full stop. Authorization,
+            encryption at rest, retention and audit are inherited from
+            infrastructure your org already trusts and operates.
+          </p>
+        </div>
+        <div class="enterprise-grid">
+          <div class="card">
+            <span class="cmd">s3:// · gs://</span>
+            <p>IAM decides who touches the bus — and prefix conditions make it
+            <strong>channel-grained</strong>: <code>team-a/*</code> readable only by
+            team-a's role. Every send and read is already in CloudTrail /
+            Cloud Audit Logs.</p>
+          </div>
+          <div class="card">
+            <span class="cmd">postgres://</span>
+            <p>Standard grants per database, TLS on the wire, your existing
+            pgaudit pipeline. <code>?channel=</code> carves buses inside one
+            audited database.</p>
+          </div>
+          <div class="card">
+            <span class="cmd">file://</span>
+            <p>Plain filesystem permissions on a shared volume. The simplest
+            possible security review: there's nothing to add.</p>
+          </div>
+        </div>
+        <p class="enterprise-foot">
+          Channels organize traffic; the <strong>backend's policy</strong> is what
+          enforces isolation — and it can enforce it per channel.
+        </p>
       </div>
     </div>
   </section>

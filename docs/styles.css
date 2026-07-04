@@ -318,6 +318,99 @@ tr:last-child td { border-bottom: none; }
 .plugin-panel ul { color: var(--text-dim); padding-left: 18px; font-size: 0.92rem; }
 .plugin-panel li { margin-bottom: 6px; }
 
+/* ---- use cases ---- */
+.usecase-stack { display: flex; flex-direction: column; gap: 28px; margin-bottom: 56px; }
+.usecase-panel {
+  --uc: var(--accent);
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 36px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 38px;
+}
+.usecase-panel::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 3px;
+  background: linear-gradient(180deg, transparent, var(--uc), transparent);
+  opacity: 0.75;
+}
+.usecase-panel:nth-child(even) .usecase-copy { order: 2; }
+.usecase-panel:nth-child(even) .usecase-visual { order: 1; }
+/* min-width:0 so long command lines scroll inside their codeblock instead of
+   inflating the column's min-content and crushing the visual column. */
+.usecase-copy, .usecase-visual { min-width: 0; }
+.uc-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--uc);
+  border: 1px solid color-mix(in srgb, var(--uc) 45%, transparent);
+  background: color-mix(in srgb, var(--uc) 9%, transparent);
+  border-radius: 999px;
+  padding: 3px 11px;
+  margin-bottom: 12px;
+}
+.usecase-panel h3 { font-family: var(--display); font-size: 1.35rem; margin: 0 0 10px; }
+.usecase-copy p { color: var(--text-dim); font-size: 0.95rem; margin: 0; }
+.uc-code { max-width: none; margin: 18px 0 0; font-size: 0.79rem; }
+.uc-code .line.out { color: var(--text-dim); }
+.uc-note { font-size: 0.84rem; margin-top: 14px !important; }
+.usecase-visual .diagram-box { min-width: 128px; font-size: 0.78rem; padding: 12px 14px; }
+.uc-bus {
+  width: 100%;
+  border-color: color-mix(in srgb, var(--uc) 50%, transparent);
+  color: var(--uc);
+  position: relative;
+  overflow: hidden;
+}
+.uc-bus::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40%;
+  left: -40%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--uc) 20%, transparent), transparent);
+  animation: bus-sweep 3.2s linear infinite;
+}
+@keyframes bus-sweep { to { left: 100%; } }
+.uc-img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+}
+
+.enterprise-band {
+  border: 1px solid rgba(110, 231, 255, 0.25);
+  background: linear-gradient(180deg, rgba(110, 231, 255, 0.05), rgba(183, 148, 246, 0.04));
+  border-radius: 18px;
+  padding: 42px;
+}
+.enterprise-head { max-width: 720px; margin: 0 auto 28px; text-align: center; }
+.enterprise-head h3 { font-family: var(--display); font-size: 1.6rem; margin: 0 0 12px; }
+.enterprise-head p { color: var(--text-dim); margin: 0; }
+.enterprise-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.enterprise-foot { text-align: center; color: var(--text-dim); font-size: 0.88rem; margin: 24px 0 0; }
+
+@media (max-width: 860px) {
+  .usecase-panel { grid-template-columns: 1fr; padding: 28px; }
+  .usecase-panel:nth-child(even) .usecase-copy { order: 1; }
+  .usecase-panel:nth-child(even) .usecase-visual { order: 2; }
+  .enterprise-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .uc-bus::after { animation: none; }
+}
+
 /* ---- footer ---- */
 footer {
   border-top: 1px solid rgba(255,255,255,0.06);
