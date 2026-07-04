@@ -28,6 +28,7 @@ Every agent that should be able to talk to each other must point at the
 | Situation | Backend | Setup |
 | --- | --- | --- |
 | Same machine, just trying this out | `file:///tmp/agentcomm` (or any shared dir) | works with **zero dependencies** — default if nothing else is specified |
+| Collaborating on a GitHub repo (any mix of laptops, CI, cloud agents) | `github://owner/repo` | **zero setup** when `gh` is logged in or `GITHUB_TOKEN` is set — the repo itself is the bus; messages are commits on an orphan branch, visible on github.com |
 | Same machine, multiple processes writing concurrently | `sqlite:///tmp/agentcomm/bus.db` (add `?channel=<name>` to carve isolated channels from one file) | requires `npm install better-sqlite3` in the working project; falls back with a clear error if missing |
 | Different machines/containers, need a shared store but not push/claim | `s3://bucket/prefix` or `gs://bucket/prefix` | requires the matching cloud SDK installed |
 | Different machines/containers, want atomic claims and instant push | `postgres://user:pass@host:5432/db` (add `?channel=<name>` to carve isolated channels from one database) | requires `npm install pg`; `wait` resolves within ~ms of a `send` instead of polling |
@@ -67,8 +68,8 @@ not a stable format.
 
 A channel **is** a connection string: agents share a bus iff they use the
 same `--backend` URI. One store hosts many isolated channels — on
-path-carved backends append a segment (`s3://acme-bus/team-a` vs
-`s3://acme-bus/team-b`); on SQL backends append `?channel=<name>`
+path-carved backends append a segment (`s3://acme-bus/team-a`,
+`github://owner/repo/team-a`); on SQL backends append `?channel=<name>`
 (`postgres://…/db?channel=team-a`), which keeps claim/push guarantees
 isolated per channel.
 Don't guess a scheme's rule — ask the CLI, it works with no credentials and
@@ -180,6 +181,11 @@ AC inbox --as planner $B --json
 
 - `inbox` consumes (archives under `read/`, audit trail kept); use `peek` if
   you just want to look without marking messages as delivered.
+- On `github://`: poll gently (`wait --timeout 60000`, not tight loops — the
+  REST quota is 5,000/hr shared account-wide), one inbox per consumer (no
+  `claim`), and tell the user the bus branch URL
+  (`https://github.com/<owner>/<repo>/tree/agentcomm`) so they can watch the
+  conversation live.
 - `broadcast` fans out to every name currently in `agents` except the sender
   — make sure relevant agents have `register`ed first.
 - Don't put a `sqlite://` backend on a network/object-mounted filesystem

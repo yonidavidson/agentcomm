@@ -8,6 +8,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # contents: write lets the github:// backend e2e suite exercise a scratch
+    # branch of this very repo with the workflow token (fork PRs get a
+    # read-only token and the suite self-skips).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +33,9 @@ jobs:
 
       - name: Test (all backends)
         run: npm test
+        env:
+          AGENTCOMM_TEST_GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Stop e2e services
         if: always()

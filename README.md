@@ -91,7 +91,10 @@ echo "from a pipe" | agentcomm send bob --as alice
 
 ## What people build with it
 
-Mixed **cloud + local worker fleets** splitting one queue, a **CD pipeline you
+**Agents that share a GitHub repo talking through it** — `github://owner/repo`
+turns the repo itself into the bus (repo permissions are the ACL; every
+message is a commit you can watch in the web UI). Plus mixed
+**cloud + local worker fleets** splitting one queue, a **CD pipeline you
 can ask "what's the status of the build?" mid-deploy**, **IoT edge agents**
 (a camera answering "what do you see?", weather sensors reporting humidity to
 one broadcast) needing nothing but outbound HTTPS to a bucket, and **two AI
@@ -135,6 +138,7 @@ Choose transport by **topology** — that's the only fork that matters.
 | Backend     | URI                          | Driver (optional)      | Atomic `move` | `claim` (shared queue) | Push (`wait`) | Use when                         |
 | ----------- | ---------------------------- | ---------------------- | :-----------: | :--------------------: | :-----------: | -------------------------------- |
 | **Local**   | `file:///path/dir`, bare dir | — (built in)           | ✅ (rename)   | ❌                     | poll          | dev, single process, zero deps   |
+| **GitHub**  | `github://owner/repo[/prefix]` | — (built in)         | ❌ (copy+commit) | ❌                  | poll          | **agents sharing a repo** — the repo is the bus |
 | **SQLite**  | `sqlite:///path.db[?channel=x]`, `*.db` | `better-sqlite3` | ✅ (txn)   | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
@@ -198,7 +202,17 @@ s3://bucket/optional/prefix   S3
 gs://bucket/optional/prefix   GCS
 postgres://user:pass@host/db  Postgres (postgresql:// also accepted)
 postgres://…/db?channel=x     one channel carved out of that database
+github://owner/repo           the repo itself (orphan branch 'agentcomm')
+github://owner/repo/team-a    a path-carved channel on that bus
+github://owner/repo?branch=b  a different bus branch
 ```
+
+The `github://` backend needs **no npm driver at all** — a token from
+`AGENTCOMM_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN` or `gh auth token` is
+enough. Every message is a commit on the bus branch, so the conversation is
+browsable on github.com and repo collaborator permissions are the access
+control. No `claim` (moves are copy+commit); `wait` polls — poll gently, the
+REST quota (5,000/hr) is shared account-wide.
 
 ### Writing a backend plugin
 
@@ -317,8 +331,13 @@ npm run test:e2e:down  # tear down (removes volumes)
 # AGENTCOMM_TEST_GCS_ENDPOINT or AGENTCOMM_TEST_POSTGRES_URL
 ```
 
+The `github://` suite (`test/github.test.ts`) targets a real repo on a
+scratch branch, deleted afterwards — gate it with
+`AGENTCOMM_TEST_GITHUB_REPO=you/yourrepo` (your `gh` login is enough). In CI
+it runs against **this repository itself** using the workflow's token.
+
 CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
-all five backends are exercised end-to-end.
+all six backends are exercised end-to-end.
 
 The test suite runs the **same backend-contract and bus tests** against
 `LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, and

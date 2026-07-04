@@ -139,11 +139,14 @@ export class Bus {
      * present; otherwise falls back to polling `peek`. Same contract either
      * way: resolves with [] on timeout so the CLI can map that to exit code 2.
      */
-    async wait(recipient, timeoutMs, pollMs = 250) {
+    async wait(recipient, timeoutMs, pollMs) {
         assertName(recipient);
         if (isWaitable(this.backend)) {
             return this.backend.waitPush(recipient, timeoutMs);
         }
+        // Explicit caller interval wins; otherwise the backend's declared cadence
+        // (github polls gently — every poll is metered API quota); otherwise 250ms.
+        const interval = pollMs ?? this.backend.pollIntervalMs ?? 250;
         const deadline = Date.now() + timeoutMs;
         for (;;) {
             const pending = await this.peek(recipient);
@@ -151,7 +154,7 @@ export class Bus {
                 return pending;
             if (Date.now() >= deadline)
                 return [];
-            await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+            await sleep(Math.min(interval, Math.max(0, deadline - Date.now())));
         }
     }
     // ── shared-queue claims ────────────────────────────────────────────────

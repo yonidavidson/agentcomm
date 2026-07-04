@@ -98,7 +98,7 @@ describe('CLI describe (static backend self-description)', () => {
   it('unknown scheme fails with the registered-schemes list', async () => {
     const r = await run(['describe', '--backend', 'redis://localhost']);
     expect(r.code).toBe(1);
-    expect(r.stderr).toMatch(/Known schemes: file, gs, postgres, postgresql, s3, sqlite/);
+    expect(r.stderr).toMatch(/Known schemes: file, github, gs, postgres, postgresql, s3, sqlite/);
   });
 
   it('a plugin scheme registered WITH info is fully described; one WITHOUT info gets the honest fallback', async () => {

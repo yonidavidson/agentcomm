@@ -44,6 +44,13 @@ export interface Backend {
   move(src: string, dst: string): Promise<void>;
   /** Optional teardown (close DB handles, pools, …). */
   close?(): Promise<void>;
+  /**
+   * Optional hint: how often `Bus.wait` should poll this store, in ms.
+   * Backends where every poll costs real quota (e.g. github's shared
+   * 5,000/hr REST limit) declare a gentler cadence than the 250ms default.
+   * An explicit caller-supplied interval always wins.
+   */
+  readonly pollIntervalMs?: number;
 }
 
 /**
