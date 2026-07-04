@@ -26,19 +26,21 @@ driver at all.
 ## Install
 
 Not on the npm registry (yet) — install straight from GitHub. `dist/` is
-committed to the repo, so this needs no build step:
+committed to the repo, so this needs no build step, and the install is
+**genuinely zero-dependency**: you get `dist/` and nothing else.
 
 ```bash
 npm install github:yonidavidson/agentcomm
 
-# optional drivers, installed only if you use that backend:
+# file:// and github:// need NOTHING more (Node ≥ 18 + a GitHub token for github://).
+# Per-backend drivers, only if you use that backend — the CLI names the exact
+# package to install when one is missing:
 npm install better-sqlite3            # sqlite://
 npm install @aws-sdk/client-s3        # s3://
 npm install @google-cloud/storage     # gs://
 npm install pg                        # postgres://
+npm install yaml                      # only for .agentcomm.yaml config files (.json needs nothing)
 ```
-
-The local filesystem backend needs nothing beyond Node ≥ 18.
 
 ### As a Claude Code plugin
 

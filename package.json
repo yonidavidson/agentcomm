@@ -40,19 +40,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "optionalDependencies": {
+  "devDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@google-cloud/storage": "^7.0.0",
-    "better-sqlite3": "^11.0.0",
-    "pg": "^8.11.0",
-    "yaml": "^2.9.0"
-  },
-  "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
+    "better-sqlite3": "^11.0.0",
+    "pg": "^8.11.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "yaml": "^2.9.0"
   }
 }
