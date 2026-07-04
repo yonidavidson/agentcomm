@@ -125,15 +125,89 @@
             </p>
           </div>
           <div class="usecase-visual">
+            <svg class="git-anim" viewBox="0 0 520 212" role="img"
+                 aria-label="One repository, two histories: the main branch receives code commits while the agentcomm branch receives the agents' conversation as commits">
+              <text x="10" y="65" class="ga-label">main</text>
+              <line x1="102" y1="61" x2="512" y2="61" class="ga-line ga-code-line"/>
+              <text x="10" y="155" class="ga-label">agentcomm</text>
+              <line x1="102" y1="151" x2="512" y2="151" class="ga-line ga-msg-line"/>
+
+              <g class="ga-pop" style="animation-delay:.2s"><circle cx="130" cy="61" r="5.5" class="ga-dot ga-code"/><text x="130" y="38" class="ga-tag ga-code-t">feat: api</text></g>
+              <g class="ga-pop" style="animation-delay:1.5s"><circle cx="168" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="168" y="180" class="ga-tag ga-msg-t">claude → ci: task</text></g>
+              <g class="ga-pop" style="animation-delay:2.8s"><circle cx="226" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="226" y="196" class="ga-tag ga-msg-t">ci → claude: ack</text></g>
+              <g class="ga-pop" style="animation-delay:4.1s"><circle cx="252" cy="61" r="5.5" class="ga-dot ga-code"/><text x="252" y="38" class="ga-tag ga-code-t">fix: tests</text></g>
+              <g class="ga-pop" style="animation-delay:5.4s"><circle cx="312" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="312" y="180" class="ga-tag ga-msg-t">status: canary ok</text></g>
+              <g class="ga-pop" style="animation-delay:6.7s"><circle cx="376" cy="61" r="5.5" class="ga-dot ga-code"/><text x="376" y="38" class="ga-tag ga-code-t">feat: ui</text></g>
+              <g class="ga-pop" style="animation-delay:8s"><circle cx="404" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="404" y="196" class="ga-tag ga-msg-t">done ✓</text></g>
+              <g class="ga-pop" style="animation-delay:9.3s"><circle cx="478" cy="61" r="5.5" class="ga-dot ga-code"/><text x="478" y="38" class="ga-tag ga-code-t">release</text></g>
+            </svg>
+            <div class="ga-caption">one repo, two histories — <code>main</code> ships the code, <code>agentcomm</code> carries the conversation</div>
+          </div>
+        </div>
+
+        <div class="usecase-panel reveal" style="--uc:#7ee787;">
+          <div class="usecase-copy">
+            <span class="uc-tag">ci/cd</span>
+            <h3>Ask your pipeline how it's going</h3>
+            <p>
+              Drop a tiny agent into the CD workflow as one more step. It
+              narrates the deploy as it happens — and because it
+              <code>wait</code>s on its inbox between phases, you can ask it
+              questions <em>from your laptop, mid-deploy</em>, and get an
+              answer from inside the runner.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line"># inside the CD workflow — the runner already has GITHUB_TOKEN</div>
+              <div class="line">$ B="--backend github://acme/webapp/deploys"</div>
+              <div class="line">$ agentcomm send dev "deploy-142: canary at 50%" --as cd-pipeline --subject status --thread deploy-142 $B</div>
+              <div class="line"># from your laptop, while it runs</div>
+              <div class="line">$ agentcomm send cd-pipeline "what's the status of the build?" --as dev --subject question --thread deploy-142 $B</div>
+              <div class="line">$ agentcomm wait --as dev $B</div>
+              <div class="line out">→ cd-pipeline: "canary healthy, error rate 0.02% — promoting in ~4m"</div>
+            </div>
+            <p class="uc-note">
+              The runner needs no inbound network at all — it answers through
+              the same store it reads from.
+            </p>
+          </div>
+          <div class="usecase-visual">
             <div class="diagram">
               <div class="diagram-row">
-                <div class="diagram-box">claude-code<span class="label-sub">a laptop</span></div>
-                <div class="diagram-box">ci-bot<span class="label-sub">the workflow runner</span></div>
-                <div class="diagram-box">cursor<span class="label-sub">another agent, anywhere</span></div>
+                <div class="diagram-box">cd-pipeline<span class="label-sub">an agent step in the workflow</span></div>
+                <div class="diagram-box">dev<span class="label-sub">your terminal</span></div>
               </div>
               <div class="diagram-arrow">↓ ↑</div>
-              <div class="diagram-box accent uc-bus">github://acme/webapp</div>
+              <div class="diagram-box accent uc-bus">github://acme/webapp/deploys</div>
             </div>
+          </div>
+        </div>
+
+        <div class="usecase-panel reveal" style="--uc:#b794f6;">
+          <div class="usecase-copy">
+            <span class="uc-tag">pairing</span>
+            <h3>Claude Code + Cursor, pairing with zero config</h3>
+            <p>
+              Two different AI tools collaborate through the repo they already
+              share — inside a git repo the bus needs <strong>no configuration at
+              all</strong>. Claude Code implements, Cursor's agent reviews —
+              task, ack and result correlated by <code>--thread</code>. The bus
+              is tool-agnostic: anything that can shell out can join.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line">$ cd webapp/            # a git repo — that's the whole setup</div>
+              <div class="line">$ agentcomm register --as claude-code ; agentcomm register --as cursor</div>
+              <div class="line out">→ agentcomm: using github://acme/webapp (auto-detected from the git remote)</div>
+              <div class="line">$ agentcomm send cursor "review src/auth.ts" --as claude-code --subject task --thread auth-1</div>
+              <div class="line">$ agentcomm wait --as cursor --timeout 60000 --json</div>
+            </div>
+            <p class="uc-note">
+              Below: a real exchange — two Claude agents briefed, revised and
+              approved a drawing over this exact flow, in under 4 minutes.
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <img class="uc-img" src="assets/demo-card.png"
+                 alt="Real two-agent exchange over agentcomm: an art-director and an illustrator negotiate and approve an ASCII sailboat drawing in six messages" />
           </div>
         </div>
 
@@ -174,42 +248,6 @@
           </div>
         </div>
 
-        <div class="usecase-panel reveal" style="--uc:#7ee787;">
-          <div class="usecase-copy">
-            <span class="uc-tag">ci/cd</span>
-            <h3>Ask your pipeline how it's going</h3>
-            <p>
-              Drop a tiny agent into the CD workflow as one more step. It
-              narrates the deploy as it happens — and because it
-              <code>wait</code>s on its inbox between phases, you can ask it
-              questions <em>from your laptop, mid-deploy</em>, and get an
-              answer from inside the runner.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line"># inside the CD workflow</div>
-              <div class="line">$ agentcomm send dev "deploy-142: canary at 50%" --as cd-pipeline --subject status --thread deploy-142 $B</div>
-              <div class="line"># from your laptop, while it runs</div>
-              <div class="line">$ agentcomm send cd-pipeline "what's the status of the build?" --as dev --subject question --thread deploy-142 $B</div>
-              <div class="line">$ agentcomm wait --as dev $B</div>
-              <div class="line out">→ cd-pipeline: "canary healthy, error rate 0.02% — promoting in ~4m"</div>
-            </div>
-            <p class="uc-note">
-              The runner needs no inbound network at all — it answers through
-              the same store it reads from.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <div class="diagram">
-              <div class="diagram-row">
-                <div class="diagram-box">cd-pipeline<span class="label-sub">an agent step in the workflow</span></div>
-                <div class="diagram-box">dev<span class="label-sub">your terminal</span></div>
-              </div>
-              <div class="diagram-arrow">↓ ↑</div>
-              <div class="diagram-box accent uc-bus">postgres://…/agentcomm?channel=deploys</div>
-            </div>
-          </div>
-        </div>
-
         <div class="usecase-panel reveal" style="--uc:#f2a35c;">
           <div class="usecase-copy">
             <span class="uc-tag">edge / iot</span>
@@ -245,33 +283,6 @@
               <div class="diagram-arrow">↓ ↑</div>
               <div class="diagram-box accent uc-bus">s3://acme-iot/site-7</div>
             </div>
-          </div>
-        </div>
-
-        <div class="usecase-panel reveal" style="--uc:#b794f6;">
-          <div class="usecase-copy">
-            <span class="uc-tag">pairing</span>
-            <h3>Claude Code + Cursor, pairing on one machine</h3>
-            <p>
-              Two different AI tools collaborate through one SQLite file:
-              Claude Code implements, Cursor's agent reviews — task, ack and
-              result correlated by <code>--thread</code>. The bus is
-              tool-agnostic: anything that can shell out can join.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line">$ B="--backend sqlite:///tmp/agentcomm/bus.db"</div>
-              <div class="line">$ agentcomm register --as claude-code $B ; agentcomm register --as cursor $B</div>
-              <div class="line">$ agentcomm send cursor "review src/auth.ts" --as claude-code --subject task --thread auth-1 $B</div>
-              <div class="line">$ agentcomm wait --as cursor --timeout 60000 $B --json</div>
-            </div>
-            <p class="uc-note">
-              Below: a real exchange — two Claude agents briefed, revised and
-              approved a drawing over this exact flow, in under 4 minutes.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <img class="uc-img" src="assets/demo-card.png"
-                 alt="Real two-agent exchange over agentcomm: an art-director and an illustrator negotiate and approve an ASCII sailboat drawing in six messages" />
           </div>
         </div>
       </div>

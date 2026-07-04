@@ -389,6 +389,39 @@ tr:last-child td { border-bottom: none; }
   border: 1px solid var(--card-border);
 }
 
+/* ---- git graph animation: one repo, code + conversation ---- */
+.git-anim { display: block; width: 100%; height: auto; }
+.ga-label { fill: var(--text-dim); font: 500 12px var(--mono); }
+.ga-line { stroke-width: 2; opacity: 0.45; }
+.ga-line.ga-code-line { stroke: var(--accent); }
+.ga-line.ga-msg-line { stroke: #7ee787; }
+.ga-dot.ga-code { fill: var(--accent); }
+.ga-dot.ga-msg { fill: #7ee787; }
+.ga-tag { font: 11px var(--mono); text-anchor: middle; }
+.ga-tag.ga-code-t { fill: rgba(110, 231, 255, 0.85); }
+.ga-tag.ga-msg-t { fill: rgba(126, 231, 135, 0.85); }
+.ga-pop {
+  opacity: 0;
+  animation: ga-pop 13s linear infinite;
+}
+@keyframes ga-pop {
+  0% { opacity: 0; }
+  3% { opacity: 1; }
+  82% { opacity: 1; }
+  92% { opacity: 0; }
+  100% { opacity: 0; }
+}
+.ga-caption {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.ga-caption code { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .ga-pop { animation: none; opacity: 1; }
+}
+
 .enterprise-band {
   border: 1px solid rgba(110, 231, 255, 0.25);
   background: linear-gradient(180deg, rgba(110, 231, 255, 0.05), rgba(183, 148, 246, 0.04));
