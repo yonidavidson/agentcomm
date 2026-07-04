@@ -29,6 +29,7 @@ export interface ParsedFlags {
   timeout?: number;
   olderThan?: string;
   dryRun: boolean;
+  limit?: number;
   _: string[]; // positional args
 }
 
@@ -81,6 +82,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'dry-run':
         flags.dryRun = true;
+        break;
+      case 'limit':
+        flags.limit = Number(takeVal());
         break;
       case 'help':
         flags._.push('--help');

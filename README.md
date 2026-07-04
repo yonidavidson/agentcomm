@@ -117,6 +117,8 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
 | `purge`            | Delete archived (`read/`) messages older than `--older-than` (`30d`, `12h`, …). Never touches pending mail or registrations. |
+| `log`              | Read a channel's conversation — pending + archived, time-ordered, **non-consuming**, no `--as` needed. `--thread`, `--limit`. |
+| `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. |
 
 ### Flags
 
@@ -130,6 +132,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `--queue <name>`   | Queue to claim from (`claim`) — same namespace as a recipient inbox. |
 | `--older-than <dur>` | Age threshold for `purge` (`45s`, `30m`, `12h`, `30d`).      |
 | `--dry-run`        | `purge` only lists what it would delete.                       |
+| `--limit <n>`      | `log`: keep the most recent n messages (default 50).           |
 | `--json`           | Machine-readable JSON output (available on every command).     |
 
 ## Backends
@@ -189,6 +192,37 @@ Channels are **namespacing, not security**: everyone on a store shares its
 credentials. Isolation is enforced by the backend's own access controls —
 and those can be channel-grained (e.g. S3 IAM prefix conditions per team,
 Postgres grants per database).
+
+### Naming & joining — so "work on x" means the same channel to everyone
+
+- **Topic channels**: kebab-case, one workstream each — `github://owner/repo/fix-auth`.
+- **Repo artifacts** (git backend): `issue-<n>` / `pr-<n>` — discussion of
+  issue or PR N has a deterministic home, no coordination needed to find it.
+- **`lobby`**: the well-known meeting room per store — register there,
+  announce which topic channels you're joining, ask who's on what.
+
+These are defaults in code; a project overrides them with an
+`.agentcomm.json` (zero-dep) or `.agentcomm.yaml` (optional `yaml` package)
+file, found upward from the working directory or named by `AGENTCOMM_CONFIG`:
+
+```json
+{
+  "backend": "github://acme/webapp",
+  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] }
+}
+```
+
+(`backend` pins a project-default bus — consumed by the backend resolution
+chain.) Agents never memorize any of this:
+
+```bash
+agentcomm conventions --json                                # the effective rules + their source
+agentcomm log --limit 20 --backend github://acme/webapp/fix-auth   # read the room before speaking
+```
+
+**The join recipe**: `channels` (what exists) → construct/pick the topic URI →
+`register` → `log --limit 20` (catch up on the conversation, non-consuming) →
+announce yourself with `broadcast --subject status`.
 
 ### URI formats
 

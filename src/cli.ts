@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { backendInfo, createBackend, schemeForUri } from './backends/index.js';
 import { discoverChannels } from './channels.js';
+import { loadConventions } from './conventions.js';
 import { Bus } from './bus.js';
 import { parseArgs, resolveConfig, type ResolvedConfig } from './config.js';
 import type { Message } from './types.js';
@@ -25,6 +26,10 @@ Commands:
                            store (scans for the agentcomm key layout)
   purge                    Delete archived (read/) messages older than
                            --older-than (e.g. 30d, 12h); --dry-run to preview
+  log                      Read a channel's conversation (pending + archived,
+                           time-ordered, non-consuming); --thread, --limit
+  conventions              Print the effective team conventions (built-in
+                           defaults ⊕ .agentcomm.json/.yaml override file)
 
 Flags:
   --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
@@ -62,10 +67,11 @@ async function main(argv: string[]): Promise<number> {
 
   await loadBackendPlugins();
 
-  // describe is static by design — it must answer "how would I connect?"
-  // before the user *can* connect, so it never loads a driver or opens the
-  // backend. Handle it before createBackend().
+  // describe and conventions are static by design — they answer "how would I
+  // connect / how does this team talk?" before the user *can* connect, so
+  // they never load a driver or open the backend. Handle before createBackend().
   if (command === 'describe') return cmdDescribe(cfg);
+  if (command === 'conventions') return await cmdConventions(cfg);
 
   const backend = await createBackend(cfg.backendUri);
   const bus = new Bus(backend);
@@ -91,6 +97,8 @@ async function main(argv: string[]): Promise<number> {
         return await cmdChannels(backend, cfg);
       case 'purge':
         return await cmdPurge(backend, cfg, flags.olderThan, flags.dryRun);
+      case 'log':
+        return await cmdLog(backend, cfg, flags.thread, flags.limit);
       default:
         fail(`unknown command "${command}". Run with --help.`);
         return 1;
@@ -226,6 +234,82 @@ function messageTimestamp(key: string): number | null {
   const file = key.slice(key.lastIndexOf('/') + 1);
   const m = /^0*(\d+)-/.exec(file);
   return m ? Number(m[1]) : null;
+}
+
+async function cmdConventions(cfg: ResolvedConfig): Promise<number> {
+  const { conventions, backend, source } = await loadConventions();
+  if (cfg.json) {
+    emit({ source, backend: backend ?? null, conventions });
+    return 0;
+  }
+  process.stdout.write(
+    [
+      `source     ${source ?? 'built-in defaults (override with .agentcomm.json or .agentcomm.yaml)'}`,
+      ...(backend ? [`backend    ${backend} (project default from config file)`] : []),
+      `lobby      ${conventions.lobby} — register there, announce which topic channels you're joining`,
+      `topics     ${conventions.topicStyle} — "work on x" ⇒ channel x in that style`,
+      `artifacts  issue → ${conventions.artifactChannels.issue}, pr → ${conventions.artifactChannels.pr}`,
+      `subjects   ${conventions.subjects.join(', ')}`,
+      '',
+    ].join('\n'),
+  );
+  return 0;
+}
+
+async function cmdLog(
+  backend: Awaited<ReturnType<typeof createBackend>>,
+  cfg: ResolvedConfig,
+  thread: string | undefined,
+  limit = 50,
+): Promise<number> {
+  // The conversation = pending inbox mail + the read/ archive, across ALL
+  // recipients, in send order. Timestamps come from the keys' seq prefix, so
+  // sorting and --limit slicing happen BEFORE any message body is fetched —
+  // a catch-up read costs O(limit) gets, not O(history).
+  const entries: { key: string; state: 'pending' | 'archived'; ts: number }[] = [];
+  for (const [prefix, state] of [
+    ['inbox/', 'pending'],
+    ['read/', 'archived'],
+  ] as const) {
+    for (const key of await backend.list(prefix)) {
+      if (!key.endsWith('.json')) continue;
+      const ts = messageTimestamp(key);
+      if (ts !== null) entries.push({ key, state, ts });
+    }
+  }
+  entries.sort((a, b) => a.ts - b.ts || a.key.localeCompare(b.key));
+
+  const out: (Message & { state: 'pending' | 'archived' })[] = [];
+  // Over-fetch only when filtering by thread (we can't know a message's
+  // thread from its key); otherwise slice strictly to the limit.
+  const candidates = thread ? entries : entries.slice(-Math.max(0, limit));
+  for (const { key, state } of candidates) {
+    try {
+      const msg = JSON.parse((await backend.get(key)).toString('utf8')) as Message;
+      if (thread && msg.thread !== thread) continue;
+      out.push({ ...msg, state });
+    } catch {
+      continue;
+    }
+  }
+  const shown = out.slice(-Math.max(0, limit));
+
+  if (cfg.json) {
+    emit(shown);
+    return 0;
+  }
+  if (shown.length === 0) {
+    process.stdout.write(thread ? `(no messages on thread ${thread})\n` : '(no messages on this channel)\n');
+    return 0;
+  }
+  for (const m of shown) {
+    const subj = m.subject ? ` [${m.subject}]` : '';
+    const thr = m.thread ? ` (thread ${m.thread})` : '';
+    process.stdout.write(`${m.state === 'pending' ? '●' : '○'} ${m.ts}  ${m.from} → ${m.to}${subj}${thr}\n`);
+    process.stdout.write(`  ${m.body.split('\n').join('\n  ')}\n`);
+  }
+  process.stdout.write(`— ${shown.length} message${shown.length === 1 ? '' : 's'} (● pending, ○ archived)\n`);
+  return 0;
 }
 
 async function cmdRegister(bus: Bus, cfg: ResolvedConfig): Promise<number> {
