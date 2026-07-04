@@ -5,7 +5,8 @@ import { S3Backend } from './s3.js';
 import { GCSBackend } from './gcs.js';
 import { PostgresBackend } from './postgres.js';
 import { GithubBackend } from './github.js';
-export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend, GithubBackend };
+import { GitBackend } from './git.js';
+export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend, GithubBackend, GitBackend };
 /** Builds a {@link Backend} from a full backend URI (including its scheme). */
 export type BackendFactory = (uri: string) => Promise<Backend>;
 /**

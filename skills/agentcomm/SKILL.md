@@ -32,6 +32,7 @@ before sending anything:
 | --- | --- | --- |
 | Same machine, just trying this out | `file:///tmp/agentcomm` (or any shared dir) | works with **zero dependencies** — default if nothing else is specified |
 | Collaborating on a GitHub repo (any mix of laptops, CI, cloud agents) | `github://owner/repo` | **zero setup** when `gh` is logged in or `GITHUB_TOKEN` is set — the repo itself is the bus; messages are commits on an orphan branch, visible on github.com |
+| Any OTHER git host (GitLab, Gitea, Bitbucket, private server) — or when you want atomic `claim` on a repo bus | `git+ssh://git@host/owner/repo.git` (also `git+https://`, `git+file://`; `?channel=<name>` carves channels) | needs only the `git` binary + git's existing auth (SSH keys/credential helper); no rate limits; `claim` works (push is a compare-and-swap) |
 | Same machine, multiple processes writing concurrently | `sqlite:///tmp/agentcomm/bus.db` (add `?channel=<name>` to carve isolated channels from one file) | requires `npm install better-sqlite3` in the working project; falls back with a clear error if missing |
 | Different machines/containers, need a shared store but not push/claim | `s3://bucket/prefix` or `gs://bucket/prefix` | requires the matching cloud SDK installed |
 | Different machines/containers, want atomic claims and instant push | `postgres://user:pass@host:5432/db` (add `?channel=<name>` to carve isolated channels from one database) | requires `npm install pg`; `wait` resolves within ~ms of a `send` instead of polling |

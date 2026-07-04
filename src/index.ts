@@ -12,6 +12,7 @@ export {
   S3Backend,
   GCSBackend,
   GithubBackend,
+  GitBackend,
 } from './backends/index.js';
 export { resolveGithubToken } from './backends/github.js';
 export type { BackendFactory, BackendInfo } from './backends/index.js';

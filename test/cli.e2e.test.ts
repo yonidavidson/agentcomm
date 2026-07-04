@@ -168,6 +168,6 @@ describe('CLI e2e (sqlite backend)', () => {
   it('an unknown scheme lists the currently registered ones in the error', async () => {
     const r = await run(['inbox', '--as', 'alice', '--backend', 'redis://localhost']);
     expect(r.code).toBe(1);
-    expect(r.stderr).toMatch(/Known schemes: file, github, gs, postgres, postgresql, s3, sqlite/);
+    expect(r.stderr).toMatch(/Known schemes: file, git\+file, git\+http, git\+https, git\+ssh, github, gs, postgres, postgresql, s3, sqlite/);
   });
 });
