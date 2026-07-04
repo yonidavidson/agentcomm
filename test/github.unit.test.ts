@@ -95,6 +95,55 @@ describe('github HTTP behavior (mocked fetch)', () => {
     expect(calls.filter((c) => c.startsWith('PUT')).length).toBe(2);
   });
 
+  it('read-your-write: a stale ref lookup after our own commit is overruled via compare', async () => {
+    // put commits 'new1'; the subsequent ref lookup still serves stale
+    // 'old0'; compare says old0 is BEHIND new1 → the read pins to new1.
+    const contentReads: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (method === 'PUT') return jsonRes(201, { commit: { sha: 'new1' } });
+        if (url.includes('/git/ref/')) return jsonRes(200, { object: { sha: 'old0' } });
+        if (url.includes('/compare/new1...old0')) return jsonRes(200, { status: 'behind' });
+        if (url.includes('/contents/')) {
+          const ref = /[?&]ref=([^&]+)/.exec(url)?.[1] ?? '';
+          contentReads.push(ref);
+          return ref === 'new1' ? new Response('hello v2', { status: 200 }) : jsonRes(404);
+        }
+        return jsonRes(404);
+      }),
+    );
+    const b = await GithubBackend.open('acme', 'webapp');
+    await b.put('k', Buffer.from('hello v2'));
+    expect((await b.get('k')).toString()).toBe('hello v2');
+    // The pre-write stat may read at old0 (nothing of ours to protect yet);
+    // every read AFTER our commit must pin to new1, never the stale sha.
+    expect(contentReads.at(-1)).toBe('new1');
+  });
+
+  it('Bus.wait honors the backend pollIntervalMs hint instead of hammering every 250ms', async () => {
+    const { Bus } = await import('../src/bus.js');
+    let lists = 0;
+    const fake = {
+      pollIntervalMs: 1000,
+      put: async () => undefined,
+      get: async () => Buffer.alloc(0),
+      list: async () => {
+        lists++;
+        return [];
+      },
+      delete: async () => undefined,
+      exists: async () => false,
+      move: async () => undefined,
+    };
+    const t0 = Date.now();
+    const msgs = await new Bus(fake).wait('bob', 1500);
+    expect(msgs).toEqual([]);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(1400);
+    expect(lists).toBeLessThanOrEqual(4); // 250ms polling would be ~7
+  });
+
   it('an exhausted rate limit surfaces a pointed error with the reset horizon', async () => {
     vi.stubGlobal(
       'fetch',

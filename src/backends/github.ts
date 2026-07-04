@@ -20,6 +20,20 @@ const execFileP = promisify(execFile);
  * 5,000 calls/hour shared account-wide) — poll gently.
  */
 export class GithubBackend implements Backend {
+  /**
+   * Bus.wait polls `list()` — at its 250ms default this backend would burn
+   * ~8 API calls/second of a 5,000/hr shared quota. Declared hint; Bus
+   * honors it unless the caller passes an explicit interval.
+   */
+  readonly pollIntervalMs = 3000;
+
+  /**
+   * The newest commit WE created (from put/delete responses). Ref lookups
+   * can lag even a fresh commit; when they disagree with this, one compare
+   * call decides which is newer — read-your-write must hold.
+   */
+  private lastWriteTip: string | null = null;
+
   private constructor(
     private readonly owner: string,
     private readonly repo: string,
@@ -96,10 +110,29 @@ export class GithubBackend implements Backend {
     );
     if (res.status === 404) {
       res.body?.cancel().catch(() => {});
-      return null;
+      // The ref can 404 briefly right after WE created the branch — our own
+      // commit is then the only valid read point.
+      return this.lastWriteTip;
     }
     if (!res.ok) throw await apiError(res, `resolve branch ${this.branch}`);
-    return ((await res.json()) as { object: { sha: string } }).object.sha;
+    const refSha = ((await res.json()) as { object: { sha: string } }).object.sha;
+
+    if (this.lastWriteTip === null || refSha === this.lastWriteTip) return refSha;
+    // Mismatch: is the ref result newer than our last write, or stale?
+    const cmp = await this.api(
+      'GET',
+      `/repos/${this.owner}/${this.repo}/compare/${this.lastWriteTip}...${refSha}?${this.bust()}`,
+    );
+    if (cmp.ok) {
+      const status = ((await cmp.json()) as { status: string }).status;
+      if (status === 'ahead' || status === 'identical') {
+        this.lastWriteTip = refSha; // monotonic advance — stop comparing
+        return refSha;
+      }
+      return this.lastWriteTip; // ref lookup is behind our own write
+    }
+    cmp.body?.cancel().catch(() => {});
+    return this.lastWriteTip; // can't tell — our own write is a safe floor
   }
 
   /** Current blob sha of a key on the bus branch, or null when absent. */
@@ -132,7 +165,8 @@ export class GithubBackend implements Backend {
         ...(sha ? { sha } : {}),
       });
       if (res.ok) {
-        res.body?.cancel().catch(() => {});
+        const json = (await res.json()) as { commit?: { sha?: string } };
+        if (json.commit?.sha) this.lastWriteTip = json.commit.sha;
         return;
       }
       if (res.status === 404) {
@@ -186,6 +220,7 @@ export class GithubBackend implements Backend {
     }
     if (!ref.ok) throw await apiError(ref, `create branch ${this.branch}`);
     ref.body?.cancel().catch(() => {});
+    this.lastWriteTip = commitSha;
     return true;
   }
 
@@ -228,7 +263,12 @@ export class GithubBackend implements Backend {
         sha,
         branch: this.branch,
       });
-      if (res.ok || res.status === 404) {
+      if (res.ok) {
+        const json = (await res.json()) as { commit?: { sha?: string } };
+        if (json.commit?.sha) this.lastWriteTip = json.commit.sha;
+        return;
+      }
+      if (res.status === 404) {
         res.body?.cancel().catch(() => {});
         return;
       }

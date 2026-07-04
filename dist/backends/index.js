@@ -139,7 +139,7 @@ const GITHUB_INFO = {
     notes: [
         'Zero dependencies — token from AGENTCOMM_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN or `gh auth token`.',
         'No claim — moves are copy+commit, not atomic; give each consumer its own inbox.',
-        'wait polls — poll gently, the REST quota (5,000/hr) is shared account-wide.',
+        'wait polls at a gentle ~3s cadence — the REST quota (5,000/hr) is shared account-wide.',
         'Every message is a commit: browse the bus branch on github.com to watch the conversation.',
     ],
 };

@@ -20,6 +20,18 @@ export declare class GithubBackend implements Backend {
     private readonly branch;
     private readonly basePrefix;
     private readonly token;
+    /**
+     * Bus.wait polls `list()` — at its 250ms default this backend would burn
+     * ~8 API calls/second of a 5,000/hr shared quota. Declared hint; Bus
+     * honors it unless the caller passes an explicit interval.
+     */
+    readonly pollIntervalMs = 3000;
+    /**
+     * The newest commit WE created (from put/delete responses). Ref lookups
+     * can lag even a fresh commit; when they disagree with this, one compare
+     * call decides which is newer — read-your-write must hold.
+     */
+    private lastWriteTip;
     private constructor();
     static open(owner: string, repo: string, basePrefix?: string, branch?: string): Promise<GithubBackend>;
     private k;
