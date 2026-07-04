@@ -111,7 +111,17 @@ maybeDescribe('GithubBackend (requires a writable repo — in CI: this one)', ()
     const base = `disc-${randomUUID().slice(0, 8)}`;
     const teamA = new Bus(await freshBackend(`${base}/team-a`));
     await teamA.register('alice');
-    const found = await discoverChannels(await freshBackend(base));
+
+    // The discoverer is a FRESH backend instance — an independent reader.
+    // Cross-instance reads on GitHub are eventually consistent (the
+    // read-your-write pinning only protects the writer's own instance), so
+    // retry briefly, exactly like a real polling consumer would.
+    const discoverer = await freshBackend(base);
+    let found: Awaited<ReturnType<typeof discoverChannels>> = [];
+    for (let i = 0; i < 10 && found.length === 0; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+      found = await discoverChannels(discoverer);
+    }
     expect(found).toEqual([{ prefix: 'team-a', agents: 1 }]);
   }, 120000);
 

@@ -141,6 +141,7 @@ const GITHUB_INFO = {
         'No claim — moves are copy+commit, not atomic; give each consumer its own inbox.',
         'wait polls at a gentle ~3s cadence — the REST quota (5,000/hr) is shared account-wide.',
         'Every message is a commit: browse the bus branch on github.com to watch the conversation.',
+        'The bus branch is disposable — delete it for a full reset (history included); it is recreated on the next write.',
     ],
 };
 registerBackend('github', (uri) => {

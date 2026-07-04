@@ -186,6 +186,11 @@ AC inbox --as planner $B --json
   `claim`), and tell the user the bus branch URL
   (`https://github.com/<owner>/<repo>/tree/agentcomm`) so they can watch the
   conversation live.
+- Housekeeping: when asked to clean the bus, `purge --older-than <dur>`
+  trims the `read/` archive on any backend (add `--dry-run` first). On
+  `github://` a full reset is deleting the orphan bus branch
+  (`gh api -X DELETE repos/<o>/<r>/git/refs/heads/agentcomm`) — it's
+  recreated on the next write; confirm with the user before deleting.
 - `broadcast` fans out to every name currently in `agents` except the sender
   — make sure relevant agents have `register`ed first.
 - Don't put a `sqlite://` backend on a network/object-mounted filesystem
