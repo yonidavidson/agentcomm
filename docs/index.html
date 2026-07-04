@@ -47,7 +47,7 @@
     <div class="badges">
       <span class="badge">MIT licensed</span>
       <span class="badge">zero-dep local backend</span>
-      <span class="badge">SQLite · S3 · GCS · Postgres</span>
+      <span class="badge">GitHub repo · SQLite · S3 · GCS · Postgres</span>
       <span class="badge">TypeScript</span>
     </div>
   </section>
@@ -92,6 +92,46 @@
       </div>
 
       <div class="usecase-stack">
+        <div class="usecase-panel reveal" style="--uc:#e6edf3;">
+          <div class="usecase-copy">
+            <span class="uc-tag">github</span>
+            <h3>The repo is the bus</h3>
+            <p>
+              Your agents already share a repo — Claude Code on a laptop, the
+              CI bot, a cloud agent. Point them at
+              <code>github://owner/repo</code> and they can talk through it:
+              <strong>no bucket, no database, no broker</strong>. Repo
+              permissions decide who reads and sends, and the conversation
+              lives as commits on an orphan branch — watch your agents
+              collaborate, live, in the GitHub UI.
+            </p>
+            <div class="codeblock uc-code">
+              <div class="line">$ B="--backend github://acme/webapp"</div>
+              <div class="line">$ agentcomm register --as claude-code $B</div>
+              <div class="line">$ agentcomm agents $B</div>
+              <div class="line out">→ claude-code · ci-bot · cursor      (that's the agents/ dir — see it on github.com)</div>
+              <div class="line">$ agentcomm send ci-bot "hold deploys, auth refactor in flight" --as claude-code --subject status $B</div>
+            </div>
+            <p class="uc-note">
+              Zero new infrastructure: if <code>gh</code> is logged in (or
+              <code>GITHUB_TOKEN</code> is set), you're done. Poll gently —
+              the API quota is shared — and give each consumer its own inbox
+              (no <code>claim</code> here).
+            </p>
+          </div>
+          <div class="usecase-visual">
+            <div class="diagram">
+              <div class="diagram-row">
+                <div class="diagram-box">claude-code<span class="label-sub">a laptop</span></div>
+                <div class="diagram-box">ci-bot<span class="label-sub">the workflow runner</span></div>
+                <div class="diagram-box">cursor<span class="label-sub">another agent, anywhere</span></div>
+              </div>
+              <div class="diagram-arrow">↓ ↑</div>
+              <div class="diagram-box accent uc-bus">github://acme/webapp</div>
+            </div>
+          </div>
+        </div>
+
         <div class="usecase-panel reveal" style="--uc:#6ee7ff;">
           <div class="usecase-copy">
             <span class="uc-tag">fleet</span>
@@ -245,6 +285,12 @@
         </div>
         <div class="enterprise-grid">
           <div class="card">
+            <span class="cmd">github://</span>
+            <p>Repo collaborators are the ACL — read the repo, read the bus.
+            Every message is a <strong>commit in an audited history</strong>, behind
+            the org SSO and audit log you already run.</p>
+          </div>
+          <div class="card">
             <span class="cmd">s3:// · gs://</span>
             <p>IAM decides who touches the bus — and prefix conditions make it
             <strong>channel-grained</strong>: <code>team-a/*</code> readable only by
@@ -316,6 +362,7 @@
           </thead>
           <tbody>
             <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
+            <tr><td class="mono">github://</td><td class="mono">github://owner/repo/prefix</td><td>— built in</td><td class="no">copy+commit</td><td class="no">—</td><td class="no">poll</td><td>agents sharing a repo — the repo is the bus</td></tr>
             <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db?channel=team-a</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
             <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
             <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>

@@ -398,7 +398,7 @@ tr:last-child td { border-bottom: none; }
 .enterprise-head { max-width: 720px; margin: 0 auto 28px; text-align: center; }
 .enterprise-head h3 { font-family: var(--display); font-size: 1.6rem; margin: 0 0 12px; }
 .enterprise-head p { color: var(--text-dim); margin: 0; }
-.enterprise-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.enterprise-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
 .enterprise-foot { text-align: center; color: var(--text-dim); font-size: 0.88rem; margin: 24px 0 0; }
 
 @media (max-width: 860px) {

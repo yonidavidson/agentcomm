@@ -4,7 +4,8 @@ import { SqliteBackend } from './sqlite.js';
 import { S3Backend } from './s3.js';
 import { GCSBackend } from './gcs.js';
 import { PostgresBackend } from './postgres.js';
-export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend };
+import { GithubBackend } from './github.js';
+export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend, GithubBackend };
 const registry = new Map();
 /**
  * Register a backend factory for a URI scheme, e.g. `registerBackend('redis',
@@ -127,6 +128,45 @@ registerBackend('gs', (uri) => {
     const { bucket, prefix } = bucketAndPrefix(uri, 'gs');
     return GCSBackend.open(bucket, prefix);
 }, objectStoreInfo('gs', '@google-cloud/storage'));
+const GITHUB_INFO = {
+    kind: 'github-repo',
+    capabilities: { claim: false, push: false },
+    channel: {
+        rule: 'Every path prefix under the repo is an isolated channel — append segments to carve one (nesting is safe). ?branch=<name> selects a different bus branch (default: agentcomm).',
+        template: 'github://<owner>/<repo>/<channel>',
+        example: 'github://acme/webapp/team-a',
+    },
+    notes: [
+        'Zero dependencies — token from AGENTCOMM_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN or `gh auth token`.',
+        'No claim — moves are copy+commit, not atomic; give each consumer its own inbox.',
+        'wait polls — poll gently, the REST quota (5,000/hr) is shared account-wide.',
+        'Every message is a commit: browse the bus branch on github.com to watch the conversation.',
+    ],
+};
+registerBackend('github', (uri) => {
+    const rest0 = uri.slice('github://'.length);
+    const q = rest0.indexOf('?');
+    let branch = 'agentcomm';
+    const rest = q === -1 ? rest0 : rest0.slice(0, q);
+    if (q !== -1) {
+        const params = new URLSearchParams(rest0.slice(q + 1));
+        if (params.has('channel')) {
+            throw new Error('agentcomm: github:// carves channels by path — append /<channel> to the URI instead of ?channel=.');
+        }
+        branch = params.get('branch') ?? branch;
+        params.delete('branch');
+        const leftover = [...params.keys()];
+        if (leftover.length > 0) {
+            throw new Error(`agentcomm: unsupported query parameter(s) ${leftover.join(', ')} — only ?branch=<name> is recognized on github://.`);
+        }
+    }
+    const segs = rest.split('/').filter(Boolean);
+    if (segs.length < 2) {
+        throw new Error('agentcomm: github:// needs at least owner/repo, e.g. github://acme/webapp[/channel]');
+    }
+    const [owner, repo, ...prefix] = segs;
+    return GithubBackend.open(owner, repo, prefix.join('/'), branch);
+}, GITHUB_INFO);
 const postgresFactory = (uri) => {
     // Lift ONLY the channel param out of the URI; everything else (sslmode,
     // application_name, ...) must reach pg untouched.

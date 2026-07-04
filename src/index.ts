@@ -11,7 +11,9 @@ export {
   SqliteBackend,
   S3Backend,
   GCSBackend,
+  GithubBackend,
 } from './backends/index.js';
+export { resolveGithubToken } from './backends/github.js';
 export type { BackendFactory, BackendInfo } from './backends/index.js';
 export { discoverChannels } from './channels.js';
 export type { ChannelSummary } from './channels.js';
