@@ -23,7 +23,10 @@ works identically — same commands, same flags.)
 ## Picking a backend (do this first)
 
 Every agent that should be able to talk to each other must point at the
-**same backend**. Decide this before sending anything:
+**same backend**. In a git repo with a github origin (and `gh` auth or a
+token), the default already IS the repo bus — running with no `--backend`
+auto-selects `github://owner/repo` and says so on stderr. Otherwise, decide
+before sending anything:
 
 | Situation | Backend | Setup |
 | --- | --- | --- |

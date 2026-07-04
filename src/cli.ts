@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { backendInfo, createBackend, schemeForUri } from './backends/index.js';
+import { detectRepoBus } from './backends/autodetect.js';
 import { discoverChannels } from './channels.js';
 import { loadConventions } from './conventions.js';
 import { Bus } from './bus.js';
@@ -32,8 +33,11 @@ Commands:
                            defaults ⊕ .agentcomm.json/.yaml override file)
 
 Flags:
-  --backend <uri>          file:// | sqlite:// | s3:// | gs:// | bare path
-                           (env AGENTCOMM_BACKEND; default file://./.agentcomm)
+  --backend <uri>          file:// | github:// | sqlite:// | s3:// | gs:// |
+                           postgres:// | bare path. Default resolution:
+                           --backend > AGENTCOMM_BACKEND > .agentcomm config >
+                           github://owner/repo (auto-detected inside a git repo
+                           with a github origin + token) > file://./.agentcomm
   --as <name>              Acting agent (env AGENTCOMM_AGENT)
   --subject <text>         Message subject (send/broadcast)
   --thread <id>            Thread id (send/broadcast)
@@ -66,6 +70,27 @@ async function main(argv: string[]): Promise<number> {
   }
 
   await loadBackendPlugins();
+
+  // Backend resolution beyond flag/env: a project config file may pin one,
+  // and inside a git repo with a github origin (+ resolvable token) the repo
+  // itself is the default bus — agents are on the network just by running.
+  // Explicit choices always win; both auto paths announce themselves on
+  // stderr so nobody talks on a bus they didn't know they picked.
+  if (!flags.backend && !process.env.AGENTCOMM_BACKEND) {
+    const fromConfig = (await loadConventions().catch(() => null))?.backend;
+    if (fromConfig) {
+      cfg.backendUri = fromConfig;
+      process.stderr.write(`agentcomm: using ${fromConfig} (project default from the .agentcomm config file)\n`);
+    } else {
+      const detected = await detectRepoBus();
+      if (detected) {
+        cfg.backendUri = detected;
+        process.stderr.write(
+          `agentcomm: using ${detected} (auto-detected from the git remote; set AGENTCOMM_BACKEND or --backend to override)\n`,
+        );
+      }
+    }
+  }
 
   // describe and conventions are static by design — they answer "how would I
   // connect / how does this team talk?" before the user *can* connect, so

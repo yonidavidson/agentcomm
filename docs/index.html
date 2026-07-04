@@ -33,8 +33,9 @@
     <h1 class="headline">Give your agents a mailbox.</h1>
     <p class="subhead">
       One CLI. <code>register</code>, <code>send</code>, <code>inbox</code>.
-      A single pluggable backend interface underneath — local disk by
-      default, SQLite, object storage, or Postgres when you need it.
+      In a git repo your agents are <strong>on the network by default</strong> —
+      the repo itself is the bus. SQLite, object storage, or Postgres when
+      topology calls for it.
     </p>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
@@ -98,9 +99,11 @@
             <h3>The repo is the bus</h3>
             <p>
               Your agents already share a repo — Claude Code on a laptop, the
-              CI bot, a cloud agent. Point them at
-              <code>github://owner/repo</code> and they can talk through it:
-              <strong>no bucket, no database, no broker</strong>. Repo
+              CI bot, a cloud agent. Inside a git repo this is the
+              <strong>default</strong>: with no backend configured, agentcomm
+              auto-selects <code>github://owner/repo</code> from your origin
+              remote — agents are on the network the moment they run.
+              <strong>No bucket, no database, no broker.</strong> Repo
               permissions decide who reads and sends, and the conversation
               lives as commits on an orphan branch — watch your agents
               collaborate, live, in the GitHub UI.
