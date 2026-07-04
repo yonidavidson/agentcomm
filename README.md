@@ -124,7 +124,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Flag               | Meaning                                                        |
 | ------------------ | -------------------------------------------------------------- |
-| `--backend <uri>`  | Backend URI (env `AGENTCOMM_BACKEND`; default `file://./.agentcomm`). |
+| `--backend <uri>`  | Backend URI. Default resolution: flag > `AGENTCOMM_BACKEND` > `.agentcomm` config > `github://owner/repo` auto-detected in a git repo > `file://./.agentcomm`. |
 | `--as <name>`      | Acting agent (env `AGENTCOMM_AGENT`).                          |
 | `--subject <text>` | Message subject (`send`/`broadcast`).                          |
 | `--thread <id>`    | Thread id (`send`/`broadcast`).                                |
@@ -136,6 +136,13 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `--json`           | Machine-readable JSON output (available on every command).     |
 
 ## Backends
+
+> **In a git repo, you're already on the network.** With no backend
+> configured, agentcomm auto-selects `github://owner/repo` from your `origin`
+> remote (when a GitHub token is available) — every agent running in the repo
+> joins the same bus automatically, and a stderr notice tells you it happened.
+> Resolution order: `--backend` > `AGENTCOMM_BACKEND` > `.agentcomm` config
+> file > git auto-detect > `file://./.agentcomm`.
 
 Choose transport by **topology** — that's the only fork that matters.
 
@@ -391,7 +398,9 @@ scratch branch, deleted afterwards — gate it with
 it runs against **this repository itself** using the workflow's token.
 
 CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
-all six backends are exercised end-to-end.
+all six backends are exercised end-to-end. What's next lives in the
+[issue tracker](https://github.com/yonidavidson/agentcomm/issues) — currently
+a `gitlab://` sibling backend and a host-agnostic `git://` backend (#23).
 
 The test suite runs the **same backend-contract and bus tests** against
 `LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, `GithubBackend`,
@@ -404,15 +413,6 @@ push via `LISTEN/NOTIFY`, not a poll interval). CLI end-to-end tests cover the
 `wait` exit codes, the `claim` error/empty/success paths, the
 `AGENTCOMM_BACKEND_PLUGINS` loading mechanism, and the missing-driver error
 path.
-
-## Roadmap
-
-The transport stack is complete: six backends, capability interfaces
-(`Claimable`/`Waitable`, feature-detected), channels, self-describing schemes,
-and the `registerBackend()` plugin seam. What's next lives in the
-[issue tracker](https://github.com/yonidavidson/agentcomm/issues) — currently:
-a `gitlab://` sibling backend and a host-agnostic `git://` (any git remote)
-backend (#23).
 
 ## License
 

@@ -75,7 +75,7 @@ describe('CLI log (read a channel conversation)', () => {
     // Non-consuming: pending mail is still deliverable afterwards.
     const inbox = await run(['inbox', '--as', 'carol', ...B, '--json']);
     expect((JSON.parse(inbox.stdout) as { body: string }[]).map((m) => m.body)).toEqual(['second']);
-  });
+  }, 30000);
 
   it('--thread filters and --limit keeps the most recent N in chronological order', async () => {
     const B = ['--backend', `file://${await mkTmp()}`];
@@ -89,7 +89,7 @@ describe('CLI log (read a channel conversation)', () => {
 
     const limited = JSON.parse((await run(['log', '--limit', '3', ...B, '--json'])).stdout) as LoggedMsg[];
     expect(limited.map((m) => m.body)).toEqual(['other 4', 't-msg 5', 'other 5']);
-  });
+  }, 30000); // ~12 sequential CLI spawns — generous for a loaded CI runner
 
   it('empty channel logs cleanly, exit 0', async () => {
     const r = await run(['log', '--backend', `file://${await mkTmp()}`]);
