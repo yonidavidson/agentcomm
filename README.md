@@ -1,5 +1,7 @@
 # agentcomm
 
+**🌐 Website: [yonidavidson.github.io/agentcomm](https://yonidavidson.github.io/agentcomm/)** — use cases, backends, and a live demo where two agents' conversation [is a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm).
+
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
 where the messages actually live. Local runs need **zero dependencies**; cloud
