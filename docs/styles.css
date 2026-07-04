@@ -423,6 +423,30 @@ footer a { color: var(--text-dim); }
 footer a:hover { color: var(--text); }
 .footer-links { display: flex; gap: 18px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap; }
 
+/* ---- mobile ---- */
+body { overflow-x: clip; } /* the page never scrolls sideways; wide content scrolls in its own container */
+
+@media (max-width: 720px) {
+  nav.topbar { display: block; text-align: center; padding: 10px 12px; }
+  nav.topbar .brand { justify-content: center; margin-bottom: 6px; }
+  /* Inline flow instead of flex: anchors wrap unconditionally on narrow screens. */
+  nav.topbar .nav-links { display: block; font-size: 0.85rem; line-height: 1.9; }
+  nav.topbar .nav-links a { margin: 0 7px; white-space: nowrap; }
+  .wrap { padding: 0 16px; }
+  section { padding: 56px 0; }
+  .hero { min-height: auto; padding: 64px 16px 48px; }
+  .subhead { margin-bottom: 28px; }
+  .codeblock { max-width: 100%; font-size: 0.78rem; }
+  .section-head { margin-bottom: 34px; }
+  .plugin-panel { padding: 24px 18px; gap: 24px; }
+  .usecase-panel { padding: 22px 16px; gap: 22px; }
+  .usecase-stack { margin-bottom: 36px; }
+  .enterprise-band { padding: 26px 18px; }
+  .enterprise-head h3 { font-size: 1.35rem; }
+  .diagram-box { min-width: 100px; padding: 10px 12px; font-size: 0.76rem; }
+  .uc-code { font-size: 0.72rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
