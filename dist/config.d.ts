@@ -20,6 +20,7 @@ export interface ParsedFlags {
     timeout?: number;
     olderThan?: string;
     dryRun: boolean;
+    limit?: number;
     _: string[];
 }
 /**

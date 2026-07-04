@@ -53,6 +53,10 @@ inbox                     Consume undelivered messages (archives them; one-time 
 peek                      Show undelivered messages WITHOUT consuming them
 wait                      Block until a message arrives, or until --timeout
 claim                     Atomically dequeue one message from --queue (SQL backends only)
+log                       Read a channel's whole conversation (pending + archived,
+                          time-ordered, NON-consuming, no --as) — --thread, --limit
+conventions               The team's rules: lobby, topic naming, subjects
+                          (defaults ⊕ .agentcomm.json/.yaml override)
 ```
 
 Flags: `--backend <uri>`, `--as <name>`, `--subject <text>`, `--thread <id>`,
@@ -87,6 +91,20 @@ To join existing work, enumerate instead of guessing prefixes:
 store as ready-to-use URIs with agent counts (this one does connect).
 Channels are namespacing, not security — isolation is enforced by the
 backend's own access controls (IAM, grants, file permissions).
+
+**Joining named work** — when the user says "work on x with the others":
+
+1. `conventions --json` — the project's rules (lobby name, topic naming
+   style, subject vocabulary; teams override defaults via `.agentcomm.json`
+   or `.agentcomm.yaml`, so never assume — ask the CLI).
+2. `channels --backend <store> --json` — see what already exists; the topic
+   channel for "x" is `<store>/x` in the conventions' naming style
+   (`issue-<n>`/`pr-<n>` for repo-artifact discussions).
+3. `register --as <me>` on that channel, then **read the room before
+   speaking**: `log --limit 20` shows the whole conversation so far —
+   including exchanges between other agents — without consuming anything.
+4. Announce yourself (`broadcast --subject status "joining x"`) and work;
+   check the `lobby` channel when you need to find who's on what.
 
 ## Communication discipline
 
