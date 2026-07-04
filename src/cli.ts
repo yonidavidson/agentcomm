@@ -174,9 +174,10 @@ function cmdDescribe(cfg: ResolvedConfig): number {
 async function cmdChannels(backend: Awaited<ReturnType<typeof createBackend>>, cfg: ResolvedConfig): Promise<number> {
   const found = await discoverChannels(backend);
   const scheme = schemeForUri(cfg.backendUri);
-  // Path-carved schemes append the prefix; SQL schemes address carved
-  // channels via ?channel=<name> (their keys live under channels/<name>/).
-  const sqlScheme = scheme === 'sqlite' || scheme === 'postgres' || scheme === 'postgresql';
+  // Path-carved schemes append the prefix; param-carved schemes (SQL + git+)
+  // address carved channels via ?channel=<name> (keys under channels/<name>/).
+  const sqlScheme =
+    scheme === 'sqlite' || scheme === 'postgres' || scheme === 'postgresql' || scheme.startsWith('git+');
   const sqlChannelUri = (prefix: string): string | null => {
     const m = /^channels\/([^/]+)$/.exec(prefix);
     if (!m) return null; // manually nested beyond the ?channel= convention

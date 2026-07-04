@@ -6,8 +6,9 @@ import { S3Backend } from './s3.js';
 import { GCSBackend } from './gcs.js';
 import { PostgresBackend } from './postgres.js';
 import { GithubBackend } from './github.js';
+import { GitBackend } from './git.js';
 
-export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend, GithubBackend };
+export { LocalBackend, SqliteBackend, S3Backend, GCSBackend, PostgresBackend, GithubBackend, GitBackend };
 
 /** Builds a {@link Backend} from a full backend URI (including its scheme). */
 export type BackendFactory = (uri: string) => Promise<Backend>;
@@ -236,6 +237,49 @@ registerBackend(
   },
   GITHUB_INFO,
 );
+
+const GIT_INFO: BackendInfo = {
+  kind: 'git-remote',
+  capabilities: { claim: true, push: false },
+  channel: {
+    rule: 'The URL path is the repo, so channels ride a param: append ?channel=<name> to carve isolated channels (omitting it is the root channel). ?branch=<name> picks the bus branch (default: agentcomm).',
+    template: 'git+ssh://git@<host>/<owner>/<repo>.git?channel=<channel>',
+    example: 'git+ssh://git@gitlab.com/acme/webapp.git?channel=team-a',
+  },
+  notes: [
+    'Requires the git binary — no npm packages; auth is whatever git already has (SSH keys, credential helpers).',
+    'Host-agnostic: GitHub, GitLab, Gitea, Bitbucket, private servers, or a plain bare directory (git+file://). No API rate limits.',
+    'move is atomic (one commit) and claim works — git push is a compare-and-swap.',
+    'Keeps a bare cache repo under ~/.cache/agentcomm/git (override: AGENTCOMM_GIT_CACHE_DIR).',
+    'Every message is a commit: the bus branch is browsable on any host UI.',
+  ],
+};
+
+const gitFactory: BackendFactory = (uri) => {
+  const q = uri.indexOf('?');
+  const base = q === -1 ? uri : uri.slice(0, q);
+  let branch = 'agentcomm';
+  let channel = '';
+  if (q !== -1) {
+    const params = new URLSearchParams(uri.slice(q + 1));
+    branch = params.get('branch') ?? branch;
+    channel = params.get('channel') ?? '';
+    if (channel) validateChannelName(channel);
+    params.delete('branch');
+    params.delete('channel');
+    const leftover = [...params.keys()];
+    if (leftover.length > 0) {
+      throw new Error(
+        `agentcomm: unsupported query parameter(s) ${leftover.join(', ')} — git+ backends recognize ?branch= and ?channel=.`,
+      );
+    }
+  }
+  const remote = base.replace(/^git\+/, '');
+  return GitBackend.open(remote, branch, channel);
+};
+for (const scheme of ['git+ssh', 'git+https', 'git+http', 'git+file']) {
+  registerBackend(scheme, gitFactory, GIT_INFO);
+}
 
 const postgresFactory: BackendFactory = (uri) => {
   // Lift ONLY the channel param out of the URI; everything else (sslmode,

@@ -152,6 +152,7 @@ Choose transport by **topology** — that's the only fork that matters.
 | ----------- | ---------------------------- | ---------------------- | :-----------: | :--------------------: | :-----------: | -------------------------------- |
 | **Local**   | `file:///path/dir`, bare dir | — (built in)           | ✅ (rename)   | ❌                     | poll          | dev, single process, zero deps   |
 | **GitHub**  | `github://owner/repo[/prefix]` | — (built in)         | ❌ (copy+commit) | ❌                  | poll          | **agents sharing a repo** — the repo is the bus |
+| **Git (any host)** | `git+ssh://…/repo.git[?channel=x]` | — (git binary) | ✅ (one commit) | ✅ (push CAS)   | poll          | **any git remote** — GitLab, Gitea, private servers |
 | **SQLite**  | `sqlite:///path.db[?channel=x]`, `*.db` | `better-sqlite3` | ✅ (txn)   | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
@@ -249,6 +250,9 @@ postgres://…/db?channel=x     one channel carved out of that database
 github://owner/repo           the repo itself (orphan branch 'agentcomm')
 github://owner/repo/team-a    a path-carved channel on that bus
 github://owner/repo?branch=b  a different bus branch
+git+ssh://git@host/o/r.git    ANY git remote — GitLab, Gitea, private servers
+git+https://host/o/r.git      same over HTTPS; git+file:///path for local bare repos
+git+…/r.git?channel=team-a    param-carved channel (?branch= picks the bus branch)
 ```
 
 The `github://` backend needs **no npm driver at all** — a token from
@@ -257,6 +261,15 @@ enough. Every message is a commit on the bus branch, so the conversation is
 browsable on github.com and repo collaborator permissions are the access
 control. No `claim` (moves are copy+commit); `wait` polls — poll gently, the
 REST quota (5,000/hr) is shared account-wide.
+
+The `git+ssh://` / `git+https://` / `git+file://` backends are the **generic
+plain-git transport**: they drive the `git` binary against any remote, with
+whatever auth git already has (SSH keys, credential helpers) — GitHub,
+GitLab, Gitea, Bitbucket, a private server, or a bare directory. No API, no
+rate limits, and because `git push` is a compare-and-swap, `move` is atomic
+and **`claim` works** — race-free shared queues with zero infrastructure. A
+bare cache repo lives under `~/.cache/agentcomm/git` (override with
+`AGENTCOMM_GIT_CACHE_DIR`).
 
 ### Housekeeping — who cleans the bus, and how
 
