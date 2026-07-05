@@ -1,1 +1,1 @@
-{"version":3,"file":"autodetect.d.ts","sourceRoot":"","sources":["../../src/backends/autodetect.ts"],"names":[],"mappings":"AAMA;;;;;;;GAOG;AACH,wBAAsB,aAAa,CAAC,GAAG,SAAgB,GAAG,OAAO,CAAC,MAAM,GAAG,IAAI,CAAC,CAmB/E"}
+{"version":3,"file":"autodetect.d.ts","sourceRoot":"","sources":["../../src/backends/autodetect.ts"],"names":[],"mappings":"AAMA;;;;;;;;;;GAUG;AACH,wBAAsB,aAAa,CAAC,GAAG,SAAgB,GAAG,OAAO,CAAC,MAAM,GAAG,IAAI,CAAC,CAmC/E"}

@@ -33,11 +33,11 @@ Commands:
                            defaults ⊕ .agentcomm.json/.yaml override file)
 
 Flags:
-  --backend <uri>          file:// | github:// | sqlite:// | s3:// | gs:// |
-                           postgres:// | bare path. Default resolution:
+  --backend <uri>          git+ssh:// | github:// | file:// | sqlite:// |
+                           s3:// | gs:// | postgres:// | bare path. Default:
                            --backend > AGENTCOMM_BACKEND > .agentcomm config >
-                           github://owner/repo (auto-detected inside a git repo
-                           with a github origin + token) > file://./.agentcomm
+                           git+<origin> (probed inside a git repo — any host) >
+                           github:// (token fallback) > file://./.agentcomm
   --as <name>              Acting agent (env AGENTCOMM_AGENT)
   --subject <text>         Message subject (send/broadcast)
   --thread <id>            Thread id (send/broadcast)

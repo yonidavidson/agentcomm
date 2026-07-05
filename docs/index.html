@@ -32,10 +32,9 @@
     <div class="kicker">Install from GitHub · Claude Code plugin</div>
     <h1 class="headline">Give your agents a mailbox.</h1>
     <p class="subhead">
-      One CLI. <code>register</code>, <code>send</code>, <code>inbox</code>.
-      In a git repo your agents are <strong>on the network by default</strong> —
-      the repo itself is the bus. SQLite, object storage, or Postgres when
-      topology calls for it.
+      One CLI: <code>register</code>, <code>send</code>, <code>inbox</code>.
+      In a git repo, agents are <strong>on the network by default</strong> —
+      the repo is the bus.
     </p>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
@@ -48,7 +47,7 @@
     <div class="badges">
       <span class="badge">MIT licensed</span>
       <span class="badge">zero-dep local backend</span>
-      <span class="badge">GitHub repo · SQLite · S3 · GCS · Postgres</span>
+      <span class="badge">any git remote · SQLite · S3 · GCS · Postgres</span>
       <span class="badge">TypeScript</span>
     </div>
   </section>
@@ -86,42 +85,31 @@
         <div class="kicker">What people build with it</div>
         <h2 class="section-title">Two agents or two hundred — same three commands</h2>
         <p class="section-sub">
-          A mailbox is a topology-shaped tool: point everything at one
-          connection string and the fleet exists. No daemon, no broker to
-          operate — the infrastructure is storage you already have.
+          One connection string = a fleet. No daemon, no broker —
+          just storage you already have.
         </p>
       </div>
 
       <div class="usecase-stack">
         <div class="usecase-panel reveal" style="--uc:#e6edf3;">
           <div class="usecase-copy">
-            <span class="uc-tag">github</span>
+            <span class="uc-tag">git</span>
             <h3>The repo is the bus</h3>
             <p>
-              Your agents already share a repo — Claude Code on a laptop, the
-              CI bot, a cloud agent. Inside a git repo this is the
-              <strong>default</strong>: with no backend configured, agentcomm
-              auto-selects <code>github://owner/repo</code> from your origin
-              remote — agents are on the network the moment they run.
-              <strong>No bucket, no database, no broker.</strong> Repo
-              permissions decide who reads and sends, and the conversation
-              lives as commits on an orphan branch — watch your agents
-              collaborate, live, in the GitHub UI.
+              Agents that share a repo already share a bus — <strong>any git
+              remote, zero config</strong>. Repo permissions are the ACL;
+              every message is a commit you can watch.
             </p>
             <div class="codeblock uc-code">
-              <div class="line">$ B="--backend github://acme/webapp"</div>
-              <div class="line">$ agentcomm register --as claude-code $B</div>
-              <div class="line">$ agentcomm agents $B</div>
-              <div class="line out">→ claude-code · ci-bot · cursor      (that's the agents/ dir — see it on github.com)</div>
-              <div class="line">$ agentcomm send ci-bot "hold deploys, auth refactor in flight" --as claude-code --subject status $B</div>
+              <div class="line">$ agentcomm register --as claude-code        # inside the repo — that's it</div>
+              <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git (auto-detected)</div>
+              <div class="line">$ agentcomm send ci-bot "hold deploys" --as claude-code --subject status</div>
             </div>
             <p class="uc-note">
-              Zero new infrastructure: if <code>gh</code> is logged in (or
-              <code>GITHUB_TOKEN</code> is set), you're done. Poll gently —
-              the API quota is shared — and give each consumer its own inbox
-              (no <code>claim</code> here). Proof:
+              Works with GitHub, GitLab, or any host git reaches — atomic
+              <code>claim</code> included. Proof:
               <a href="https://github.com/yonidavidson/agentcomm/tree/agentcomm">a real
-              two-agent exchange living as commits on this repo's own bus branch</a>.
+              exchange on this repo's bus branch</a>.
             </p>
           </div>
           <div class="usecase-visual">
@@ -150,11 +138,9 @@
             <span class="uc-tag">ci/cd</span>
             <h3>Ask your pipeline how it's going</h3>
             <p>
-              Drop a tiny agent into the CD workflow as one more step. It
-              narrates the deploy as it happens — and because it
-              <code>wait</code>s on its inbox between phases, you can ask it
-              questions <em>from your laptop, mid-deploy</em>, and get an
-              answer from inside the runner.
+              One agent step in the workflow. Ask it questions from your
+              laptop — <em>mid-deploy</em> — and it answers from inside the
+              runner.
             </p>
             <div class="codeblock uc-code">
               <div class="line"># inside the CD workflow — the runner already has GITHUB_TOKEN</div>
@@ -166,8 +152,9 @@
               <div class="line out">→ cd-pipeline: "canary healthy, error rate 0.02% — promoting in ~4m"</div>
             </div>
             <p class="uc-note">
-              The runner needs no inbound network at all — it answers through
-              the same store it reads from.
+              No inbound network — the runner answers through the store it
+              reads. <code>github://</code> is the token-mode variant: CI
+              already has <code>GITHUB_TOKEN</code>.
             </p>
           </div>
           <div class="usecase-visual">
@@ -187,22 +174,20 @@
             <span class="uc-tag">pairing</span>
             <h3>Claude Code + Cursor, pairing with zero config</h3>
             <p>
-              Two different AI tools collaborate through the repo they already
-              share — inside a git repo the bus needs <strong>no configuration at
-              all</strong>. Claude Code implements, Cursor's agent reviews —
-              task, ack and result correlated by <code>--thread</code>. The bus
-              is tool-agnostic: anything that can shell out can join.
+              Different tools, same repo, no setup: Claude Code implements,
+              Cursor reviews, <code>--thread</code> keeps it straight.
+              Anything that can shell out can join.
             </p>
             <div class="codeblock uc-code">
               <div class="line">$ cd webapp/            # a git repo — that's the whole setup</div>
               <div class="line">$ agentcomm register --as claude-code ; agentcomm register --as cursor</div>
-              <div class="line out">→ agentcomm: using github://acme/webapp (auto-detected from the git remote)</div>
+              <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git (auto-detected)</div>
               <div class="line">$ agentcomm send cursor "review src/auth.ts" --as claude-code --subject task --thread auth-1</div>
               <div class="line">$ agentcomm wait --as cursor --timeout 60000 --json</div>
             </div>
             <p class="uc-note">
-              Below: a real exchange — two Claude agents briefed, revised and
-              approved a drawing over this exact flow, in under 4 minutes.
+              Below: a real exchange — two agents, one drawing, under 4
+              minutes.
             </p>
           </div>
           <div class="usecase-visual">
@@ -216,12 +201,9 @@
             <span class="uc-tag">fleet</span>
             <h3>Cloud fleet + local workers, one bus</h3>
             <p>
-              CI runners and scheduled cloud agents share a queue with one or
-              two workers on developer laptops. The orchestrator
-              <code>send</code>s tasks, workers <code>claim</code> them
-              atomically (nothing double-processed), everyone reports
-              <code>done</code> back. Cloud and local workers are
-              indistinguishable on the bus.
+              Cloud runners and laptops split one queue with atomic
+              <code>claim</code> — nothing double-processed, everyone reports
+              back.
             </p>
             <div class="codeblock uc-code">
               <div class="line">$ B="--backend postgres://bus@db.internal/agentcomm?channel=build-farm"</div>
@@ -230,9 +212,8 @@
               <div class="line">$ agentcomm send orchestrator "done: lint clean" --as cloud-worker-3 --subject done $B</div>
             </div>
             <p class="uc-note">
-              Postgres for atomic <code>claim</code> + push <code>wait</code>;
-              an object store works too when each worker owns its inbox — see
-              <a href="#backends">the backend tradeoff</a>.
+              Postgres adds push <code>wait</code> — see
+              <a href="#backends">the tradeoffs</a>.
             </p>
           </div>
           <div class="usecase-visual">
@@ -253,12 +234,9 @@
             <span class="uc-tag">edge / iot</span>
             <h3>IoT: ask the far edge a question</h3>
             <p>
-              An alarm hub asks the camera agent at a remote site what it
-              sees and gets an answer on the same thread. A farmer
-              <code>broadcast</code>s one question and every weather sensor's
-              tiny agent reports humidity back. Devices need nothing but
-              <strong>outbound HTTPS to a bucket</strong> — no VPN, no inbound
-              port, no broker; anything that can run a CLI joins the bus.
+              The far edge answers questions over <strong>outbound HTTPS
+              only</strong> — no VPN, no inbound port. Ask one camera;
+              <code>broadcast</code> to every sensor.
             </p>
             <div class="codeblock uc-code">
               <div class="line">$ B="--backend s3://acme-iot/site-7"</div>
@@ -268,9 +246,8 @@
               <div class="line out">→ weather-3: "61%"   → weather-7: "58%"   → weather-12: "64%"</div>
             </div>
             <p class="uc-note">
-              One channel per site (<code>site-7</code>, <code>site-8</code>…),
-              IAM-scoped so a compromised device can reach only its own
-              channel.
+              One IAM-scoped channel per site — a compromised device reaches
+              only its own.
             </p>
           </div>
           <div class="usecase-visual">
@@ -381,8 +358,8 @@
           </thead>
           <tbody>
             <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
-            <tr><td class="mono">github://</td><td class="mono">github://owner/repo/prefix</td><td>— built in</td><td class="no">copy+commit</td><td class="no">—</td><td class="no">poll</td><td>agents sharing a repo — the repo is the bus</td></tr>
             <tr><td class="mono">git+ssh://</td><td class="mono">git+ssh://git@host/o/r.git?channel=x</td><td>— git binary</td><td class="yes">✓ one commit</td><td class="yes">✓ push CAS</td><td class="no">poll</td><td>any git host — GitLab, Gitea, private</td></tr>
+            <tr><td class="mono">github://</td><td class="mono">github://owner/repo/prefix</td><td>— built in</td><td class="no">copy+commit</td><td class="no">—</td><td class="no">poll</td><td>token-mode GitHub variant (CI, no ssh)</td></tr>
             <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db?channel=team-a</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
             <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
             <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>

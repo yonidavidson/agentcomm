@@ -33,6 +33,9 @@ function busEnv(overrides: Record<string, string | undefined> = {}): NodeJS.Proc
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     AGENTCOMM_GITHUB_TOKEN: 'dummy-token-for-detection',
+    // Hermetic by default: skip the live ls-remote probe so github.com-origin
+    // tests never touch the network. The generic-path test overrides this.
+    AGENTCOMM_NO_GIT_PROBE: '1',
   };
   for (const [k, v] of Object.entries(overrides)) {
     if (v === undefined) delete env[k];
@@ -71,7 +74,17 @@ async function describedUri(cwd: string, env: NodeJS.ProcessEnv): Promise<{ uri:
 }
 
 describe('repo-bus auto-default (backend resolution chain)', () => {
-  it('a git repo with a github origin auto-selects github://owner/repo, with a stderr notice', async () => {
+  it('an origin git can reach auto-selects the GENERIC git bus (any host) — proven offline via a local bare origin', async () => {
+    const bare = await mkTmp();
+    execFileSync('git', ['init', '--bare', '-q', path.join(bare, 'team.git')]);
+    const dir = await gitRepo(path.join(bare, 'team.git'));
+    const cache = await mkTmp();
+    const { uri, stderr } = await describedUri(dir, busEnv({ AGENTCOMM_NO_GIT_PROBE: undefined, AGENTCOMM_GIT_CACHE_DIR: cache }));
+    expect(uri).toBe(`git+file://${path.join(bare, 'team.git')}`);
+    expect(stderr).toMatch(/auto-detected from the git remote/);
+  });
+
+  it('a git repo with a github origin (token-only environment) falls back to github://owner/repo, with a stderr notice', async () => {
     for (const origin of ['git@github.com:acme/webapp.git', 'https://github.com/acme/webapp']) {
       const dir = await gitRepo(origin);
       const { uri, stderr } = await describedUri(dir, busEnv());
