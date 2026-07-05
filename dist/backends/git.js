@@ -76,6 +76,14 @@ export class GitBackend {
                 env: {
                     ...process.env,
                     GIT_TERMINAL_PROMPT: '0', // fail fast instead of hanging on an auth prompt
+                    // No detached background gc/maintenance on the cache repo — it
+                    // races our next op (and test cleanup) on objects/pack. The cache
+                    // is disposable; nobody needs it optimized.
+                    GIT_CONFIG_COUNT: '2',
+                    GIT_CONFIG_KEY_0: 'gc.auto',
+                    GIT_CONFIG_VALUE_0: '0',
+                    GIT_CONFIG_KEY_1: 'maintenance.auto',
+                    GIT_CONFIG_VALUE_1: 'false',
                     GIT_AUTHOR_NAME: 'agentcomm',
                     GIT_AUTHOR_EMAIL: 'bus@agentcomm.local',
                     GIT_COMMITTER_NAME: 'agentcomm',
