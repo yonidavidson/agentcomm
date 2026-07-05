@@ -5,12 +5,15 @@ import { resolveGithubToken } from './github.js';
 const execFileP = promisify(execFile);
 
 /**
- * The "already on the network" default: inside a git work tree whose
- * `origin` points at github.com — with a resolvable token — the repo itself
- * is the natural bus, so `github://owner/repo` beats the file:// fallback.
- * Only consulted when nothing explicit chose a backend (flag, env, config
- * file); returns null whenever any prerequisite is missing, which restores
- * the classic `file://./.agentcomm` default.
+ * The "already on the network" default, generic-git first: inside a git work
+ * tree, if git can ALREADY reach the `origin` remote (bounded `ls-remote`
+ * probe with BatchMode ssh), the bus is `git+<origin>` — any host, git's own
+ * auth, atomic `claim`. Only when that fails and the origin is github.com
+ * with a resolvable token does the REST `github://` variant kick in (token-
+ * only environments like CI). Anything else → null, restoring the classic
+ * `file://./.agentcomm` default. Explicit choices (flag/env/config file)
+ * are handled by the caller and always win. `AGENTCOMM_NO_GIT_PROBE=1`
+ * skips the network probe.
  */
 export async function detectRepoBus(cwd = process.cwd()): Promise<string | null> {
   let originUrl: string;
@@ -22,13 +25,41 @@ export async function detectRepoBus(cwd = process.cwd()): Promise<string | null>
     return null; // no git, not a repo, or no origin remote
   }
 
-  const m = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(originUrl);
-  if (!m) return null; // origin isn't github.com (gitlab/bitbucket/private → file fallback)
+  const normalized = normalizeOrigin(originUrl);
+  if (normalized && process.env.AGENTCOMM_NO_GIT_PROBE !== '1') {
+    try {
+      await execFileP('git', ['ls-remote', normalized.remote, 'HEAD'], {
+        timeout: 8000,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4',
+        },
+      });
+      return normalized.uri; // git can reach it → the generic bus works, claim included
+    } catch {
+      // fall through — maybe a token-only environment
+    }
+  }
 
+  const m = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(originUrl);
+  if (!m) return null;
   try {
     await resolveGithubToken();
   } catch {
-    return null; // no way to talk to the API — don't select a backend that can't open
+    return null;
   }
   return `github://${m[1]}/${m[2]}`;
+}
+
+/** origin URL (any git form) → a probe-able remote + its git+ backend URI. */
+function normalizeOrigin(url: string): { remote: string; uri: string } | null {
+  const scp = /^([^@\s/]+@[^:/\s]+):(?!\/)(.+)$/.exec(url); // git@host:path → ssh://host/path
+  if (scp) {
+    const remote = `ssh://${scp[1]}/${scp[2]}`;
+    return { remote, uri: `git+${remote}` };
+  }
+  if (/^(ssh|https?|file):\/\//.test(url)) return { remote: url, uri: `git+${url}` };
+  if (url.startsWith('/')) return { remote: url, uri: `git+file://${url}` };
+  return null;
 }

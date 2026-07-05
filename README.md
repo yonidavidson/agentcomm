@@ -4,9 +4,9 @@
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
-where the messages actually live. Local runs need **zero dependencies**; other
-backends are **optional, lazy-loaded** drivers — and `github://` needs no
-driver at all.
+where the messages live. **Any git remote is a bus** — the git backends need
+no driver at all; local runs need zero dependencies; everything else is an
+optional, lazy-loaded driver.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -14,8 +14,9 @@ driver at all.
             │      │                                         │
             │      ▼                                         │
             │  Backend interface  ◀── the seam               │
+            │   ├─ GitBackend     — ANY git remote is a bus  │
+            │   ├─ GithubBackend   — token-mode GitHub variant│
             │   ├─ LocalBackend    — zero-dep default         │
-            │   ├─ GithubBackend   — the repo is the bus      │
             │   ├─ SqliteBackend   — single box (recommended) │
             │   ├─ S3Backend       — object store             │
             │   ├─ GCSBackend      — object store             │
@@ -126,7 +127,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Flag               | Meaning                                                        |
 | ------------------ | -------------------------------------------------------------- |
-| `--backend <uri>`  | Backend URI. Default resolution: flag > `AGENTCOMM_BACKEND` > `.agentcomm` config > `github://owner/repo` auto-detected in a git repo > `file://./.agentcomm`. |
+| `--backend <uri>`  | Backend URI. Default resolution: flag > `AGENTCOMM_BACKEND` > `.agentcomm` config > `git+<origin>` probe > `github://` token fallback > `file://./.agentcomm`. |
 | `--as <name>`      | Acting agent (env `AGENTCOMM_AGENT`).                          |
 | `--subject <text>` | Message subject (`send`/`broadcast`).                          |
 | `--thread <id>`    | Thread id (`send`/`broadcast`).                                |
@@ -140,19 +141,20 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 ## Backends
 
 > **In a git repo, you're already on the network.** With no backend
-> configured, agentcomm auto-selects `github://owner/repo` from your `origin`
-> remote (when a GitHub token is available) — every agent running in the repo
-> joins the same bus automatically, and a stderr notice tells you it happened.
-> Resolution order: `--backend` > `AGENTCOMM_BACKEND` > `.agentcomm` config
-> file > git auto-detect > `file://./.agentcomm`.
+> configured, agentcomm probes your `origin` remote: if git can reach it, the
+> bus is `git+<origin>` — **any host**, atomic `claim` included; if only a
+> GitHub token is available, it falls back to `github://owner/repo`. A stderr
+> notice tells you what was picked. Resolution: `--backend` >
+> `AGENTCOMM_BACKEND` > `.agentcomm` config > git probe > github token >
+> `file://./.agentcomm` (`AGENTCOMM_NO_GIT_PROBE=1` skips the probe).
 
 Choose transport by **topology** — that's the only fork that matters.
 
 | Backend     | URI                          | Driver (optional)      | Atomic `move` | `claim` (shared queue) | Push (`wait`) | Use when                         |
 | ----------- | ---------------------------- | ---------------------- | :-----------: | :--------------------: | :-----------: | -------------------------------- |
 | **Local**   | `file:///path/dir`, bare dir | — (built in)           | ✅ (rename)   | ❌                     | poll          | dev, single process, zero deps   |
-| **GitHub**  | `github://owner/repo[/prefix]` | — (built in)         | ❌ (copy+commit) | ❌                  | poll          | **agents sharing a repo** — the repo is the bus |
 | **Git (any host)** | `git+ssh://…/repo.git[?channel=x]` | — (git binary) | ✅ (one commit) | ✅ (push CAS)   | poll          | **any git remote** — GitLab, Gitea, private servers |
+| **GitHub**  | `github://owner/repo[/prefix]` | — (built in)         | ❌ (copy+commit) | ❌                  | poll          | token-mode GitHub variant (CI, API-only environments) |
 | **SQLite**  | `sqlite:///path.db[?channel=x]`, `*.db` | `better-sqlite3` | ✅ (txn)   | ✅ (txn)              | poll          | **single machine** (recommended) |
 | **S3**      | `s3://bucket/prefix`         | `@aws-sdk/client-s3`   | ❌ (copy+del) | ❌                     | poll          | shared object store              |
 | **GCS**     | `gs://bucket/prefix`         | `@google-cloud/storage`| ❌ (copy+del) | ❌                     | poll          | shared object store              |
