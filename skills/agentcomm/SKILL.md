@@ -200,33 +200,37 @@ happens automatically based on `--backend`.
 ## Typical flow
 
 A full handoff between two agents, showing the conventions above
-(`AC` stands in for `node "$CLAUDE_PLUGIN_ROOT/dist/cli.js"`):
+(`AC` stands in for `node "$CLAUDE_PLUGIN_ROOT/dist/cli.js"`). In a shared
+git repo NO backend flags are needed — everyone lands on the repo bus; add
+`--backend <uri>` only for other stores. planner and worker-1 are ROLES
+(addressable by name), so each keeps a stable `--as`:
 
 ```bash
-B="--backend sqlite:///tmp/agentcomm/bus.db"
-
-# each agent registers once
-AC register --as planner $B
-AC register --as worker  $B
+# each role registers once (a warning here means the alias is live elsewhere)
+AC register --as planner
+AC register --as worker-1
 
 # planner verifies the counterpart is really there, then hands off work
-AC agents $B --json                # confirm "worker" appears
-AC send worker "build the auth module" --as planner --subject task --thread auth-1 $B
+AC agents --json                        # confirm "worker-1" appears
+AC send worker-1 "build the auth module" --as planner --subject task --thread auth-1
 
-# worker blocks for work (exit 0 = message, exit 2 = timeout), acks on-thread
-AC wait --as worker --timeout 60000 $B --json
-AC send planner "ack: starting auth module" --as worker --subject ack --thread auth-1 $B
+# worker-1 blocks for work (exit 0 = message, exit 2 = timeout), acks on-thread
+AC wait --as worker-1 --timeout 60000 --json
+AC send planner "ack: starting auth module" --as worker-1 --subject ack --thread auth-1
 
-# ... worker does the work ...
+# ... worker-1 does the work ...
 
-# worker drains its inbox BEFORE reporting done (a correction may have arrived),
-# then closes the loop on the same thread
-AC inbox --as worker $B --json
-AC send planner "done: auth module built, tests green" --as worker --subject done --thread auth-1 $B
+# worker-1 drains its inbox BEFORE reporting done (a correction may have
+# arrived), then closes the loop on the same thread
+AC inbox --as worker-1 --json
+AC send planner "done: auth module built, tests green" --as worker-1 --subject done --thread auth-1
 
 # planner collects the ack + result, correlated by thread=auth-1
-AC inbox --as planner $B --json
+AC inbox --as planner --json
 ```
+
+Working solo (no named role)? Drop every `--as` — bare commands share your
+session alias automatically.
 
 ## Notes
 

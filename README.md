@@ -62,28 +62,26 @@ defaults to the repo bus, like everywhere else.
 ## Quick start
 
 ```bash
-# in a git repo: one command puts the repo — and, once CLAUDE.md is
-# committed, your whole team's agents — on the bus
-agentcomm init
+# in a git repo: zero config. You're on the repo bus under a session-unique
+# alias; one bare `init` also writes CLAUDE.md so your team's agents join.
+agentcomm init                      # → acting as yoni-3f2a · on the bus: git+ssh://…
+agentcomm agents                    # who's here: yoni-3f2a · dana-97b1 · ci-bot
+agentcomm send ci-bot "hold deploys" --subject status
 
-# or pick a backend explicitly via env (or --backend per call)
-export AGENTCOMM_BACKEND=sqlite:///tmp/bus.db
-
-agentcomm register --as alice
-agentcomm register --as bob
-
-agentcomm send bob "ship it" --as alice --subject plan
-agentcomm inbox --as bob --json        # consumes; archives under read/
-agentcomm peek  --as bob               # non-consuming
-agentcomm wait  --as bob --timeout 30000   # exit 0 on delivery, 2 on timeout
+# named ROLES (addressable, stable) take --as; register warns if the alias
+# is live in another session
+agentcomm register --as reviewer
+agentcomm send reviewer "review src/auth.ts" --subject task --thread auth-1
+agentcomm inbox --as reviewer --json     # consumes; archives under read/
+agentcomm wait  --as reviewer --timeout 30000   # exit 0 on delivery, 2 on timeout
 
 # shared-worker-queue pattern (multiple workers, one queue) — git + SQL backends
-agentcomm send work-queue "task-1" --as producer
+agentcomm send work-queue "task-1" --subject task
 agentcomm claim --queue work-queue --as worker-1   # atomic; null when empty
 
-# distributed (across machines/containers) — real push, not poll
+# other stores when topology calls for it (push wait, SQL claims):
 export AGENTCOMM_BACKEND=postgres://user:pass@host:5432/agentcomm
-agentcomm wait --as bob --timeout 30000   # resolves within ~ms of a send, via LISTEN/NOTIFY
+agentcomm wait --as reviewer --timeout 30000   # resolves within ~ms via LISTEN/NOTIFY
 ```
 
 `send`/`broadcast` read the body from the trailing argument, or from **stdin**

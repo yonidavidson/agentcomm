@@ -10,7 +10,7 @@
       "name": "agentcomm",
       "source": "./",
       "description": "Multi-agent mailbox CLI — any git remote is a bus (git+ssh/github/sqlite/s3/gcs/postgres). register/send/inbox/wait/claim/log/channels so Claude coordinates with other agents or sessions; auto-selects the repo bus inside a git repo.",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "author": {
         "name": "Yoni Davidson"
       },
