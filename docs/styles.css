@@ -411,6 +411,7 @@ tr:last-child td { border-bottom: none; }
   background: linear-gradient(135deg, var(--accent), var(--accent2));
 }
 .step-code { max-width: none; margin: 0; font-size: 0.76rem; flex: 1; }
+.step-code .line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .step-code .line.out { color: var(--text-dim); }
 .step-note { color: var(--text-dim); font-size: 0.84rem; margin: 0; }
 @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }

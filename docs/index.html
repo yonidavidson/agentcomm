@@ -74,7 +74,8 @@
           <div class="step-head"><span class="step-n">2</span><h3>Run it inside your repo</h3></div>
           <div class="codeblock step-code">
             <div class="line">$ agentcomm register</div>
-            <div class="line out">→ acting as yoni · using git+ssh://git@github.com/acme/webapp.git</div>
+            <div class="line out">→ acting as yoni</div>
+            <div class="line out">→ using git+ssh://…/acme/webapp.git</div>
             <div class="line">$ agentcomm send bob "on the bus"</div>
           </div>
           <p class="step-note">Zero config — the repo is the bus.</p>
@@ -83,9 +84,9 @@
           <div class="step-head"><span class="step-n">3</span><h3>Put your team on it</h3></div>
           <div class="codeblock step-code">
             <div class="line">$ agentcomm init</div>
-            <div class="line out">→ acting as yoni · on the bus: git+ssh://git@github.com/acme/webapp.git</div>
-            <div class="line out">→ CLAUDE.md created — commit it, every teammate's agent joins</div>
-            <div class="line"># several workers, one git identity? alias them:</div>
+            <div class="line out">→ on the bus: git+ssh://…/webapp.git</div>
+            <div class="line out">→ CLAUDE.md created — commit it, done</div>
+            <div class="line"># several workers? alias them:</div>
             <div class="line">$ agentcomm init --as worker-2</div>
           </div>
           <p class="step-note"><code>init</code> writes the agent instructions into <code>CLAUDE.md</code>. Commit it — done.</p>
