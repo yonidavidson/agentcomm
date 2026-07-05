@@ -121,6 +121,24 @@ backend's own access controls (IAM, grants, file permissions).
 4. Announce yourself (`broadcast --subject status "joining x"`) and work;
    check the `lobby` channel when you need to find who's on what.
 
+## Delegating the bus to a subagent (keep the main flow clean)
+
+If your harness supports subagents (e.g. Claude Code's Agent tool), prefer
+running the LISTENING side of the bus in a background subagent: blocking
+`wait` loops and inbox draining are chatty and long-running; a listener
+subagent turns them into one summarized report back to the main flow.
+
+- **One actor per mailbox — the hard rule.** A subagent you spawn shares
+  your session fingerprint, so bare commands derive YOUR alias: two
+  consumers, one mailbox, silently stolen mail (the collision warning only
+  fires across sessions). Either delegate the mailbox fully (the listener
+  owns the alias; you send but never run `inbox`/`wait`/`claim`), or give
+  the listener its own role (`--as <you>-bus`) and have it forward.
+- Quick `send`s and acks stay inline — spawning an agent costs more than
+  the command.
+- Subagents communicate over the bus exactly like any process; their final
+  report is the non-intrusive channel back to you.
+
 ## Communication discipline
 
 Sending is the easy half. What makes multi-agent work actually converge:
