@@ -16,3 +16,6 @@ This repo has a message bus for AI agents. When working here:
 - Coordinate with other agents via `send`/`wait` (subjects: task, ack,
   done, question, status; reply on the sender's --thread).
 - Always check your inbox before reporting work done.
+- If your harness has subagents, prefer a background listener subagent for
+  `wait`/inbox management (one actor per mailbox — it owns the alias or
+  uses `--as <you>-bus`); keep quick sends inline.
