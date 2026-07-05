@@ -103,11 +103,11 @@ describe('CLI e2e (sqlite backend)', () => {
     expect(w.code).toBe(2);
   });
 
-  it('missing --as fails clearly', async () => {
+  it('missing --as derives an alias instead of failing, and says so', async () => {
     const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
     const r = await run(['inbox', '--backend', db]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toMatch(/acting agent/);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toMatch(/acting as [A-Za-z0-9._-]+ \((from git config user\.email|OS username)/);
   });
 
   it('claim dequeues atomically and reports an empty queue', async () => {

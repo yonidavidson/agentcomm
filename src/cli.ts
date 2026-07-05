@@ -142,7 +142,8 @@ async function main(argv: string[]): Promise<number> {
 
 const CHANNEL_SECURITY_NOTE =
   'Channels are namespacing, not security: everyone on this store shares its credentials. ' +
-  "Isolation is enforced by the backend's own access controls (IAM policies, database grants, file permissions).";
+  "Isolation is enforced by the backend's own access controls (IAM policies, database grants, file permissions). " +
+  'Agent names are aliases (addressing, not authentication) — on git backends the commit author in git log is the verifiable identity.';
 
 function cmdDescribe(cfg: ResolvedConfig): number {
   const scheme = schemeForUri(cfg.backendUri);
@@ -381,7 +382,7 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
     await fsp.writeFile(claudeMd, existing + sep + CLAUDE_MD_SNIPPET);
   }
 
-  const me = cfg.agent ?? os.userInfo().username;
+  const me = await resolveAgent(cfg);
   await bus.register(me);
   const roster = await bus.agents();
 
@@ -408,7 +409,7 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
 }
 
 async function cmdRegister(bus: Bus, cfg: ResolvedConfig): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const record = await bus.register(me);
   if (cfg.json) emit(record);
   else process.stdout.write(`registered ${record.name}\n`);
@@ -434,7 +435,7 @@ async function cmdSend(
   thread: string | undefined,
   rest: string[],
 ): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const to = rest[0];
   if (!to) {
     fail('send requires a recipient: agentcomm send <to> [body]');
@@ -454,7 +455,7 @@ async function cmdBroadcast(
   thread: string | undefined,
   rest: string[],
 ): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const body = rest.length > 0 ? rest.join(' ') : await readStdin();
   const sent = await bus.broadcast({ from: me, body, subject, thread });
   if (cfg.json) emit(sent);
@@ -463,21 +464,21 @@ async function cmdBroadcast(
 }
 
 async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const messages = await bus.inbox(me);
   printMessages(messages, cfg);
   return 0;
 }
 
 async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const messages = await bus.peek(me);
   printMessages(messages, cfg);
   return 0;
 }
 
 async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   const messages = await bus.wait(me, timeoutMs);
   if (messages.length === 0) {
     if (cfg.json) emit([]);
@@ -489,7 +490,7 @@ async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promis
 }
 
 async function cmdClaim(bus: Bus, cfg: ResolvedConfig, queue: string | undefined): Promise<number> {
-  const me = requireAgent(cfg);
+  const me = await resolveAgent(cfg);
   if (!queue) {
     fail('claim requires --queue <name>');
   }
@@ -540,11 +541,44 @@ function printMessages(messages: Message[], cfg: ResolvedConfig): void {
   }
 }
 
-function requireAgent(cfg: ResolvedConfig): string {
-  if (!cfg.agent) {
+let derivedIdentity: string | null | undefined; // memo: undefined = not derived yet
+
+/**
+ * The acting name is an ALIAS — addressing, not authentication (on git
+ * backends the commit author in `git log` is the verifiable identity).
+ * Explicit --as / AGENTCOMM_AGENT wins; otherwise derive an honest default:
+ * the git identity's email local-part, then the OS username. Announced on
+ * stderr the first time it's used.
+ */
+async function resolveAgent(cfg: ResolvedConfig): Promise<string> {
+  if (cfg.agent) return cfg.agent;
+  if (derivedIdentity === undefined) {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const os = await import('node:os');
+    const sanitize = (raw: string) => raw.replace(/[^A-Za-z0-9._-]/g, '');
+    let name = '';
+    let source = '';
+    try {
+      const email = (await promisify(execFile)('git', ['config', 'user.email'])).stdout.trim();
+      name = sanitize(email.split('@')[0] ?? '');
+      source = 'from git config user.email';
+    } catch {
+      /* not a repo / no git identity */
+    }
+    if (!name) {
+      name = sanitize(os.userInfo().username);
+      source = 'OS username';
+    }
+    derivedIdentity = name || null;
+    if (derivedIdentity) {
+      process.stderr.write(`agentcomm: acting as ${derivedIdentity} (${source}; --as overrides)\n`);
+    }
+  }
+  if (!derivedIdentity) {
     fail('no acting agent. Pass --as <name> or set AGENTCOMM_AGENT.');
   }
-  return cfg.agent;
+  return derivedIdentity!;
 }
 
 function emit(value: unknown): void {

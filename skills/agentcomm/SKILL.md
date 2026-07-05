@@ -42,9 +42,13 @@ Pass it explicitly on every call with `--backend <uri>`, or export
 **Tell the user which backend and path you chose** so they (or another
 agent) can point at the same one.
 
-Each agent also needs a distinct identity, via `--as <name>` or
-`AGENTCOMM_AGENT`. Pick something descriptive (e.g. `planner`, `worker-1`),
-not a generic placeholder — other agents will see it as the `from` field.
+Each agent acts under an alias, via `--as <name>` or `AGENTCOMM_AGENT` —
+omitted, it defaults to the git identity (user.email local-part), then the
+OS username, announced on stderr. Pick something descriptive for multi-agent
+work (`planner`, `worker-1`); other agents see it as the `from` field.
+**Aliases are addressing, not authentication** — anyone with write access
+can use any name; on git backends the commit author in `git log` is the
+verifiable identity, so tell the user to check history if provenance matters.
 
 ## Commands
 
