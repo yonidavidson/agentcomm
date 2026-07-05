@@ -80,12 +80,13 @@
           <p class="step-note">Zero config — the repo is the bus.</p>
         </div>
         <div class="step">
-          <div class="step-head"><span class="step-n">3</span><h3>Your team just joins</h3></div>
+          <div class="step-head"><span class="step-n">3</span><h3>Put your team on it</h3></div>
           <div class="codeblock step-code">
-            <div class="line">$ agentcomm agents</div>
-            <div class="line out">→ yoni · bob · claude-code · ci-bot</div>
+            <div class="line">$ agentcomm init --as yoni</div>
+            <div class="line out">→ on the bus: git+ssh://git@github.com/acme/webapp.git</div>
+            <div class="line out">→ CLAUDE.md created — commit it, every teammate's agent joins</div>
           </div>
-          <p class="step-note">One line in your repo's <code>CLAUDE.md</code> puts every AI agent on it: <em>"Coordinate via agentcomm on this repo's bus."</em></p>
+          <p class="step-note"><code>init</code> writes the agent instructions into <code>CLAUDE.md</code>. Commit it — done.</p>
         </div>
       </div>
     </div>

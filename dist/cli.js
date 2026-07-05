@@ -11,6 +11,9 @@ Usage:
   agentcomm <command> [args] [flags]
 
 Commands:
+  init                     Put this repo on the bus: writes agent instructions
+                           into CLAUDE.md (idempotent), registers you, shows the
+                           roster. Commit CLAUDE.md to onboard your whole team
   register                 Register/heartbeat the calling agent (--as)
   agents                   List registered agents
   send <to> [body]         Send a message (body from arg or stdin)
@@ -97,6 +100,8 @@ async function main(argv) {
         switch (command) {
             case 'register':
                 return await cmdRegister(bus, cfg);
+            case 'init':
+                return await cmdInit(bus, cfg);
             case 'agents':
                 return await cmdAgents(bus, cfg);
             case 'send':
@@ -303,6 +308,66 @@ async function cmdLog(backend, cfg, thread, limit = 50) {
         process.stdout.write(`  ${m.body.split('\n').join('\n  ')}\n`);
     }
     process.stdout.write(`— ${shown.length} message${shown.length === 1 ? '' : 's'} (● pending, ○ archived)\n`);
+    return 0;
+}
+const CLAUDE_MD_MARKER = '<!-- agentcomm -->';
+const CLAUDE_MD_SNIPPET = `${CLAUDE_MD_MARKER}
+## Agent coordination (agentcomm)
+
+This repo has a message bus for AI agents. When working here:
+
+- At session start: \`agentcomm register --as <descriptive-name>\` and check
+  your inbox (\`agentcomm inbox --as <name> --json\`) — instructions may be
+  waiting. The bus is auto-detected from this repo; \`agentcomm describe\`
+  explains it, \`agentcomm conventions\` has the team rules.
+- Coordinate with other agents via \`send\`/\`wait\` (subjects: task, ack,
+  done, question, status; reply on the sender's --thread).
+- Always check your inbox before reporting work done.
+`;
+async function cmdInit(bus, cfg) {
+    // One-command team activation: write the agent instructions into
+    // CLAUDE.md (idempotent — marker-guarded), register the caller, prove the
+    // bus works. Committing CLAUDE.md is what onboards every teammate's
+    // agents; that's the user's call, so we say it rather than do it.
+    const { promises: fsp } = await import('node:fs');
+    const os = await import('node:os');
+    const claudeMd = 'CLAUDE.md';
+    let claudeMdState;
+    let existing = '';
+    try {
+        existing = await fsp.readFile(claudeMd, 'utf8');
+    }
+    catch {
+        /* no file yet */
+    }
+    if (existing.includes(CLAUDE_MD_MARKER)) {
+        claudeMdState = 'already-present';
+    }
+    else {
+        claudeMdState = existing ? 'appended' : 'created';
+        const sep = existing && !existing.endsWith('\n\n') ? (existing.endsWith('\n') ? '\n' : '\n\n') : '';
+        await fsp.writeFile(claudeMd, existing + sep + CLAUDE_MD_SNIPPET);
+    }
+    const me = cfg.agent ?? os.userInfo().username;
+    await bus.register(me);
+    const roster = await bus.agents();
+    if (cfg.json) {
+        emit({
+            backend: cfg.backendUri,
+            registered: me,
+            agents: roster.map((a) => a.name),
+            claudeMd: claudeMdState,
+        });
+        return 0;
+    }
+    process.stdout.write([
+        `on the bus: ${cfg.backendUri}`,
+        `registered ${me} — ${roster.length} agent${roster.length === 1 ? '' : 's'} here: ${roster.map((a) => a.name).join(', ')}`,
+        claudeMdState === 'already-present'
+            ? 'CLAUDE.md already has the agentcomm section.'
+            : `CLAUDE.md ${claudeMdState} — commit it and every teammate's AI agent joins this bus automatically.`,
+        '',
+    ].join('\n'));
     return 0;
 }
 async function cmdRegister(bus, cfg) {

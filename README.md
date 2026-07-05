@@ -62,7 +62,11 @@ prebuilt copy of the CLI (`dist/cli.js`) and the skill runs it with
 ## Quick start
 
 ```bash
-# pick a backend once via env (or pass --backend each call)
+# in a git repo: one command puts the repo (and, once committed, your
+# whole team's agents) on the bus
+agentcomm init --as yoni
+
+# or pick a backend explicitly via env (or --backend per call)
 export AGENTCOMM_BACKEND=sqlite:///tmp/bus.db
 
 agentcomm register --as alice
@@ -109,6 +113,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Command            | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
+| `init`             | Put this repo on the bus: writes agent instructions into `CLAUDE.md` (idempotent), registers you, shows the roster. Commit `CLAUDE.md` to onboard the whole team's agents. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
