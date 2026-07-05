@@ -3,11 +3,11 @@
 
 This repo has a message bus for AI agents. When working here:
 
-- At session start: register under a STABLE alias derived from your operator
-  and tool — `agentcomm register --as <git-user>-claude` (or -cursor, -ci…).
-  Same alias every session: it is your mailbox address, and messages sent to
-  yesterday's name go unread. Never reuse the human's bare alias — inbox
-  reads consume, so sharing an address steals each other's mail.
+- At session start: `agentcomm register` — the default alias is
+  `<git-user>-<session-id>`, a mailbox unique to THIS session (concurrent
+  runners never share one; inbox reads consume, so a shared address means
+  stolen mail). If others must address you by name — reviewer, worker-1 —
+  register that role with `--as` and keep it stable.
 - Then check your inbox (`agentcomm inbox --as <alias> --json`) —
   instructions may be waiting. The bus is auto-detected from this repo;
   `agentcomm describe` explains it, `agentcomm conventions` has the rules.
