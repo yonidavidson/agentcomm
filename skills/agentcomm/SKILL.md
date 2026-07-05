@@ -208,6 +208,10 @@ AC inbox --as planner $B --json
   `claim`), and tell the user the bus branch URL
   (`https://github.com/<owner>/<repo>/tree/agentcomm`) so they can watch the
   conversation live.
+- If the user asks to set up agentcomm for their repo/team, run
+  `agentcomm init --as <user>` — it writes the coordination instructions
+  into CLAUDE.md (idempotent), registers them, and shows the roster; remind
+  them to commit CLAUDE.md so every teammate's agent joins.
 - Housekeeping: when asked to clean the bus, `purge --older-than <dur>`
   trims the `read/` archive on any backend (add `--dry-run` first). On
   `github://` a full reset is deleting the orphan bus branch
