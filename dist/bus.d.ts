@@ -19,7 +19,9 @@ import { type Backend, type Message } from './types.js';
 export declare class Bus {
     private readonly backend;
     constructor(backend: Backend);
-    register(name: string): Promise<AgentRecord>;
+    register(name: string, session?: string): Promise<AgentRecord & {
+        previous?: AgentRecord;
+    }>;
     agents(): Promise<AgentRecord[]>;
     private tryGetAgent;
     send(input: SendInput): Promise<Message>;
@@ -58,5 +60,7 @@ export interface AgentRecord {
     name: string;
     registeredAt: string;
     lastSeen: string;
+    /** Fingerprint of the registering session — lets tooling tell "stale me" from "someone else". */
+    session?: string;
 }
 //# sourceMappingURL=bus.d.ts.map

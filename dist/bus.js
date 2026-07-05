@@ -23,7 +23,7 @@ export class Bus {
         this.backend = backend;
     }
     // ── agents ──────────────────────────────────────────────────────────────
-    async register(name) {
+    async register(name, session) {
         assertName(name);
         const now = new Date().toISOString();
         const existing = await this.tryGetAgent(name);
@@ -31,9 +31,13 @@ export class Bus {
             name,
             registeredAt: existing?.registeredAt ?? now,
             lastSeen: now,
+            ...(session ? { session } : {}),
         };
         await this.backend.put(agentKey(name), encode(record));
-        return record;
+        // The previous record lets callers detect an alias collision: same name,
+        // fresh lastSeen, DIFFERENT session = two live processes sharing a
+        // consuming mailbox.
+        return existing ? { ...record, previous: existing } : record;
     }
     async agents() {
         const keys = await this.backend.list('agents/');

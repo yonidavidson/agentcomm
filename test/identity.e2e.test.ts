@@ -101,6 +101,46 @@ describe('identity: the acting name is an alias with an honest default', () => {
     expect(r.stdout).toMatch(/registered werdnamex-[0-9a-f]{4}/);
   });
 
+  it('registering an alias that is LIVE in another session warns; same session and stale ones do not', async () => {
+    const dir = await repoWithEmail('yoni@corp.example');
+
+    const first = await run(['register', '--as', 'orp-claude'], dir, { AGENTCOMM_SESSION: 'session-A' });
+    expect(first.stderr).not.toMatch(/WARNING/);
+
+    const rival = await run(['register', '--as', 'orp-claude'], dir, { AGENTCOMM_SESSION: 'session-B' });
+    expect(rival.stderr).toMatch(/WARNING — alias "orp-claude" was active .* DIFFERENT session/);
+
+    const samesession = await run(['register', '--as', 'orp-claude'], dir, { AGENTCOMM_SESSION: 'session-B' });
+    expect(samesession.stderr).not.toMatch(/WARNING/);
+
+    // stale prior (last seen 20 minutes ago, other session) → no warning
+    const key = path.join(dir, '.bus', 'agents', 'old-timer.json');
+    await fs.mkdir(path.dirname(key), { recursive: true });
+    await fs.writeFile(key, JSON.stringify({
+      name: 'old-timer',
+      registeredAt: new Date(Date.now() - 3600_000).toISOString(),
+      lastSeen: new Date(Date.now() - 20 * 60_000).toISOString(),
+      session: 'long-gone',
+    }));
+    const revive = await run(['register', '--as', 'old-timer'], dir, { AGENTCOMM_SESSION: 'session-B' });
+    expect(revive.stderr).not.toMatch(/WARNING/);
+  });
+
+  it('agents marks which roster entries belong to this session', async () => {
+    const dir = await repoWithEmail('yoni@corp.example');
+    await run(['register', '--as', 'me-here'], dir, { AGENTCOMM_SESSION: 'session-A' });
+    await run(['register', '--as', 'them-there'], dir, { AGENTCOMM_SESSION: 'session-B' });
+
+    const r = await run(['agents', '--json'], dir, { AGENTCOMM_SESSION: 'session-A' });
+    const rows = JSON.parse(r.stdout) as { name: string; thisSession: boolean }[];
+    expect(rows.find((a) => a.name === 'me-here')!.thisSession).toBe(true);
+    expect(rows.find((a) => a.name === 'them-there')!.thisSession).toBe(false);
+
+    const human = await run(['agents'], dir, { AGENTCOMM_SESSION: 'session-A' });
+    expect(human.stdout).toMatch(/me-here.*\(this session\)/);
+    expect(human.stdout).not.toMatch(/them-there.*\(this session\)/);
+  });
+
   it('outside a git repo, falls back to the OS username', async () => {
     const dir = await mkTmp(); // not a git repo
     const r = await run(['register'], dir, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' });
