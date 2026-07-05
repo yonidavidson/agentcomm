@@ -14,10 +14,10 @@ optional, lazy-loaded driver.
             │      │                                         │
             │      ▼                                         │
             │  Backend interface  ◀── the seam               │
-            │   ├─ GitBackend     — ANY git remote is a bus  │
-            │   ├─ GithubBackend   — token-mode GitHub variant│
+            │   ├─ GitBackend      — ANY git remote is a bus │
+            │   ├─ GithubBackend   — GitHub via token (no ssh)│
             │   ├─ LocalBackend    — zero-dep default         │
-            │   ├─ SqliteBackend   — single box (recommended) │
+            │   ├─ SqliteBackend   — single box, WAL          │
             │   ├─ S3Backend       — object store             │
             │   ├─ GCSBackend      — object store             │
             │   └─ PostgresBackend — distributed, push        │
@@ -33,9 +33,10 @@ committed to the repo, so this needs no build step, and the install is
 ```bash
 npm install github:yonidavidson/agentcomm
 
-# file:// and github:// need NOTHING more (Node ≥ 18 + a GitHub token for github://).
-# Per-backend drivers, only if you use that backend — the CLI names the exact
-# package to install when one is missing:
+# git+ssh:// / git+https:// / github:// / file:// need NOTHING more
+# (Node ≥ 18; the git binary for git+; a token for github://).
+# Per-backend drivers, only if you use that backend — the CLI names the
+# exact package when one is missing:
 npm install better-sqlite3            # sqlite://
 npm install @aws-sdk/client-s3        # s3://
 npm install @google-cloud/storage     # gs://
@@ -55,16 +56,15 @@ backend tradeoffs, and uses them to coordinate with other agents/sessions:
 ```
 
 No global install or npm registry publish required — the plugin ships a
-prebuilt copy of the CLI (`dist/cli.js`) and the skill runs it with
-`node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" ...`, defaulting to the zero-dependency
-`file://` backend.
+prebuilt copy of the CLI and the skill runs it directly. In a git repo it
+defaults to the repo bus, like everywhere else.
 
 ## Quick start
 
 ```bash
-# in a git repo: one command puts the repo (and, once committed, your
-# whole team's agents) on the bus
-agentcomm init --as yoni
+# in a git repo: one command puts the repo — and, once CLAUDE.md is
+# committed, your whole team's agents — on the bus
+agentcomm init
 
 # or pick a backend explicitly via env (or --backend per call)
 export AGENTCOMM_BACKEND=sqlite:///tmp/bus.db
@@ -77,7 +77,7 @@ agentcomm inbox --as bob --json        # consumes; archives under read/
 agentcomm peek  --as bob               # non-consuming
 agentcomm wait  --as bob --timeout 30000   # exit 0 on delivery, 2 on timeout
 
-# shared-worker-queue pattern (multiple workers, one queue) — SQL backends only
+# shared-worker-queue pattern (multiple workers, one queue) — git + SQL backends
 agentcomm send work-queue "task-1" --as producer
 agentcomm claim --queue work-queue --as worker-1   # atomic; null when empty
 
@@ -95,15 +95,14 @@ echo "from a pipe" | agentcomm send bob --as alice
 
 ## What people build with it
 
-- **Agents sharing a GitHub repo, talking through it** — `github://owner/repo`
-  makes the repo the bus: repo permissions are the ACL, every message is a
-  commit you can watch in the web UI.
+- **Agents sharing a repo, talking through it** — the repo is the bus: repo
+  permissions are the ACL, every message is a commit you can watch.
 - **Cloud + local worker fleets** splitting one queue with atomic `claim`.
 - **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
 - **IoT edge agents** — a camera answering "what do you see?", weather sensors
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
 - **Two AI tools pairing on one machine** (Claude Code implements, Cursor
-  reviews) over a SQLite file.
+  reviews) — zero config inside a shared repo.
 
 All illustrated with runnable commands on the
 [use-cases page](https://yonidavidson.github.io/agentcomm/#use-cases) — plus
@@ -121,7 +120,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `inbox`            | **Consume** undelivered messages; archives them under `read/`.      |
 | `peek`             | Show undelivered messages **without** consuming.                    |
 | `wait`             | Block until a message arrives (**exit 0**) or timeout (**exit 2**). |
-| `claim`            | Atomically dequeue one message from `--queue` (**SQL backends only**). |
+| `claim`            | Atomically dequeue one message from `--queue` (**git + SQL backends**). |
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
 | `purge`            | Delete archived (`read/`) messages older than `--older-than` (`30d`, `12h`, …). Never touches pending mail or registrations. |
@@ -179,6 +178,7 @@ same `--backend` URI. One store can host many isolated channels — for the
 path-carved backends, just append a segment:
 
 ```
+git+ssh://…/repo.git?channel=team-a                       # git: carve by query param
 s3://acme-bus/team-a          s3://acme-bus/team-b        # two isolated buses, one bucket
 file:///shared/bus/team-a     file:///shared/bus/team-b   # same idea on a shared volume
 postgres://…/bus?channel=team-a                           # SQL: carve by query param
@@ -356,9 +356,10 @@ consumer reading via `inbox`.
 ### Design notes (intentional constraints)
 
 - **Single-consumer-per-inbox is a feature.** It's what makes the object-store
-  backends race-free without locks. Only SQL backends implement `Claimable`
-  for the shared-queue `claim` path; `LocalBackend`/`S3Backend`/`GCSBackend`
-  don't, and `claim` errors clearly rather than faking it with locks.
+  backends race-free without locks. `claim` exists only where the store gives
+  a real atomic primitive — SQL transactions, or `git push` as a
+  compare-and-swap; `file://`/`s3://`/`gs://` error clearly rather than
+  faking it with locks.
 - **Don't put SQLite on object storage.** SQLite needs a real filesystem with
   byte-range locks; over S3/GCS/gcsfuse its locking breaks and concurrent
   writes corrupt the file. `sqlite://` is for local/persistent disk only.
@@ -391,9 +392,7 @@ await backend.close?.();
 ## Development
 
 ```bash
-npm install                 # dev toolchain (cloud SDKs are optional)
-npm install better-sqlite3  # to run the SQLite tests locally
-npm install pg              # to run the Postgres tests locally
+npm install                 # dev toolchain incl. all backend drivers (devDependencies)
 npm run typecheck
 npm test                    # vitest: backend contract, bus, CLI e2e, WAL/Postgres concurrency
 npm run build               # emit dist/
@@ -420,13 +419,11 @@ scratch branch, deleted afterwards — gate it with
 it runs against **this repository itself** using the workflow's token.
 
 CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
-all six backends are exercised end-to-end. What's next lives in the
-[issue tracker](https://github.com/yonidavidson/agentcomm/issues) — currently
-a `gitlab://` sibling backend and a host-agnostic `git://` backend (#23).
+all seven backends are exercised end-to-end.
 
 The test suite runs the **same backend-contract and bus tests** against
-`LocalBackend`, `SqliteBackend`, `S3Backend`, `GCSBackend`, `GithubBackend`,
-and `PostgresBackend`, plus concurrency tests
+every backend (the git suite runs against local bare repos, so its full
+fetch/plumbing/push path needs no services), plus concurrency tests
 proving: WAL lets independent SQLite writers proceed; N concurrent processes
 calling `claim` on one shared queue (SQLite or Postgres) get disjoint
 messages, none dropped, none double-delivered; and `wait` on Postgres
