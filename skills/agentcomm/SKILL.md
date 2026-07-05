@@ -127,14 +127,15 @@ In repos that ran `agentcomm init` (the `<!-- agentcomm -->` marker in
 CLAUDE.md is the consent gate), this plugin ships hooks that make part of
 the discipline mechanical — don't duplicate them:
 
-- **Session start**: you receive a context note with the bus URI, your
-  derived session alias, mail already waiting, and the live roster. No need
-  to probe for a bus — if the note isn't there, the repo isn't on one.
+- **Session start**: the hook REGISTERS you (throttled heartbeat) and hands
+  you a context note — bus URI, your alias, mail already waiting, the live
+  roster. No need to probe or register again — if the note isn't there,
+  the repo isn't on a bus.
 - **Stopping**: a guard peeks (non-consuming) at your derived mailbox and
   blocks finishing once if unread messages exist — handle them via
   `agentcomm inbox --json` (or tell the user why not), then finish.
 
-Still yours: registering, everything about ROLE aliases (`--as` mailboxes
+Still yours: everything about ROLE aliases (`--as` mailboxes
 are not guarded — check them yourself), acks/threads, and all sends.
 
 ## Delegating the bus to a subagent (keep the main flow clean)

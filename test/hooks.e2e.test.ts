@@ -80,7 +80,7 @@ function cliSync(args: string[], cwd: string, as?: string): void {
 }
 
 describe('plugin hooks: bus discipline made mechanical', () => {
-  it('session-start announces bus, derived alias, and roster in a marked repo', async () => {
+  it('session-start REGISTERS the session onto the roster and announces it', async () => {
     const dir = await markedRepo();
     cliSync(['register'], dir, 'reviewer');
 
@@ -92,8 +92,25 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(out.hookSpecificOutput.hookEventName).toBe('SessionStart');
     const ctx = out.hookSpecificOutput.additionalContext;
     expect(ctx).toContain('on a message bus');
-    expect(ctx).toMatch(/derived alias for this session: hooky-[0-9a-f]{4}/);
+    expect(ctx).toMatch(/registered as hooky-[0-9a-f]{4}/);
     expect(ctx).toContain('reviewer');
+
+    // the register was real: the derived alias is on the roster now
+    const roster = execFileSync(
+      process.execPath,
+      [path.join(root, 'dist', 'cli.js'), 'agents', '--json'],
+      {
+        cwd: dir,
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
+          AGENTCOMM_NO_GIT_PROBE: '1',
+          AGENTCOMM_SESSION: 'hook-session',
+        },
+      },
+    ).toString();
+    expect(roster).toMatch(/hooky-[0-9a-f]{4}/);
   });
 
   it('session-start stays silent outside opted-in repos', async () => {
