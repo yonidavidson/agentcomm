@@ -90,13 +90,12 @@ nav.topbar {
 
 /* ---- hero ---- */
 .hero {
-  min-height: 86vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 80px 24px 60px;
+  padding: 96px 24px 40px;
 }
 .kicker {
   font-family: var(--mono);
@@ -249,7 +248,7 @@ h2.section-title {
 }
 .backend-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   width: 100%;
   max-width: 760px;
@@ -388,6 +387,33 @@ tr:last-child td { border-bottom: none; }
   border-radius: 12px;
   border: 1px solid var(--card-border);
 }
+
+/* ---- get-started steps ---- */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.step {
+  min-width: 0; /* codeblock lines scroll inside, never widen the grid */
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.step-head { display: flex; align-items: center; gap: 10px; }
+.step-head h3 { font-family: var(--display); font-size: 1.05rem; margin: 0; }
+.step-n {
+  width: 24px; height: 24px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-family: var(--mono); font-size: 0.8rem; font-weight: 600;
+  color: #06080f;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+}
+.step-code { max-width: none; margin: 0; font-size: 0.76rem; flex: 1; }
+.step-code .line.out { color: var(--text-dim); }
+.step-note { color: var(--text-dim); font-size: 0.84rem; margin: 0; }
+@media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
 
 /* ---- git graph animation: one repo, code + conversation ---- */
 .git-anim { display: block; width: 100%; height: auto; }

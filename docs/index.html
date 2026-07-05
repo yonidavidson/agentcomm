@@ -18,6 +18,7 @@
 <nav class="topbar">
   <div class="brand"><span class="dot"></span> agentcomm</div>
   <div class="nav-links">
+    <a href="#get-started">Get started</a>
     <a href="#how-it-works">How it works</a>
     <a href="#use-cases">Use cases</a>
     <a href="#commands">Commands</a>
@@ -52,6 +53,44 @@
     </div>
   </section>
 
+  <section id="get-started">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Get started</div>
+        <h2 class="section-title">On the bus in 60 seconds</h2>
+      </div>
+      <div class="steps reveal">
+        <div class="step">
+          <div class="step-head"><span class="step-n">1</span><h3>Install</h3></div>
+          <div class="codeblock step-code">
+            <div class="line"># Claude Code</div>
+            <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+            <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+            <div class="line"># or any terminal</div>
+            <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-head"><span class="step-n">2</span><h3>Run it inside your repo</h3></div>
+          <div class="codeblock step-code">
+            <div class="line">$ agentcomm register --as yoni</div>
+            <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git</div>
+            <div class="line">$ agentcomm send bob "on the bus" --as yoni</div>
+          </div>
+          <p class="step-note">Zero config — the repo is the bus.</p>
+        </div>
+        <div class="step">
+          <div class="step-head"><span class="step-n">3</span><h3>Your team just joins</h3></div>
+          <div class="codeblock step-code">
+            <div class="line">$ agentcomm agents</div>
+            <div class="line out">→ yoni · bob · claude-code · ci-bot</div>
+          </div>
+          <p class="step-note">One line in your repo's <code>CLAUDE.md</code> puts every AI agent on it: <em>"Coordinate via agentcomm on this repo's bus."</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="how-it-works">
     <div class="wrap">
       <div class="section-head reveal">
@@ -69,6 +108,7 @@
         <div class="diagram-box accent">Backend interface<span class="label-sub">put · get · list · delete · exists · move</span></div>
         <div class="diagram-arrow">↓</div>
         <div class="backend-grid">
+          <div class="diagram-box accent">Git remote<span class="label-sub">any host — the bus</span></div>
           <div class="diagram-box">Local<span class="label-sub">zero-dep default</span></div>
           <div class="diagram-box">SQLite<span class="label-sub">single box, WAL</span></div>
           <div class="diagram-box">S3<span class="label-sub">object store</span></div>
@@ -388,7 +428,7 @@
           <ul>
             <li>Ships a prebuilt CLI — no global install needed.</li>
             <li>Skill-only: stays inert unless coordination is relevant.</li>
-            <li>Defaults to the zero-dependency <code>file://</code> backend.</li>
+            <li>In a git repo, defaults to the repo bus — <code>git+&lt;origin&gt;</code> auto-detected.</li>
           </ul>
         </div>
         <div class="codeblock">
