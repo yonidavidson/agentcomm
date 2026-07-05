@@ -354,7 +354,7 @@ async function cmdInit(bus, cfg) {
         await fsp.writeFile(claudeMd, existing + sep + CLAUDE_MD_SNIPPET);
     }
     const me = await resolveAgent(cfg);
-    await bus.register(me);
+    await registerWithCollisionCheck(bus, me);
     const roster = await bus.agents();
     if (cfg.json) {
         emit({
@@ -375,9 +375,51 @@ async function cmdInit(bus, cfg) {
     ].join('\n'));
     return 0;
 }
+let sessionHashMemo;
+/**
+ * A fingerprint of THIS session, stable across the many CLI invocations one
+ * agent session makes: AGENTCOMM_SESSION, else the terminal session id, else
+ * the harness process (grandparent pid — each command's shell is a child of
+ * the long-lived session process). Suffixes derived aliases and is recorded
+ * in registrations, so tooling can tell "stale me" from "someone else".
+ */
+async function sessionHash() {
+    if (sessionHashMemo !== undefined)
+        return sessionHashMemo;
+    const { createHash } = await import('node:crypto');
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    let session = process.env.AGENTCOMM_SESSION ??
+        process.env.ITERM_SESSION_ID ??
+        process.env.TERM_SESSION_ID ??
+        process.env.TMUX_PANE ??
+        '';
+    if (!session) {
+        try {
+            session =
+                'gppid:' + (await promisify(execFile)('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
+        }
+        catch {
+            session = 'ppid:' + String(process.ppid);
+        }
+    }
+    sessionHashMemo = createHash('sha1').update(session).digest('hex').slice(0, 12);
+    return sessionHashMemo;
+}
+/** register + collision alarm: fresh lastSeen under a DIFFERENT session = two live processes on one consuming mailbox. */
+async function registerWithCollisionCheck(bus, me) {
+    const session = await sessionHash();
+    const record = await bus.register(me, session);
+    const prev = record.previous;
+    if (prev && prev.session !== session && Date.now() - Date.parse(prev.lastSeen) < 10 * 60 * 1000) {
+        process.stderr.write(`agentcomm: WARNING — alias "${me}" was active ${Math.round((Date.now() - Date.parse(prev.lastSeen)) / 60000)}m ago from a DIFFERENT session. ` +
+            'Two live processes sharing a mailbox consume each other\'s messages; if that agent is still running, re-register with a distinct --as.\n');
+    }
+    return record;
+}
 async function cmdRegister(bus, cfg) {
     const me = await resolveAgent(cfg);
-    const record = await bus.register(me);
+    const record = await registerWithCollisionCheck(bus, me);
     if (cfg.json)
         emit(record);
     else
@@ -386,15 +428,18 @@ async function cmdRegister(bus, cfg) {
 }
 async function cmdAgents(bus, cfg) {
     const list = await bus.agents();
+    const mySession = await sessionHash();
     if (cfg.json) {
-        emit(list);
+        emit(list.map((a) => ({ ...a, thisSession: a.session === mySession })));
     }
     else if (list.length === 0) {
         process.stdout.write('(no agents registered)\n');
     }
     else {
-        for (const a of list)
-            process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}\n`);
+        for (const a of list) {
+            const mine = a.session === mySession ? '  (this session)' : '';
+            process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}${mine}\n`);
+        }
     }
     return 0;
 }
@@ -532,28 +577,9 @@ async function resolveAgent(cfg) {
         }
         // Session suffix: multiple runners on one machine (several Claude/Cursor
         // sessions, parallel workers) must not share a mailbox — inbox reads
-        // consume. Derive a per-session component that is stable across the many
-        // CLI invocations of one session: an explicit AGENTCOMM_SESSION, else
-        // the terminal session id, else the harness process (grandparent pid —
-        // each command's shell is a child of the long-lived session process).
+        // consume. The suffix is the session fingerprint (see sessionHash).
         if (name) {
-            const { createHash } = await import('node:crypto');
-            let session = process.env.AGENTCOMM_SESSION ??
-                process.env.ITERM_SESSION_ID ??
-                process.env.TERM_SESSION_ID ??
-                process.env.TMUX_PANE ??
-                '';
-            if (!session) {
-                try {
-                    session =
-                        'gppid:' +
-                            (await promisify(execFile)('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
-                }
-                catch {
-                    session = 'ppid:' + String(process.ppid);
-                }
-            }
-            name = `${name}-${createHash('sha1').update(session).digest('hex').slice(0, 4)}`;
+            name = `${name}-${(await sessionHash()).slice(0, 4)}`;
         }
         derivedIdentity = name || null;
         if (derivedIdentity) {
