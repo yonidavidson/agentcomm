@@ -84,11 +84,11 @@ describe('CLI init (one-command team activation)', () => {
     expect(md).toContain('<!-- agentcomm -->');
   });
 
-  it(`defaults the identity to the OS username when --as is omitted`, async () => {
+  it(`derives an identity when --as is omitted (git identity, then OS username)`, async () => {
     const dir = await mkTmp();
     const bus = `file://${path.join(dir, '.bus')}`;
     const r = await run(['init', '--json'], dir, bus);
     expect(r.code).toBe(0);
-    expect((JSON.parse(r.stdout) as { registered: string }).registered).toBe(os.userInfo().username);
+    expect((JSON.parse(r.stdout) as { registered: string }).registered).toMatch(/^[A-Za-z0-9._-]+$/);
   });
 });
