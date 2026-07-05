@@ -44,11 +44,12 @@ agent) can point at the same one.
 
 Each agent acts under an alias, via `--as <name>` or `AGENTCOMM_AGENT` —
 omitted, it defaults to the git identity (user.email local-part), then the
-OS username, announced on stderr. That default is right for a HUMAN at a
-terminal; an agent must pick its own STABLE alias — the alias is its mailbox
-address. Derive it from operator + tool (`<git-user>-claude`, `worker-1`)
-and keep it identical across sessions; never reuse the human's bare alias
-(inbox reads consume — shared addresses steal each other's mail).
+OS username, announced on stderr. The default is `<git-identity>-<session-id>` — a
+mailbox unique to this session, so concurrent runners on one machine never
+consume each other's mail. Use it freely for ad-hoc work; when others must
+address you by name (reviewer, worker-1), register that role with `--as`
+and keep it stable. Never share an alias between live processes — inbox
+reads consume.
 **Aliases are addressing, not authentication** — anyone with write access
 can use any name; on git backends the commit author in `git log` is the
 verifiable identity, so tell the user to check history if provenance matters.

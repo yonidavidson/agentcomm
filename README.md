@@ -132,7 +132,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | Flag               | Meaning                                                        |
 | ------------------ | -------------------------------------------------------------- |
 | `--backend <uri>`  | Backend URI. Default resolution: flag > `AGENTCOMM_BACKEND` > `.agentcomm` config > `git+<origin>` probe > `github://` token fallback > `file://./.agentcomm`. |
-| `--as <name>`      | Acting alias (env `AGENTCOMM_AGENT`). Defaults to your git identity (`user.email` local-part), then OS username. **Names are aliases** — addressing, not authentication; on git backends the commit author in `git log` is the verifiable identity. |
+| `--as <name>`      | Acting alias (env `AGENTCOMM_AGENT`). Defaults to `<git-identity>-<session>` (a 4-char per-session id — concurrent runners on one machine get distinct mailboxes; set `AGENTCOMM_SESSION` to pin it). **Names are aliases** — addressing, not authentication; on git backends the commit author in `git log` is the verifiable identity. |
 | `--subject <text>` | Message subject (`send`/`broadcast`).                          |
 | `--thread <id>`    | Thread id (`send`/`broadcast`).                                |
 | `--timeout <ms>`   | `wait` timeout in ms (default `30000`).                        |

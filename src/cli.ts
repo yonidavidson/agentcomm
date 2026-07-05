@@ -350,11 +350,11 @@ const CLAUDE_MD_SNIPPET = `${CLAUDE_MD_MARKER}
 
 This repo has a message bus for AI agents. When working here:
 
-- At session start: register under a STABLE alias derived from your operator
-  and tool — \`agentcomm register --as <git-user>-claude\` (or -cursor, -ci…).
-  Same alias every session: it is your mailbox address, and messages sent to
-  yesterday's name go unread. Never reuse the human's bare alias — inbox
-  reads consume, so sharing an address steals each other's mail.
+- At session start: \`agentcomm register\` — the default alias is
+  \`<git-user>-<session-id>\`, a mailbox unique to THIS session (concurrent
+  runners never share one; inbox reads consume, so a shared address means
+  stolen mail). If others must address you by name — reviewer, worker-1 —
+  register that role with \`--as\` and keep it stable.
 - Then check your inbox (\`agentcomm inbox --as <alias> --json\`) —
   instructions may be waiting. The bus is auto-detected from this repo;
   \`agentcomm describe\` explains it, \`agentcomm conventions\` has the rules.
@@ -574,9 +574,36 @@ async function resolveAgent(cfg: ResolvedConfig): Promise<string> {
       name = sanitize(os.userInfo().username);
       source = 'OS username';
     }
+    // Session suffix: multiple runners on one machine (several Claude/Cursor
+    // sessions, parallel workers) must not share a mailbox — inbox reads
+    // consume. Derive a per-session component that is stable across the many
+    // CLI invocations of one session: an explicit AGENTCOMM_SESSION, else
+    // the terminal session id, else the harness process (grandparent pid —
+    // each command's shell is a child of the long-lived session process).
+    if (name) {
+      const { createHash } = await import('node:crypto');
+      let session =
+        process.env.AGENTCOMM_SESSION ??
+        process.env.ITERM_SESSION_ID ??
+        process.env.TERM_SESSION_ID ??
+        process.env.TMUX_PANE ??
+        '';
+      if (!session) {
+        try {
+          session =
+            'gppid:' +
+            (await promisify(execFile)('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
+        } catch {
+          session = 'ppid:' + String(process.ppid);
+        }
+      }
+      name = `${name}-${createHash('sha1').update(session).digest('hex').slice(0, 4)}`;
+    }
     derivedIdentity = name || null;
     if (derivedIdentity) {
-      process.stderr.write(`agentcomm: acting as ${derivedIdentity} (${source}; --as overrides)\n`);
+      process.stderr.write(
+        `agentcomm: acting as ${derivedIdentity} (${source} + session; --as or AGENTCOMM_AGENT overrides)\n`,
+      );
     }
   }
   if (!derivedIdentity) {

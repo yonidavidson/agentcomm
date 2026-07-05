@@ -43,6 +43,7 @@ function run(
     HOME: process.env.HOME,
     AGENTCOMM_BACKEND: `file://${path.join(cwd, '.bus')}`,
     AGENTCOMM_NO_GIT_PROBE: '1',
+    AGENTCOMM_SESSION: 'test-session',
   };
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) delete child_env[k];
@@ -68,8 +69,17 @@ describe('identity: the acting name is an alias with an honest default', () => {
     const dir = await repoWithEmail('yoni.davidson@corp.example');
     const r = await run(['register'], dir);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain('registered yoni.davidson');
-    expect(r.stderr).toMatch(/acting as yoni\.davidson \(from git config user\.email; --as overrides\)/);
+    expect(r.stdout).toContain('registered yoni.davidson-7078'); // name + sha1(session)[0:4]
+    expect(r.stderr).toMatch(/acting as yoni\.davidson-7078 \(from git config user\.email \+ session/);
+  });
+
+  it('the session suffix is stable within a session and distinct across sessions', async () => {
+    const dir = await repoWithEmail('yoni.davidson@corp.example');
+    const again = await run(['register'], dir);
+    expect(again.stdout).toContain('registered yoni.davidson-7078'); // same session → same mailbox
+    const other = await run(['register'], dir, { AGENTCOMM_SESSION: 'another-session' });
+    expect(other.stdout).toMatch(/registered yoni\.davidson-[0-9a-f]{4}/);
+    expect(other.stdout).not.toContain('yoni.davidson-7078');
   });
 
   it('--as beats everything; AGENTCOMM_AGENT beats the git identity — both silently', async () => {
@@ -88,7 +98,7 @@ describe('identity: the acting name is an alias with an honest default', () => {
     const dir = await repoWithEmail('we!rd $name+x@corp.example');
     const r = await run(['register'], dir);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain('registered werdnamex');
+    expect(r.stdout).toMatch(/registered werdnamex-[0-9a-f]{4}/);
   });
 
   it('outside a git repo, falls back to the OS username', async () => {
@@ -96,7 +106,7 @@ describe('identity: the acting name is an alias with an honest default', () => {
     const r = await run(['register'], dir, { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' });
     expect(r.code).toBe(0);
     const expected = os.userInfo().username.replace(/[^A-Za-z0-9._-]/g, '');
-    expect(r.stdout).toContain(`registered ${expected}`);
-    expect(r.stderr).toMatch(/acting as .*OS username/);
+    expect(r.stdout).toMatch(new RegExp(`registered ${expected}-[0-9a-f]{4}`));
+    expect(r.stderr).toMatch(/acting as .*OS username \+ session/);
   });
 });
