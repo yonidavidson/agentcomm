@@ -10,7 +10,8 @@
   --terminal: #171d26;        /* code stays a dark island */
   --terminal-text: #dbe6f2;
   --terminal-out: #7fd1a8;
-  --line-git: #00857c;        /* the Repo Line */
+  --line-git: #f2a900;        /* the Repo Line — school-bus yellow */
+  --line-git-text: #8a6100;   /* amber-ink: yellow that survives as text */
   --line-blue: #2456c8;
   --line-green: #2e9e44;
   --line-amber: #e08a00;
@@ -45,7 +46,7 @@ body {
 
 main, header, footer { position: relative; z-index: 2; }
 
-a { color: var(--line-git); text-decoration: none; font-weight: 600; }
+a { color: var(--line-git-text); text-decoration: none; font-weight: 600; }
 a:hover { text-decoration: underline; }
 
 code, pre, .mono { font-family: var(--mono); }
@@ -103,7 +104,7 @@ nav.topbar {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--ink);
   background: var(--line-git);
   border-radius: 999px;
   padding: 6px 16px;
@@ -142,8 +143,8 @@ h1.headline {
 .btn:hover { transform: translateY(-1px); }
 .btn-primary {
   background: var(--line-git);
-  color: #fff;
-  border-color: var(--line-git);
+  color: var(--ink);
+  border-color: var(--ink);
   text-decoration: none;
 }
 .btn-primary:hover { text-decoration: none; filter: brightness(1.06); }
@@ -160,6 +161,14 @@ h1.headline {
   padding: 5px 12px;
   background: var(--card);
 }
+
+/* ---- the bus itself ---- */
+.hero-bus { width: 100%; max-width: 640px; margin: 4px auto 30px; }
+.hero-bus svg { display: block; width: 100%; height: auto; }
+.hb-road { stroke: var(--ink); stroke-width: 4; }
+.hb-dash { stroke: var(--paper-dim); stroke-width: 3; stroke-dasharray: 18 14; animation: hb-roll 1.6s linear infinite; }
+@keyframes hb-roll { to { stroke-dashoffset: -32; } }
+@media (prefers-reduced-motion: reduce) { .hb-dash { animation: none; } }
 
 /* ---- code: always a dark terminal island ---- */
 .codeblock {
@@ -239,7 +248,7 @@ h2.section-title {
   min-width: 150px;
   box-shadow: 0 2px 0 var(--edge);
 }
-.diagram-box.accent { border-color: var(--line-git); color: var(--line-git); font-weight: 600; }
+.diagram-box.accent { border-color: var(--line-git); color: var(--line-git-text); font-weight: 600; }
 .diagram-box .label-sub { color: var(--dim); font-size: 0.74rem; font-weight: 400; display: block; margin-top: 4px; }
 .diagram-arrow { font-family: var(--mono); color: var(--dim); font-size: 1.1rem; margin: 10px 0; }
 .backend-grid {
@@ -267,7 +276,7 @@ h2.section-title {
 .card:hover { border-color: var(--line-git); transform: translateY(-2px); }
 .card .cmd {
   font-family: var(--mono);
-  color: var(--line-git);
+  color: var(--line-git-text);
   font-weight: 700;
   font-size: 0.95rem;
   margin-bottom: 8px;
@@ -287,7 +296,7 @@ th {
   color: var(--dim);
   background: var(--paper-dim);
 }
-td.mono { font-family: var(--mono); color: var(--line-git); font-weight: 600; font-size: 0.84rem; }
+td.mono { font-family: var(--mono); color: var(--line-git-text); font-weight: 600; font-size: 0.84rem; }
 tr:last-child td { border-bottom: none; }
 .yes { color: var(--line-green); font-weight: 700; }
 .no { color: var(--dim); }
@@ -345,7 +354,7 @@ tr:last-child td { border-bottom: none; }
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--uc-text, #fff);
   background: var(--uc);
   border: none;
   border-radius: 999px;
@@ -360,7 +369,7 @@ tr:last-child td { border-bottom: none; }
 .uc-bus {
   width: 100%;
   border-color: var(--uc);
-  color: var(--uc);
+  color: var(--uc-strong, var(--uc));
   font-weight: 700;
   position: relative;
   overflow: hidden;
@@ -422,7 +431,7 @@ tr:last-child td { border-bottom: none; }
 .ga-dot.ga-msg { stroke: var(--line-git); }
 .ga-tag { font: 600 11px var(--mono); text-anchor: middle; }
 .ga-tag.ga-code-t { fill: var(--line-blue); }
-.ga-tag.ga-msg-t { fill: var(--line-git); }
+.ga-tag.ga-msg-t { fill: var(--line-git-text); }
 .ga-pop { opacity: 0; animation: ga-pop 13s linear infinite; }
 @keyframes ga-pop {
   0% { opacity: 0; }

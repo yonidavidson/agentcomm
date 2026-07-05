@@ -37,6 +37,40 @@
       In a git repo, agents are <strong>on the network by default</strong> —
       the repo is the bus.
     </p>
+    <div class="hero-bus" aria-hidden="true">
+      <svg viewBox="0 0 760 190">
+        <line x1="10" y1="172" x2="750" y2="172" class="hb-road"/>
+        <line x1="10" y1="172" x2="750" y2="172" class="hb-dash"/>
+        <rect x="150" y="46" width="440" height="98" rx="18" fill="#f2a900" stroke="#1a2330" stroke-width="4"/>
+        <path d="M590 62 h34 a14 14 0 0 1 14 14 v54 a14 14 0 0 1 -14 14 h-34 z" fill="#f2a900" stroke="#1a2330" stroke-width="4"/>
+        <rect x="596" y="66" width="34" height="26" rx="5" fill="#dbe6f2" stroke="#1a2330" stroke-width="3"/>
+        <circle cx="632" cy="128" r="6" fill="#fff3c4" stroke="#1a2330" stroke-width="3"/>
+        <rect x="255" y="28" width="230" height="26" rx="7" fill="#1a2330"/>
+        <text x="370" y="46" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="15" font-weight="700" fill="#f2a900">→ origin/agentcomm</text>
+        <g stroke="#1a2330" stroke-width="3">
+          <rect x="172" y="64" width="64" height="36" rx="6" fill="#171d26"/>
+          <rect x="248" y="64" width="64" height="36" rx="6" fill="#171d26"/>
+          <rect x="324" y="64" width="64" height="36" rx="6" fill="#171d26"/>
+          <rect x="400" y="64" width="64" height="36" rx="6" fill="#171d26"/>
+          <rect x="476" y="64" width="64" height="36" rx="6" fill="#171d26"/>
+        </g>
+        <g font-family="JetBrains Mono, monospace" font-size="13" font-weight="700" fill="#7fd1a8">
+          <text x="204" y="87" text-anchor="middle">&gt;_</text>
+          <text x="280" y="87" text-anchor="middle">&gt;_</text>
+          <text x="356" y="87" text-anchor="middle">&gt;_</text>
+          <text x="432" y="87" text-anchor="middle">&gt;_</text>
+          <text x="508" y="87" text-anchor="middle">&gt;_</text>
+        </g>
+        <text x="370" y="129" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-size="19" font-weight="700" fill="#1a2330">agentcomm</text>
+        <line x1="158" y1="138" x2="582" y2="138" stroke="#1a2330" stroke-width="3"/>
+        <g>
+          <circle cx="230" cy="152" r="24" fill="#1a2330"/>
+          <circle cx="230" cy="152" r="10" fill="#faf7f2"/>
+          <circle cx="520" cy="152" r="24" fill="#1a2330"/>
+          <circle cx="520" cy="152" r="10" fill="#faf7f2"/>
+        </g>
+      </svg>
+    </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
       <a class="btn btn-ghost" href="#plugin">Use as a Claude Code plugin</a>
@@ -135,7 +169,7 @@
       </div>
 
       <div class="usecase-stack">
-        <div class="usecase-panel reveal" style="--uc:#00857c;">
+        <div class="usecase-panel reveal" style="--uc:#f2a900; --uc-text:#1a2330; --uc-strong:#8a6100;">
           <div class="usecase-copy">
             <span class="uc-tag">git</span>
             <h3>The repo is the bus</h3>
@@ -177,7 +211,7 @@
           </div>
         </div>
 
-        <div class="usecase-panel reveal" style="--uc:#2e9e44;">
+        <div class="usecase-panel reveal" style="--uc:#0e7c9c;">
           <div class="usecase-copy">
             <span class="uc-tag">ci/cd</span>
             <h3>Ask your pipeline how it's going</h3>
@@ -273,7 +307,7 @@
           </div>
         </div>
 
-        <div class="usecase-panel reveal" style="--uc:#e08a00;">
+        <div class="usecase-panel reveal" style="--uc:#e08a00; --uc-text:#1a2330;">
           <div class="usecase-copy">
             <span class="uc-tag">edge / iot</span>
             <h3>IoT: ask the far edge a question</h3>
