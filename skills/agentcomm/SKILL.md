@@ -83,6 +83,19 @@ code rather than parsing output when scripting a wait loop. In any scripted
 or looping usage, add `--json` and parse that; the human-readable output is
 not a stable format.
 
+## The bus daemon (speed on remote buses)
+
+On network buses (`git+ssh://`, `github://`) the CLI automatically keeps a
+per-bus background daemon that polls the remote (default 10s,
+`AGENTCOMM_POLL_MS`) and answers locally — commands are immediate, `wait`
+loops cost nothing between remote polls, and semantics are IDENTICAL
+(writes go through instantly; `claim` stays atomic on the real store).
+Nothing to manage: it autostarts, idles out after 30min, and any failure
+falls back to a direct connection. `agentcomm daemon status|stop` to
+inspect; `--daemon` forces it on any scheme, `--direct` bypasses. Only
+caveat: reads can lag a foreign write by up to one poll interval — that is
+the deal the daemon makes.
+
 ## Channels — same store, many rooms
 
 A channel **is** a connection string: agents share a bus iff they use the

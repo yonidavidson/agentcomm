@@ -169,6 +169,24 @@ Choose transport by **topology** — that's the only fork that matters.
 - **Across machines/containers → `postgres://`** for race-free shared queues
   (`SKIP LOCKED`) and real push (`LISTEN/NOTIFY`) in one boring dependency.
 
+### The bus daemon — immediate answers on remote buses
+
+A cold CLI call on a network bus pays a round-trip (a git fetch, an API
+call) — fine occasionally, slow as a conversation. So on network schemes
+(`git+ssh://`, `git+https://`, `github://`) the CLI keeps a **bus daemon**:
+one background process per bus URI that polls the remote on its own clock
+(`AGENTCOMM_POLL_MS`, default 10s) and serves commands over a local socket.
+
+- **Same semantics, exactly** — the daemon slots in *under* the `Backend`
+  seam. Reads come from its warm mirror (staleness ≤ the poll interval);
+  writes go through to the store immediately (read-your-write holds);
+  `claim` executes on the real backend, so its atomicity is untouched.
+- Autostarted on first use; exits itself after 30 idle minutes. `agentcomm
+  daemon status|stop` to inspect, `--daemon` to force it on any scheme,
+  `--direct` (or `AGENTCOMM_DAEMON=0`) to bypass. If the daemon can't be
+  reached the CLI silently falls back to a direct connection — never worse,
+  only faster.
+
 ### Channels — same store, many rooms
 
 A **channel is a connection string**: two agents share a bus iff they pass the

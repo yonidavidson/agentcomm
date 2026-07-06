@@ -5,7 +5,8 @@ import { discoverChannels } from './channels.js';
 import { loadConventions } from './conventions.js';
 import { Bus } from './bus.js';
 import { parseArgs, resolveConfig, type ResolvedConfig } from './config.js';
-import type { Message } from './types.js';
+import type { Backend, Message } from './types.js';
+import { fileURLToPath } from 'node:url';
 
 const USAGE = `agentcomm — a tiny mailbox/message bus for AI agents
 
@@ -34,6 +35,10 @@ Commands:
                            time-ordered, non-consuming); --thread, --limit
   conventions              Print the effective team conventions (built-in
                            defaults ⊕ .agentcomm.json/.yaml override file)
+  daemon run|status|stop   The bus daemon: a background poller serving this
+                           bus over a local socket, so every command answers
+                           immediately. Network schemes (git+ssh://, github://)
+                           use it automatically
 
 Flags:
   --backend <uri>          git+ssh:// | github:// | file:// | sqlite:// |
@@ -46,10 +51,14 @@ Flags:
   --thread <id>            Thread id (send/broadcast)
   --timeout <ms>           wait timeout in ms (default 30000)
   --queue <name>           Queue to claim from (claim) — same namespace as a recipient inbox
+  --daemon                 Force commands through the bus daemon (autostarts it)
+  --direct                 Bypass the daemon for this call
   --json                   Machine-readable JSON output
   --help                   Show this help
 
 Env:
+  AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
+  AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
                              import before resolving --backend, so a
                              third-party package can register a new URI
@@ -101,7 +110,9 @@ async function main(argv: string[]): Promise<number> {
   if (command === 'describe') return cmdDescribe(cfg);
   if (command === 'conventions') return await cmdConventions(cfg);
 
-  const backend = await createBackend(cfg.backendUri);
+  if (command === 'daemon') return await cmdDaemon(cfg, positional[1]);
+
+  const backend = await resolveTransport(cfg, flags);
   const bus = new Bus(backend);
   try {
     switch (command) {
@@ -144,6 +155,75 @@ const CHANNEL_SECURITY_NOTE =
   'Channels are namespacing, not security: everyone on this store shares its credentials. ' +
   "Isolation is enforced by the backend's own access controls (IAM policies, database grants, file permissions). " +
   'Agent names are aliases (addressing, not authentication) — on git backends the commit author in git log is the verifiable identity.';
+
+/** Schemes where a cold open is a network round-trip — daemon pays off. */
+const SLOW_SCHEMES = new Set(['git+ssh', 'git+http', 'git+https', 'github']);
+
+/**
+ * The daemon is transparent under the Backend seam: same commands, flags and
+ * exit codes either way. --daemon forces (and autostarts) it, --direct or
+ * AGENTCOMM_DAEMON=0 bypasses, and network-remote schemes use it by default.
+ * Any daemon failure falls back to a direct connection — never worse, only
+ * faster.
+ */
+async function resolveTransport(
+  cfg: ResolvedConfig,
+  flags: { daemon?: boolean; direct?: boolean },
+): Promise<Backend> {
+  const envPref = process.env.AGENTCOMM_DAEMON;
+  const want =
+    !flags.direct &&
+    envPref !== '0' &&
+    (flags.daemon || envPref === '1' || SLOW_SCHEMES.has(schemeForUri(cfg.backendUri)));
+  if (want) {
+    const { SocketBackend } = await import('./backends/socket.js');
+    const viaDaemon = await SocketBackend.connectOrSpawn(cfg.backendUri, fileURLToPath(import.meta.url));
+    if (viaDaemon) return viaDaemon;
+    process.stderr.write('agentcomm: daemon unavailable — using a direct connection\n');
+  }
+  return createBackend(cfg.backendUri);
+}
+
+async function cmdDaemon(cfg: ResolvedConfig, action?: string): Promise<number> {
+  const { SocketBackend } = await import('./backends/socket.js');
+  switch (action) {
+    case 'run': {
+      const { runDaemon } = await import('./daemon.js');
+      await runDaemon(cfg.backendUri);
+      return 0;
+    }
+    case 'status': {
+      const client = await SocketBackend.connect(cfg.backendUri);
+      if (!client) {
+        if (cfg.json) emit({ running: false, uri: cfg.backendUri });
+        else process.stdout.write(`no daemon for ${cfg.backendUri}\n`);
+        return 2;
+      }
+      const info = await client.info();
+      await client.close();
+      if (cfg.json) emit({ running: true, ...info });
+      else
+        process.stdout.write(
+          `daemon pid ${info.pid} serving ${info.uri} (poll ${info.pollMs}ms, claim ${info.claimable ? 'yes' : 'no'})\n`,
+        );
+      return 0;
+    }
+    case 'stop': {
+      const client = await SocketBackend.connect(cfg.backendUri);
+      if (!client) {
+        process.stdout.write(`no daemon for ${cfg.backendUri}\n`);
+        return 2;
+      }
+      await client.stop();
+      await client.close();
+      process.stdout.write('daemon stopped\n');
+      return 0;
+    }
+    default:
+      fail('usage: agentcomm daemon run|status|stop [--backend <uri>]');
+      return 1;
+  }
+}
 
 function cmdDescribe(cfg: ResolvedConfig): number {
   const scheme = schemeForUri(cfg.backendUri);
