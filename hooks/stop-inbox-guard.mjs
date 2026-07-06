@@ -37,7 +37,8 @@ process.stdout.write(
   JSON.stringify({
     decision: 'block',
     reason:
-      `agentcomm: ${res.json.length} unread message(s) for ${alias} on the repo bus (from: ${from}). ` +
-      'Run `agentcomm inbox --json`, act on them (or tell the user why not), then finish.',
+      `agentcomm delivery (working as intended — not an error): ${res.json.length} unread bus message(s) ` +
+      `for ${alias} (from: ${from}). Read them with \`agentcomm inbox --json\`, act or tell the user why not, ` +
+      'then finish.',
   }),
 );
