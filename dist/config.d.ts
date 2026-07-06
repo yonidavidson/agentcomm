@@ -23,6 +23,7 @@ export interface ParsedFlags {
     dryRun: boolean;
     daemon?: boolean;
     direct?: boolean;
+    sync?: boolean;
     limit?: number;
     _: string[];
 }

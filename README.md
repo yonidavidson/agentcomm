@@ -179,8 +179,10 @@ one background process per bus URI that polls the remote on its own clock
 
 - **Same semantics, exactly** — the daemon slots in *under* the `Backend`
   seam. Reads come from its warm mirror (staleness ≤ the poll interval);
-  writes go through to the store immediately (read-your-write holds);
-  `claim` executes on the real backend, so its atomicity is untouched.
+  **sends ack from a disk-persisted outbox in ~0.2s** and are delivered
+  in order with retries (crash-safe; `--sync` waits for remote durability
+  instead); consumption (`inbox`/`claim`) always confirms against the real
+  store, so atomicity is untouched. `daemon status` shows outbox depth.
 - Autostarted on first use; exits itself after 30 idle minutes. `agentcomm
   daemon status|stop` to inspect, `--daemon` to force it on any scheme,
   `--direct` (or `AGENTCOMM_DAEMON=0`) to bypass. If the daemon can't be
