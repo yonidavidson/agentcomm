@@ -38,6 +38,7 @@ interface Req {
   queue?: string;
   owner?: string;
   data?: string; // base64
+  sync?: boolean;
 }
 
 export async function runDaemon(uri: string): Promise<void> {
@@ -52,8 +53,20 @@ export async function runDaemon(uri: string): Promise<void> {
   let keys = new Set<string>();
 
   async function poll(): Promise<void> {
+    // Snapshot the outbox BEFORE listing the store: a key is always in at
+    // least one of the two (spool until delivered, store afterwards) — the
+    // other order can miss it mid-flush for a full poll cycle.
+    const spooled: string[] = [];
+    try {
+      for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
+        const { key } = JSON.parse(await fs.readFile(path.join(sockPath + '.spool', f), 'utf8')) as {
+          key: string;
+        };
+        spooled.push(key);
+      }
+    } catch { /* spool not created yet */ }
     const listed = await backend.list('');
-    const next = new Set(listed);
+    const next = new Set([...listed, ...spooled]);
     for (const k of listed) {
       if (!mirror.has(k) || k.startsWith('agents/')) {
         try {
@@ -104,7 +117,15 @@ export async function runDaemon(uri: string): Promise<void> {
     lastActivity = Date.now();
     switch (req.op) {
       case 'info':
-        return { ok: true, uri, claimable, pollMs, pid: process.pid };
+        return {
+          ok: true,
+          uri,
+          claimable,
+          pollMs,
+          pid: process.pid,
+          outbox: await spoolDepth(),
+          flushFailures,
+        };
       case 'list':
         return { ok: true, keys: [...keys].filter((k) => k.startsWith(req.prefix ?? '')).sort() };
       case 'exists':
@@ -119,18 +140,24 @@ export async function runDaemon(uri: string): Promise<void> {
       }
       case 'put': {
         const buf = Buffer.from(req.data ?? '', 'base64');
-        await backend.put(req.key!, buf);
+        if (req.sync) {
+          await backend.put(req.key!, buf);
+        } else {
+          await spoolAdd(req.key!, buf); // durable locally; flusher delivers
+        }
         mirror.set(req.key!, buf);
         keys.add(req.key!);
-        return { ok: true };
+        return { ok: true, queued: !req.sync };
       }
       case 'delete':
-        await backend.delete(req.key!);
+        if (!(await spoolTake(req.key!))) await backend.delete(req.key!);
         mirror.delete(req.key!);
         keys.delete(req.key!);
         return { ok: true };
       case 'move': {
-        await backend.move(req.src!, req.dst!);
+        if (!(await spoolTake(req.src!, req.dst!))) {
+          await backend.move(req.src!, req.dst!);
+        }
         const body = mirror.get(req.src!);
         mirror.delete(req.src!);
         keys.delete(req.src!);
@@ -153,7 +180,7 @@ export async function runDaemon(uri: string): Promise<void> {
         await poll();
         return { ok: true };
       case 'stop':
-        setTimeout(() => process.exit(0), 50);
+        setTimeout(shutdown, 50);
         return { ok: true, stopping: true };
       default:
         return { ok: false, error: `unknown op ${req.op}` };
@@ -190,6 +217,73 @@ export async function runDaemon(uri: string): Promise<void> {
     server.listen(sockPath, resolve);
   });
   await fs.writeFile(sockPath + '.pid', String(process.pid));
+
+  // Outbox spool: puts are accepted onto disk and delivered by the flusher,
+  // so `send` acks in milliseconds while delivery (a git push, an API call)
+  // happens on the daemon's clock — FIFO, retried, surviving restarts.
+  const spoolDir = sockPath + '.spool';
+  await fs.mkdir(spoolDir, { recursive: true });
+  let spoolSeq = 0;
+  let flushFailures = 0;
+  async function spoolAdd(key: string, data: Buffer): Promise<void> {
+    const name = `${String(Date.now()).padStart(14, '0')}-${String(++spoolSeq).padStart(6, '0')}`;
+    const tmp = path.join(spoolDir, '.' + name);
+    await fs.writeFile(tmp, JSON.stringify({ key, data: data.toString('base64') }));
+    await fs.rename(tmp, path.join(spoolDir, name)); // atomic appearance
+  }
+  async function spoolDepth(): Promise<number> {
+    try {
+      return (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).length;
+    } catch {
+      return 0;
+    }
+  }
+  // One mutex serializes the flusher against spool mutations (a move/delete
+  // of a not-yet-delivered key rewrites its spool entry — racing the flusher
+  // there would deliver the stale key and lose the rewrite).
+  let spoolChain: Promise<unknown> = Promise.resolve();
+  function withSpool<T>(fn: () => Promise<T>): Promise<T> {
+    const next = spoolChain.then(fn, fn);
+    spoolChain = next.catch(() => {});
+    return next;
+  }
+  function flush(): Promise<void> {
+    return withSpool(async () => {
+      const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();
+      for (const f of entries) {
+        const file = path.join(spoolDir, f);
+        try {
+          const { key, data } = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
+          await backend.put(key, Buffer.from(data, 'base64'));
+          await fs.rm(file, { force: true });
+          flushFailures = 0;
+        } catch {
+          flushFailures++;
+          break; // keep FIFO order — retry this entry next tick
+        }
+      }
+    });
+  }
+  /** If `key` is still spooled, rewrite/remove it locally and return true. */
+  function spoolTake(key: string, rewriteTo?: string): Promise<boolean> {
+    return withSpool(async () => {
+      for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.')).sort()) {
+        const file = path.join(spoolDir, f);
+        try {
+          const entry = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
+          if (entry.key !== key) continue;
+          if (rewriteTo) await fs.writeFile(file, JSON.stringify({ ...entry, key: rewriteTo }));
+          else await fs.rm(file, { force: true });
+          return true;
+        } catch { /* unreadable entry: leave for the flusher */ }
+      }
+      return false;
+    });
+  }
+  const flushMs = Math.max(100, Number(process.env.AGENTCOMM_FLUSH_MS ?? 250));
+  const flushTimer = setInterval(() => void flush(), flushMs);
+  flushTimer.unref?.();
+  void flush(); // deliver anything a previous daemon left behind
 
   // Housekeeping: heartbeats and archives must not accrete forever. The
   // daemon is the bus's long-lived janitor: periodically trim the read/
@@ -231,11 +325,18 @@ export async function runDaemon(uri: string): Promise<void> {
     clearInterval(pollTimer);
     clearInterval(idleTimer);
     clearInterval(housekeepTimer);
+    clearInterval(flushTimer);
     server.close();
-    void fs.rm(sockPath, { force: true }).catch(() => {});
-    void fs.rm(sockPath + '.pid', { force: true }).catch(() => {});
-    void backend.close?.().catch(() => {});
-    setTimeout(() => process.exit(0), 100);
+    const cap = setTimeout(() => process.exit(0), 15_000); // don't hang forever on a dead remote
+    cap.unref?.();
+    void flush() // drain the outbox for real before dying; leftovers survive on disk anyway
+      .catch(() => {})
+      .finally(() => {
+        void fs.rm(sockPath, { force: true }).catch(() => {});
+        void fs.rm(sockPath + '.pid', { force: true }).catch(() => {});
+        void backend.close?.().catch(() => {});
+        setTimeout(() => process.exit(0), 100);
+      });
   }
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);

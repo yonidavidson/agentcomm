@@ -55,6 +55,8 @@ Flags:
   --queue <name>           Queue to claim from (claim) — same namespace as a recipient inbox
   --daemon                 Force commands through the bus daemon (autostarts it)
   --direct                 Bypass the daemon for this call
+  --sync                   Wait for remote durability on writes (default: the
+                           daemon acks from its disk outbox and delivers async)
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -170,7 +172,7 @@ const SLOW_SCHEMES = new Set(['git+ssh', 'git+http', 'git+https', 'github']);
  */
 async function resolveTransport(
   cfg: ResolvedConfig,
-  flags: { daemon?: boolean; direct?: boolean },
+  flags: { daemon?: boolean; direct?: boolean; sync?: boolean },
 ): Promise<Backend> {
   const envPref = process.env.AGENTCOMM_DAEMON;
   const want =
@@ -180,7 +182,10 @@ async function resolveTransport(
   if (want) {
     const { SocketBackend } = await import('./backends/socket.js');
     const viaDaemon = await SocketBackend.connectOrSpawn(cfg.backendUri, fileURLToPath(import.meta.url));
-    if (viaDaemon) return viaDaemon;
+    if (viaDaemon) {
+      viaDaemon.syncWrites = flags.sync === true || process.env.AGENTCOMM_SYNC === '1';
+      return viaDaemon;
+    }
     process.stderr.write('agentcomm: daemon unavailable — using a direct connection\n');
   }
   return createBackend(cfg.backendUri);

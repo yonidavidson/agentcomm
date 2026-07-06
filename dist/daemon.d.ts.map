@@ -1,1 +1,1 @@
-{"version":3,"file":"daemon.d.ts","sourceRoot":"","sources":["../src/daemon.ts"],"names":[],"mappings":"AAsBA,wBAAgB,SAAS,IAAI,MAAM,CAElC;AAED,wBAAgB,aAAa,CAAC,GAAG,EAAE,MAAM,GAAG,MAAM,CAEjD;AAcD,wBAAsB,SAAS,CAAC,GAAG,EAAE,MAAM,GAAG,OAAO,CAAC,IAAI,CAAC,CA2M1D"}
+{"version":3,"file":"daemon.d.ts","sourceRoot":"","sources":["../src/daemon.ts"],"names":[],"mappings":"AAsBA,wBAAgB,SAAS,IAAI,MAAM,CAElC;AAED,wBAAgB,aAAa,CAAC,GAAG,EAAE,MAAM,GAAG,MAAM,CAEjD;AAeD,wBAAsB,SAAS,CAAC,GAAG,EAAE,MAAM,GAAG,OAAO,CAAC,IAAI,CAAC,CA+S1D"}

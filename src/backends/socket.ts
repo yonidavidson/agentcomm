@@ -70,6 +70,8 @@ function ok(res: Record<string, unknown>): Record<string, unknown> {
 
 export class SocketBackend implements Backend {
   readonly pollIntervalMs = 250; // local socket polls are ~free
+  /** When true, puts wait for remote durability instead of the daemon outbox. */
+  syncWrites = false;
 
   private constructor(
     private rpc: Rpc,
@@ -124,7 +126,9 @@ export class SocketBackend implements Backend {
     } catch {
       return null;
     }
-    for (let i = 0; i < 30; i++) {
+    // a git-backed daemon warms its mirror (a full fetch) before listening —
+    // give it a realistic window before falling back to a direct connection
+    for (let i = 0; i < 100; i++) {
       await new Promise((r) => setTimeout(r, 100));
       const client = await SocketBackend.connect(uri);
       if (client) return client;
@@ -133,7 +137,7 @@ export class SocketBackend implements Backend {
   }
 
   async put(key: string, data: Buffer): Promise<void> {
-    ok(await this.rpc.call('put', { key, data: data.toString('base64') }));
+    ok(await this.rpc.call('put', { key, data: data.toString('base64'), sync: this.syncWrites }));
   }
 
   async get(key: string): Promise<Buffer> {

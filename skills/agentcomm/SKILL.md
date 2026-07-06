@@ -89,7 +89,10 @@ On network buses (`git+ssh://`, `github://`) the CLI automatically keeps a
 per-bus background daemon that polls the remote (default 10s,
 `AGENTCOMM_POLL_MS`) and answers locally — commands are immediate, `wait`
 loops cost nothing between remote polls, and semantics are IDENTICAL
-(writes go through instantly; `claim` stays atomic on the real store).
+(`claim`/`inbox` stay atomic on the real store). Sends ack in ~0.2s from
+the daemon's crash-safe disk outbox and are delivered in order behind the
+scenes — exit 0 means "accepted durably", remote visibility follows within
+seconds; pass `--sync` when a caller must wait for remote durability.
 Nothing to manage: it autostarts, idles out after 30min, and any failure
 falls back to a direct connection. `agentcomm daemon status|stop` to
 inspect; `--daemon` forces it on any scheme, `--direct` bypasses. Only

@@ -4,6 +4,8 @@ export declare class SocketBackend implements Backend {
     readonly daemonPid: number;
     readonly uri: string;
     readonly pollIntervalMs = 250;
+    /** When true, puts wait for remote durability instead of the daemon outbox. */
+    syncWrites: boolean;
     private constructor();
     /** Connect to a live daemon for `uri`, or return null (stale sockets are unlinked). */
     static connect(uri: string): Promise<SocketBackend | null>;

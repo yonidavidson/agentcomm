@@ -25,7 +25,7 @@ async function mkTmp(): Promise<string> {
   return dir;
 }
 
-function env(dir: string): NodeJS.ProcessEnv {
+function env(dir: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -34,18 +34,20 @@ function env(dir: string): NodeJS.ProcessEnv {
     AGENTCOMM_POLL_MS: '300',
     AGENTCOMM_SESSION: 'daemon-test',
     AGENTCOMM_NO_GIT_PROBE: '1',
+    ...extra,
   };
 }
 
 function run(
   args: string[],
   dir: string,
+  extraEnv: Record<string, string> = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       cwd: dir,
-      env: env(dir),
+      env: env(dir, extraEnv),
     });
     let stdout = '';
     let stderr = '';
@@ -178,6 +180,77 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect(names).toContain('fresh-agent');
     expect(names).not.toContain('ancient-agent');
   }, 40_000);
+
+  it('async sends: instant local visibility, remote after drain; --sync goes straight through', async () => {
+    const dir = await mkTmp();
+    const FROZEN = { AGENTCOMM_FLUSH_MS: '600000' }; // flusher effectively off
+    await run(['register', '--as', 'alpha', '--daemon'], dir, FROZEN);
+
+    await run(['send', 'alpha', 'queued message', '--as', 'beta', '--daemon'], dir, FROZEN);
+    const local = await run(['peek', '--as', 'alpha', '--daemon', '--json'], dir, FROZEN);
+    expect((JSON.parse(local.stdout) as unknown[]).length).toBe(1); // mirror sees it instantly
+    const remote = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+    expect((JSON.parse(remote.stdout) as unknown[]).length).toBe(0); // store does NOT yet
+
+    const status = await run(['daemon', 'status', '--json'], dir, FROZEN);
+    expect((JSON.parse(status.stdout) as { outbox: number }).outbox).toBeGreaterThan(0);
+
+    // stop drains the outbox before exit
+    await run(['daemon', 'stop'], dir);
+    let onStore = 0;
+    for (let i = 0; i < 20 && !onStore; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const after = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+      onStore = (JSON.parse(after.stdout) as unknown[]).length;
+    }
+    expect(onStore).toBe(1);
+
+    // --sync bypasses the outbox: durable on the store before the CLI returns
+    await run(['send', 'alpha', 'sync message', '--as', 'beta', '--daemon', '--sync'], dir, FROZEN);
+    const syncRemote = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+    expect((JSON.parse(syncRemote.stdout) as unknown[]).length).toBe(2);
+  });
+
+  it('outbox survives a daemon crash: a fresh daemon delivers the leftovers', async () => {
+    const dir = await mkTmp();
+    const FROZEN = { AGENTCOMM_FLUSH_MS: '600000' };
+    await run(['register', '--as', 'alpha', '--daemon'], dir, FROZEN);
+    await run(['send', 'alpha', 'survives the crash', '--as', 'beta', '--daemon'], dir, FROZEN);
+
+    const status = await run(['daemon', 'status', '--json'], dir, FROZEN);
+    const pid = (JSON.parse(status.stdout) as { pid: number }).pid;
+    process.kill(pid, 'SIGKILL'); // no drain, no cleanup
+    await new Promise((r) => setTimeout(r, 300));
+
+    const gone = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+    expect((JSON.parse(gone.stdout) as unknown[]).length).toBe(0); // spooled, not delivered
+
+    // any daemon-path command respawns; startup flush delivers the leftovers
+    await run(['agents', '--daemon', '--json'], dir, { AGENTCOMM_FLUSH_MS: '200' });
+    let onStore = 0;
+    for (let i = 0; i < 30 && !onStore; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const after = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+      onStore = (JSON.parse(after.stdout) as unknown[]).length;
+    }
+    expect(onStore).toBe(1);
+  }, 30_000);
+
+  it('spooled sends arrive in send order', async () => {
+    const dir = await mkTmp();
+    const FAST = { AGENTCOMM_FLUSH_MS: '150' };
+    await run(['register', '--as', 'alpha', '--daemon'], dir, FAST);
+    for (const n of ['first', 'second', 'third']) {
+      await run(['send', 'alpha', n, '--as', 'beta', '--daemon'], dir, FAST);
+    }
+    let bodies: string[] = [];
+    for (let i = 0; i < 30 && bodies.length < 3; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const remote = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+      bodies = (JSON.parse(remote.stdout) as { body: string }[]).map((m) => m.body);
+    }
+    expect(bodies).toEqual(['first', 'second', 'third']);
+  }, 20_000);
 
   it('daemon stop leaves the CLI fully functional (fallback + respawn)', async () => {
     const dir = await mkTmp();

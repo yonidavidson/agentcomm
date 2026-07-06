@@ -70,6 +70,8 @@ export class SocketBackend {
     daemonPid;
     uri;
     pollIntervalMs = 250; // local socket polls are ~free
+    /** When true, puts wait for remote durability instead of the daemon outbox. */
+    syncWrites = false;
     constructor(rpc, daemonPid, uri) {
         this.rpc = rpc;
         this.daemonPid = daemonPid;
@@ -121,7 +123,9 @@ export class SocketBackend {
         catch {
             return null;
         }
-        for (let i = 0; i < 30; i++) {
+        // a git-backed daemon warms its mirror (a full fetch) before listening —
+        // give it a realistic window before falling back to a direct connection
+        for (let i = 0; i < 100; i++) {
             await new Promise((r) => setTimeout(r, 100));
             const client = await SocketBackend.connect(uri);
             if (client)
@@ -130,7 +134,7 @@ export class SocketBackend {
         return null;
     }
     async put(key, data) {
-        ok(await this.rpc.call('put', { key, data: data.toString('base64') }));
+        ok(await this.rpc.call('put', { key, data: data.toString('base64'), sync: this.syncWrites }));
     }
     async get(key) {
         const res = ok(await this.rpc.call('get', { key }));
