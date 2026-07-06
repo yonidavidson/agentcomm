@@ -62,6 +62,12 @@ export function parseArgs(argv) {
             case 'dry-run':
                 flags.dryRun = true;
                 break;
+            case 'daemon':
+                flags.daemon = true;
+                break;
+            case 'direct':
+                flags.direct = true;
+                break;
             case 'limit':
                 flags.limit = Number(takeVal());
                 break;
