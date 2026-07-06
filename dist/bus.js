@@ -23,7 +23,7 @@ export class Bus {
         this.backend = backend;
     }
     // ── agents ──────────────────────────────────────────────────────────────
-    async register(name, session) {
+    async register(name, session, status) {
         assertName(name);
         const now = new Date().toISOString();
         const existing = await this.tryGetAgent(name);
@@ -32,6 +32,8 @@ export class Bus {
             registeredAt: existing?.registeredAt ?? now,
             lastSeen: now,
             ...(session ? { session } : {}),
+            // a heartbeat (no explicit status) must not erase the declared status
+            ...((status ?? existing?.status) ? { status: status ?? existing?.status } : {}),
         };
         await this.backend.put(agentKey(name), encode(record));
         // The previous record lets callers detect an alias collision: same name,

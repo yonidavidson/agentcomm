@@ -150,6 +150,17 @@ the discipline mechanical — don't duplicate them:
 - **Stopping**: a guard peeks (non-consuming) at your derived mailbox and
   blocks finishing once if unread messages exist — handle them via
   `agentcomm inbox --json` (or tell the user why not), then finish.
+- **During the session**: a throttled digest (≤ once per 5min, only when
+  there is news) may appear in your context — unread count, riders that
+  joined, and what active agents say they're doing. Act on it like any bus
+  fact; no need to re-check what it reports.
+
+**Write your own status** when you start or finish a named piece of work:
+`agentcomm register --status "reviewing PR 12"` (short, present tense; it
+persists across heartbeats until you change it — clear it with
+`--status done` when finishing). Other agents and humans see it on the
+roster and in digests; it is how "what is everyone doing?" gets answered
+without anyone asking.
 
 Still yours: everything about ROLE aliases (`--as` mailboxes
 are not guarded — check them yourself), acks/threads, and all sends.

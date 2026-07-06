@@ -79,6 +79,28 @@ function cliSync(args: string[], cwd: string, as?: string): void {
   );
 }
 
+
+function rosterJson(dir: string): { name: string; status?: string }[] {
+  return JSON.parse(
+    execFileSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'agents', '--json'], {
+      cwd: dir,
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
+        AGENTCOMM_NO_GIT_PROBE: '1',
+        AGENTCOMM_SESSION: 'hook-session',
+      },
+    }).toString(),
+  ) as { name: string; status?: string }[];
+}
+
+async function derivedAlias(dir: string): Promise<string> {
+  return rosterJson(dir)
+    .map((a) => a.name)
+    .find((n) => n.startsWith('hooky-'))!;
+}
+
 describe('plugin hooks: bus discipline made mechanical', () => {
   it('session-start REGISTERS the session onto the roster and announces it', async () => {
     const dir = await markedRepo();
@@ -196,6 +218,52 @@ describe('plugin hooks: bus discipline made mechanical', () => {
       lastSeen: string;
     };
     expect(throttled.lastSeen).toBe(old);
+  });
+
+  it('prompt digest: news-only, throttled, silent when quiet', async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir);
+    cliSync(['register'], dir, 'sender');
+
+    // quiet bus (roster snapshot primes on first run) → silence
+    const first = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    expect(first.stdout).toBe('');
+
+    // clear the digest throttle, add news: pending mail + a new rider
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster')) await fs.rm(path.join(dir, f));
+    }
+    const me = await derivedAlias(dir);
+    cliSync(['send', me, 'digest me'], dir, 'sender');
+    cliSync(['register'], dir, 'newcomer');
+
+    const news = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(news.stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(out.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
+    expect(out.hookSpecificOutput.additionalContext).toContain('1 unread message(s)');
+    expect(out.hookSpecificOutput.additionalContext).toContain('new on the bus: newcomer');
+
+    // immediately again (throttled) → silence even though news persists
+    const throttled = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    expect(throttled.stdout).toBe('');
+  });
+
+  it('statuses: written with --status, preserved by heartbeats, surfaced in the digest', async () => {
+    const dir = await markedRepo();
+    cliSync(['register', '--status', 'building the auth module'], dir);
+    cliSync(['register'], dir, 'sender');
+
+    cliSync(['register'], dir); // heartbeat: no --status must NOT erase it
+    const me = await derivedAlias(dir);
+    const roster = rosterJson(dir);
+    expect(roster.find((a) => a.name === me)!.status).toBe('building the auth module');
+
+    cliSync(['send', me, 'news'], dir, 'sender');
+    const news = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(news.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain('building the auth module');
   });
 
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
