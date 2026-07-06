@@ -134,6 +134,20 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect((JSON.parse(direct.stdout) as unknown[]).length).toBe(0);
   });
 
+  it('a second daemon for the same bus bows out instead of stealing the socket', async () => {
+    const dir = await mkTmp();
+    await run(['register', '--as', 'alpha', '--daemon'], dir);
+    const before = JSON.parse((await run(['daemon', 'status', '--json'], dir)).stdout) as { pid: number };
+
+    // start a rival daemon in the foreground: it must exit 0 immediately
+    const rival = await run(['daemon', 'run'], dir);
+    expect(rival.code).toBe(0);
+    expect(rival.stderr).toContain('already serves');
+
+    const after = JSON.parse((await run(['daemon', 'status', '--json'], dir)).stdout) as { pid: number };
+    expect(after.pid).toBe(before.pid); // the incumbent survived untouched
+  });
+
   it('daemon stop leaves the CLI fully functional (fallback + respawn)', async () => {
     const dir = await mkTmp();
     await run(['register', '--as', 'alpha', '--daemon'], dir);

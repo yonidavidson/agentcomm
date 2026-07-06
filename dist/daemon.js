@@ -56,6 +56,31 @@ export async function runDaemon(uri) {
     let lastActivity = Date.now();
     const sockPath = socketPathFor(uri);
     await fs.mkdir(path.dirname(sockPath), { recursive: true });
+    // Two instances may autostart simultaneously for the same bus. Never
+    // steal a LIVE peer's socket — if someone already answers, bow out and
+    // let every client share that one daemon. Only a dead socket is removed.
+    const peerAlive = await new Promise((resolve) => {
+        const probe = net.createConnection(sockPath);
+        const timer = setTimeout(() => {
+            probe.destroy();
+            resolve(false);
+        }, 1000);
+        probe.once('connect', () => {
+            clearTimeout(timer);
+            probe.destroy();
+            resolve(true);
+        });
+        probe.once('error', () => {
+            clearTimeout(timer);
+            resolve(false);
+        });
+    });
+    if (peerAlive) {
+        process.stderr.write(`agentcomm daemon: another daemon already serves ${uri} — exiting
+`);
+        await backend.close?.().catch(() => { });
+        process.exit(0);
+    }
     await fs.rm(sockPath, { force: true });
     async function handle(req) {
         lastActivity = Date.now();
