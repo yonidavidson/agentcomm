@@ -167,7 +167,7 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(blocked.code).toBe(0);
     const out = JSON.parse(blocked.stdout) as { decision: string; reason: string };
     expect(out.decision).toBe('block');
-    expect(out.reason).toContain('unread message');
+    expect(out.reason).toContain('unread bus message');
     expect(out.reason).toContain('from: sender');
   });
 
