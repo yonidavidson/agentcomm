@@ -23,6 +23,11 @@ try {
   if (Date.now() - (await fs.stat(stamp)).mtimeMs < 5 * 60_000) process.exit(0);
 } catch { /* first digest */ }
 
+// Heartbeat rides the digest: a prompt is the strongest "this session is
+// alive" signal, and both want the same ~5min cadence. register is async
+// through the daemon outbox, so this costs ~0.3s. No --status: a heartbeat
+// never overwrites a declared status.
+await cli(['register', '--json'], cwd, 3_000);
 const peek = await cli(['peek', '--json'], cwd, 3_000);
 const agents = await cli(['agents', '--json'], cwd, 3_000);
 await fs.writeFile(stamp, '').catch(() => {});

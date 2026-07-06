@@ -18,25 +18,9 @@ if (input.stop_hook_active) process.exit(0);
 const cwd = input.cwd || process.cwd();
 if (!(await onTheBus(cwd))) process.exit(0);
 
-// Heartbeat: re-register at turn end (throttled) so the roster's lastSeen
-// means "alive within minutes", not "boarded once at session start".
-{
-  const { promises: fsp } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { createHash } = await import('node:crypto');
-  const { join } = await import('node:path');
-  const beat = join(
-    tmpdir(),
-    `agentcomm-heartbeat-${createHash('sha1').update(cwd).digest('hex').slice(0, 12)}`,
-  );
-  let due = true;
-  try {
-    due = Date.now() - (await fsp.stat(beat)).mtimeMs > 300_000;
-  } catch { /* first beat */ }
-  if (due && (await cli(['register', '--json'], cwd))) {
-    await fsp.writeFile(beat, '').catch(() => {});
-  }
-}
+// (The presence heartbeat rides the prompt digest — this hook is purely
+// the delivery guarantee.)
+
 
 // throttle: a git-backend peek is a fetch; don't pay it on every quick turn
 const stamp = path.join(os.tmpdir(), `agentcomm-stopguard-${createHash('sha1').update(cwd).digest('hex').slice(0, 12)}`);

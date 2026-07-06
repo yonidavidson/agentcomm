@@ -193,9 +193,9 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(out.reason).toContain('from: sender');
   });
 
-  it('stop guard heartbeats: a backdated registration gets a fresh lastSeen at turn end', async () => {
+  it('the digest heartbeats: a backdated registration gets a fresh lastSeen at prompt time', async () => {
     const dir = await markedRepo();
-    cliSync(['register'], dir); // derived alias record exists
+    cliSync(['register'], dir);
 
     const agentsDir = path.join(dir, '.bus', 'agents');
     const recFile = (await fs.readdir(agentsDir)).find((f) => f.startsWith('hooky-'))!;
@@ -205,19 +205,19 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     const old = new Date(Date.now() - 3600_000).toISOString();
     await fs.writeFile(path.join(agentsDir, recFile), JSON.stringify({ ...rec, lastSeen: old }));
 
-    await runHook('stop-inbox-guard.mjs', { cwd: dir }, dir);
+    await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     const after = JSON.parse(await fs.readFile(path.join(agentsDir, recFile), 'utf8')) as {
       lastSeen: string;
     };
     expect(Date.parse(after.lastSeen)).toBeGreaterThan(Date.parse(old)); // heartbeat bumped it
 
-    // throttle: backdate again — an immediate second stop must NOT re-beat
+    // the stop guard, by contrast, is read-only now: backdate again, run it, unchanged
     await fs.writeFile(path.join(agentsDir, recFile), JSON.stringify({ ...rec, lastSeen: old }));
     await runHook('stop-inbox-guard.mjs', { cwd: dir }, dir);
-    const throttled = JSON.parse(await fs.readFile(path.join(agentsDir, recFile), 'utf8')) as {
+    const untouched = JSON.parse(await fs.readFile(path.join(agentsDir, recFile), 'utf8')) as {
       lastSeen: string;
     };
-    expect(throttled.lastSeen).toBe(old);
+    expect(untouched.lastSeen).toBe(old);
   });
 
   it('prompt digest: news-only, throttled, silent when quiet', async () => {
