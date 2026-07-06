@@ -74,6 +74,9 @@ export function parseArgs(argv) {
             case 'sync':
                 flags.sync = true;
                 break;
+            case 'status':
+                flags.status = takeVal();
+                break;
             case 'limit':
                 flags.limit = Number(takeVal());
                 break;

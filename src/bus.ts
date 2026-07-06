@@ -23,7 +23,11 @@ export class Bus {
 
   // ── agents ──────────────────────────────────────────────────────────────
 
-  async register(name: string, session?: string): Promise<AgentRecord & { previous?: AgentRecord }> {
+  async register(
+    name: string,
+    session?: string,
+    status?: string,
+  ): Promise<AgentRecord & { previous?: AgentRecord }> {
     assertName(name);
     const now = new Date().toISOString();
     const existing = await this.tryGetAgent(name);
@@ -32,6 +36,8 @@ export class Bus {
       registeredAt: existing?.registeredAt ?? now,
       lastSeen: now,
       ...(session ? { session } : {}),
+      // a heartbeat (no explicit status) must not erase the declared status
+      ...((status ?? existing?.status) ? { status: status ?? existing?.status } : {}),
     };
     await this.backend.put(agentKey(name), encode(record));
     // The previous record lets callers detect an alias collision: same name,
@@ -244,4 +250,6 @@ export interface AgentRecord {
   lastSeen: string;
   /** Fingerprint of the registering session — lets tooling tell "stale me" from "someone else". */
   session?: string;
+  /** Self-declared "what I'm doing" — set via register --status, kept across heartbeats. */
+  status?: string;
 }

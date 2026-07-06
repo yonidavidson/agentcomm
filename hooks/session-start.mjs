@@ -36,7 +36,9 @@ const alias = aliasFrom(peek.stderr) ?? reg?.json?.name;
 const pending = Array.isArray(peek.json) ? peek.json.length : 0;
 const roster = res && Array.isArray(res.json) ? res.json : [];
 const active = roster.filter((a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000);
-const names = roster.map((a) => a.name + (a.thisSession ? ' (this session)' : '')).join(', ');
+const names = roster
+  .map((a) => a.name + (a.thisSession ? ' (this session)' : '') + (a.status ? ` [${a.status}]` : ''))
+  .join(', ');
 
 const lines = [
   `agentcomm: this repo is on a message bus${bus ? ` (${bus})` : ''}.`,
