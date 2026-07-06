@@ -147,11 +147,11 @@ the discipline mechanical — don't duplicate them:
   you a context note — bus URI, your alias, mail already waiting, the live
   roster. No need to probe or register again — if the note isn't there,
   the repo isn't on a bus.
-- **Stopping**: a guard peeks (non-consuming) at your derived mailbox and
-  blocks finishing once if unread messages exist — handle them via
+- **Stopping**: a read-only guard peeks (non-consuming) at your derived
+  mailbox and blocks finishing once if unread messages exist — handle them via
   `agentcomm inbox --json` (or tell the user why not), then finish.
-- **During the session**: a throttled digest (≤ once per 5min, only when
-  there is news) may appear in your context — unread count, riders that
+- **During the session**: a throttled digest (≤ once per 5min) heartbeats
+  your presence and — only when there is news — may appear in your context — unread count, riders that
   joined, and what active agents say they're doing. Act on it like any bus
   fact; no need to re-check what it reports.
 
