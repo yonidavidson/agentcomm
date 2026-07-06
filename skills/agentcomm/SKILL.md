@@ -275,8 +275,10 @@ session alias automatically.
   `agentcomm init --as <user>` — it writes the coordination instructions
   into CLAUDE.md (idempotent), registers them, and shows the roster; remind
   them to commit CLAUDE.md so every teammate's agent joins.
-- Housekeeping: when asked to clean the bus, `purge --older-than <dur>`
-  trims the `read/` archive on any backend (add `--dry-run` first). On
+- Housekeeping: mostly automatic — the bus daemon periodically trims the
+  archive (30d) and stale registrations (7d). Manual: `purge --older-than
+  <dur>` (archive) and/or `purge --agents-older-than <dur>` (idle
+  registrations; pending mail never touched); add `--dry-run` first. On
   `github://` a full reset is deleting the orphan bus branch
   (`gh api -X DELETE repos/<o>/<r>/git/refs/heads/agentcomm`) — it's
   recreated on the next write; confirm with the user before deleting.

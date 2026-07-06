@@ -98,3 +98,56 @@ describe('CLI purge (archive housekeeping)', () => {
     expect(bad.stderr).toMatch(/invalid --older-than/);
   });
 });
+
+describe('purge --agents-older-than', () => {
+  it('drops idle registrations, keeps fresh ones, never touches pending mail', async () => {
+    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-agentpurge-')));
+    try {
+      const env = {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
+        AGENTCOMM_NO_GIT_PROBE: '1',
+        AGENTCOMM_SESSION: 'purge-agents',
+      };
+      const cliRun = (args: string[]) =>
+        new Promise<{ code: number; stdout: string }>((resolve, reject) => {
+          const child = spawn(process.execPath, ['--import', 'tsx', cli, ...args], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env, // cwd stays the repo root so tsx resolves; the bus URI is absolute
+          });
+          let stdout = '';
+          child.stdout.on('data', (d) => (stdout += d.toString()));
+          child.on('error', reject);
+          child.on('exit', (code) => resolve({ code: code ?? -1, stdout }));
+        });
+
+      await cliRun(['register', '--as', 'fresh-agent']);
+      await cliRun(['register', '--as', 'old-agent']);
+      await cliRun(['send', 'old-agent', 'still undelivered', '--as', 'fresh-agent']);
+
+      // backdate old-agent by 8 days
+      const rec = path.join(dir, '.bus', 'agents', 'old-agent.json');
+      const parsed = JSON.parse(await fs.readFile(rec, 'utf8')) as { lastSeen: string };
+      parsed.lastSeen = new Date(Date.now() - 8 * 86400_000).toISOString();
+      await fs.writeFile(rec, JSON.stringify(parsed));
+
+      const purge = await cliRun(['purge', '--agents-older-than', '7d', '--json']);
+      expect(purge.code).toBe(0);
+      const out = JSON.parse(purge.stdout) as { agentCount: number; agentKeys: string[] };
+      expect(out.agentCount).toBe(1);
+      expect(out.agentKeys[0]).toContain('old-agent');
+
+      const roster = await cliRun(['agents', '--json']);
+      const names = (JSON.parse(roster.stdout) as { name: string }[]).map((a) => a.name);
+      expect(names).toContain('fresh-agent');
+      expect(names).not.toContain('old-agent');
+
+      // undelivered mail for the purged name is untouched (mailbox ≠ registration)
+      const mail = await cliRun(['peek', '--as', 'old-agent', '--json']);
+      expect((JSON.parse(mail.stdout) as unknown[]).length).toBe(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -30,7 +30,9 @@ Commands:
   channels                 List the channels that already exist on the --backend
                            store (scans for the agentcomm key layout)
   purge                    Delete archived (read/) messages older than
-                           --older-than (e.g. 30d, 12h); --dry-run to preview
+                           --older-than and/or registrations idle past
+                           --agents-older-than; --dry-run to preview. The
+                           daemon runs both automatically (30d/7d defaults)
   log                      Read a channel's conversation (pending + archived,
                            time-ordered, non-consuming); --thread, --limit
   conventions              Print the effective team conventions (built-in
@@ -137,7 +139,7 @@ async function main(argv: string[]): Promise<number> {
       case 'channels':
         return await cmdChannels(backend, cfg);
       case 'purge':
-        return await cmdPurge(backend, cfg, flags.olderThan, flags.dryRun);
+        return await cmdPurge(backend, cfg, flags.olderThan, flags.agentsOlderThan, flags.dryRun);
       case 'log':
         return await cmdLog(backend, cfg, flags.thread, flags.limit);
       default:
@@ -300,35 +302,72 @@ async function cmdPurge(
   backend: Awaited<ReturnType<typeof createBackend>>,
   cfg: ResolvedConfig,
   olderThan: string | undefined,
+  agentsOlderThan: string | undefined,
   dryRun: boolean,
 ): Promise<number> {
-  if (!olderThan) {
-    fail('purge requires --older-than <duration>, e.g. --older-than 30d (units: s, m, h, d)');
+  if (!olderThan && !agentsOlderThan) {
+    fail(
+      'purge requires --older-than <duration> (archive) and/or --agents-older-than <duration> (stale registrations), e.g. --older-than 30d (units: s, m, h, d)',
+    );
     return 1;
   }
-  const maxAgeMs = parseDuration(olderThan);
-  if (maxAgeMs === null) {
-    fail(`invalid --older-than "${olderThan}" — use <number><unit> with unit s, m, h or d (e.g. 30d, 12h)`);
-    return 1;
-  }
-  const cutoff = Date.now() - maxAgeMs;
 
-  // Only the archive is ever purged: pending inbox/ messages are undelivered
-  // mail and agents/ registrations are live state. Message age comes from the
-  // key's monotonic ms-timestamp prefix — no content reads needed.
-  const victims = (await backend.list('read/')).filter((key) => {
-    const ts = messageTimestamp(key);
-    return ts !== null && ts < cutoff;
-  });
+  // Pending inbox/ messages are undelivered mail — never purged. The archive
+  // ages by the key's monotonic ms-timestamp prefix (no content reads);
+  // registrations age by their lastSeen heartbeat.
+  const victims: string[] = [];
+  if (olderThan) {
+    const maxAgeMs = parseDuration(olderThan);
+    if (maxAgeMs === null) {
+      fail(`invalid --older-than "${olderThan}" — use <number><unit> with unit s, m, h or d (e.g. 30d, 12h)`);
+      return 1;
+    }
+    const cutoff = Date.now() - maxAgeMs;
+    victims.push(
+      ...(await backend.list('read/')).filter((key) => {
+        const ts = messageTimestamp(key);
+        return ts !== null && ts < cutoff;
+      }),
+    );
+  }
+  const staleAgents: string[] = [];
+  if (agentsOlderThan) {
+    const maxAgeMs = parseDuration(agentsOlderThan);
+    if (maxAgeMs === null) {
+      fail(`invalid --agents-older-than "${agentsOlderThan}" — use <number><unit> with unit s, m, h or d`);
+      return 1;
+    }
+    const cutoff = Date.now() - maxAgeMs;
+    for (const key of await backend.list('agents/')) {
+      try {
+        const rec = JSON.parse((await backend.get(key)).toString('utf8')) as { lastSeen?: string };
+        if (rec.lastSeen && Date.parse(rec.lastSeen) < cutoff) staleAgents.push(key);
+      } catch {
+        /* unreadable record: leave it */
+      }
+    }
+  }
 
   if (!dryRun) {
-    for (const key of victims) await backend.delete(key);
+    for (const key of [...victims, ...staleAgents]) await backend.delete(key);
   }
   if (cfg.json) {
-    emit({ purged: !dryRun, dryRun, olderThan, count: victims.length, keys: victims });
+    emit({
+      purged: !dryRun,
+      dryRun,
+      olderThan: olderThan ?? null,
+      agentsOlderThan: agentsOlderThan ?? null,
+      count: victims.length,
+      agentCount: staleAgents.length,
+      keys: victims,
+      agentKeys: staleAgents,
+    });
   } else {
     const verb = dryRun ? 'would purge' : 'purged';
-    process.stdout.write(`${verb} ${victims.length} archived message${victims.length === 1 ? '' : 's'} older than ${olderThan}\n`);
+    const parts = [];
+    if (olderThan) parts.push(`${victims.length} archived message${victims.length === 1 ? '' : 's'} older than ${olderThan}`);
+    if (agentsOlderThan) parts.push(`${staleAgents.length} stale registration${staleAgents.length === 1 ? '' : 's'} older than ${agentsOlderThan}`);
+    process.stdout.write(`${verb} ${parts.join(' and ')}\n`);
   }
   return 0;
 }
@@ -554,14 +593,16 @@ async function cmdRegister(bus: Bus, cfg: ResolvedConfig): Promise<number> {
 async function cmdAgents(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const list = await bus.agents();
   const mySession = await sessionHash();
+  const isActive = (a: { lastSeen: string }) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
   if (cfg.json) {
-    emit(list.map((a) => ({ ...a, thisSession: a.session === mySession })));
+    emit(list.map((a) => ({ ...a, thisSession: a.session === mySession, active: isActive(a) })));
   } else if (list.length === 0) {
     process.stdout.write('(no agents registered)\n');
   } else {
     for (const a of list) {
       const mine = a.session === mySession ? '  (this session)' : '';
-      process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}${mine}\n`);
+      const live = isActive(a) ? '  · active' : '';
+      process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}${live}${mine}\n`);
     }
   }
   return 0;

@@ -191,6 +191,35 @@ export async function runDaemon(uri: string): Promise<void> {
   });
   await fs.writeFile(sockPath + '.pid', String(process.pid));
 
+  // Housekeeping: heartbeats and archives must not accrete forever. The
+  // daemon is the bus's long-lived janitor: periodically trim the read/
+  // archive and drop agent records whose lastSeen went stale.
+  const housekeepMs = Math.max(10_000, Number(process.env.AGENTCOMM_HOUSEKEEP_MS ?? 6 * 3600_000));
+  const archiveTtl = Number(process.env.AGENTCOMM_PURGE_AFTER_MS ?? 30 * 24 * 3600_000);
+  const agentTtl = Number(process.env.AGENTCOMM_AGENT_TTL_MS ?? 7 * 24 * 3600_000);
+  async function housekeep(): Promise<void> {
+    const now = Date.now();
+    if (agentTtl > 0) {
+      for (const k of await backend.list('agents/')) {
+        try {
+          const rec = JSON.parse((await backend.get(k)).toString('utf8')) as { lastSeen?: string };
+          if (rec.lastSeen && now - Date.parse(rec.lastSeen) > agentTtl) await backend.delete(k);
+        } catch { /* unreadable record: leave it */ }
+      }
+    }
+    if (archiveTtl > 0) {
+      for (const k of await backend.list('read/')) {
+        // key layout: read/<recipient>/<zero-padded-ms-seq>-<id>.json
+        const seq = /read\/[^/]+\/0*(\d+)-/.exec(k)?.[1];
+        if (seq && now - Number(seq) > archiveTtl) await backend.delete(k).catch(() => {});
+      }
+    }
+    await poll().catch(() => {});
+  }
+  const housekeepTimer = setInterval(() => void housekeep().catch(() => {}), housekeepMs);
+  housekeepTimer.unref?.();
+  setTimeout(() => void housekeep().catch(() => {}), 15_000).unref?.();
+
   const pollTimer = setInterval(() => void poll().catch(() => {}), pollMs);
   const idleTimer = setInterval(() => {
     if (Date.now() - lastActivity > idleMs) shutdown();
@@ -201,6 +230,7 @@ export async function runDaemon(uri: string): Promise<void> {
   function shutdown(): void {
     clearInterval(pollTimer);
     clearInterval(idleTimer);
+    clearInterval(housekeepTimer);
     server.close();
     void fs.rm(sockPath, { force: true }).catch(() => {});
     void fs.rm(sockPath + '.pid', { force: true }).catch(() => {});

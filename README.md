@@ -121,7 +121,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `claim`            | Atomically dequeue one message from `--queue` (**git + SQL backends**). |
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
-| `purge`            | Delete archived (`read/`) messages older than `--older-than` (`30d`, `12h`, …). Never touches pending mail or registrations. |
+| `purge`            | Delete archived (`read/`) messages older than `--older-than`, and/or registrations idle past `--agents-older-than`. Pending mail is never touched. The daemon runs both automatically (30d / 7d defaults). |
 | `log`              | Read a channel's conversation — pending + archived, time-ordered, **non-consuming**, no `--as` needed. `--thread`, `--limit`. |
 | `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. |
 
