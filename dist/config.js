@@ -59,6 +59,9 @@ export function parseArgs(argv) {
             case 'older-than':
                 flags.olderThan = takeVal();
                 break;
+            case 'agents-older-than':
+                flags.agentsOlderThan = takeVal();
+                break;
             case 'dry-run':
                 flags.dryRun = true;
                 break;

@@ -148,6 +148,37 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect(after.pid).toBe(before.pid); // the incumbent survived untouched
   });
 
+  it('daemon housekeeping drops stale registrations on its own clock', async () => {
+    const dir = await mkTmp();
+    await run(['register', '--as', 'fresh-agent', '--daemon'], dir);
+    await run(['register', '--as', 'ancient-agent', '--direct'], dir);
+    const rec = path.join(dir, '.bus', 'agents', 'ancient-agent.json');
+    const parsed = JSON.parse(await fs.readFile(rec, 'utf8')) as { lastSeen: string };
+    parsed.lastSeen = new Date(Date.now() - 8 * 86400_000).toISOString();
+    await fs.writeFile(rec, JSON.stringify(parsed));
+
+    // restart the daemon with a fast housekeeping clock
+    await run(['daemon', 'stop'], dir);
+    const child = spawn(process.execPath, [CLI, 'daemon', 'run'], {
+      stdio: 'ignore',
+      detached: true,
+      cwd: dir,
+      env: { ...env(dir), AGENTCOMM_HOUSEKEEP_MS: '10000' },
+    });
+    child.unref();
+
+    // first sweep runs ~15s after start
+    let names: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const roster = await run(['agents', '--daemon', '--json'], dir);
+      names = (JSON.parse(roster.stdout) as { name: string }[]).map((a) => a.name);
+      if (!names.some((n) => n === 'ancient-agent')) break;
+    }
+    expect(names).toContain('fresh-agent');
+    expect(names).not.toContain('ancient-agent');
+  }, 40_000);
+
   it('daemon stop leaves the CLI fully functional (fallback + respawn)', async () => {
     const dir = await mkTmp();
     await run(['register', '--as', 'alpha', '--daemon'], dir);

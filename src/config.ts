@@ -28,6 +28,7 @@ export interface ParsedFlags {
   thread?: string;
   timeout?: number;
   olderThan?: string;
+  agentsOlderThan?: string;
   dryRun: boolean;
   daemon?: boolean;
   direct?: boolean;
@@ -81,6 +82,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'older-than':
         flags.olderThan = takeVal();
+        break;
+      case 'agents-older-than':
+        flags.agentsOlderThan = takeVal();
         break;
       case 'dry-run':
         flags.dryRun = true;

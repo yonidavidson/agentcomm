@@ -19,6 +19,7 @@ export interface ParsedFlags {
     thread?: string;
     timeout?: number;
     olderThan?: string;
+    agentsOlderThan?: string;
     dryRun: boolean;
     daemon?: boolean;
     direct?: boolean;
