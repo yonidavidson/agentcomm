@@ -183,6 +183,7 @@ h1.headline {
   color: var(--terminal-text);
   overflow-x: auto;
   max-width: 560px;
+  padding-right: 62px; /* keep lines clear of the Copy button */
   margin: 0 auto;
 }
 .codeblock .line { white-space: pre; }

@@ -76,8 +76,10 @@
       <a class="btn btn-ghost" href="#plugin">Use as a Claude Code plugin</a>
     </div>
     <div class="codeblock" style="margin-bottom:22px;">
-      <button class="copy-btn" data-copy="npm install github:yonidavidson/agentcomm">Copy</button>
-      <div class="line">$ npm install github:yonidavidson/agentcomm</div>
+      <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
+/plugin install agentcomm@yonidavidson-plugins">Copy</button>
+      <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+      <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
     </div>
     <div class="badges">
       <span class="badge">MIT licensed</span>
@@ -97,10 +99,10 @@
         <div class="step">
           <div class="step-head"><span class="step-n">1</span><h3>Install</h3></div>
           <div class="codeblock step-code">
-            <div class="line"># Claude Code</div>
+            <div class="line"># Claude Code (auto-updates via /plugin)</div>
             <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
             <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
-            <div class="line"># or any terminal</div>
+            <div class="line"># other harnesses / CI only:</div>
             <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
           </div>
         </div>
