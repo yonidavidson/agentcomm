@@ -131,3 +131,39 @@ describe('repo-bus auto-default (backend resolution chain)', () => {
     expect((await describedUri(dir, env)).uri).toBe('file://./.agentcomm');
   });
 });
+
+describe('probe verdict cache', () => {
+  it('a fresh cached verdict skips the network probe entirely', async () => {
+    // unreachable origin: without a cache the probe fails and (no token path
+    // for a non-github host) resolution falls back to file://
+    const dir = await gitRepo('ssh://git@192.0.2.1/void/repo.git');
+    const cacheDir = path.join(dir, 'dsock');
+    await fs.mkdir(cacheDir, { recursive: true });
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha1').update('ssh://git@192.0.2.1/void/repo.git').digest('hex').slice(0, 12);
+    await fs.writeFile(path.join(cacheDir, 'probe-' + hash), '1'); // seeded: reachable
+
+    const { uri } = await describedUri(
+      dir,
+      busEnv({ AGENTCOMM_NO_GIT_PROBE: undefined, AGENTCOMM_DAEMON_DIR: cacheDir }),
+    );
+    expect(uri).toBe('git+ssh://git@192.0.2.1/void/repo.git'); // cache preempted the probe
+  });
+
+  it('a cached "unreachable" verdict also skips the probe (falls through fast)', async () => {
+    const dir = await gitRepo('ssh://git@192.0.2.1/void/repo.git');
+    const cacheDir = path.join(dir, 'dsock');
+    await fs.mkdir(cacheDir, { recursive: true });
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha1').update('ssh://git@192.0.2.1/void/repo.git').digest('hex').slice(0, 12);
+    await fs.writeFile(path.join(cacheDir, 'probe-' + hash), '0'); // seeded: unreachable
+
+    const started = Date.now();
+    const { uri } = await describedUri(
+      dir,
+      busEnv({ AGENTCOMM_NO_GIT_PROBE: undefined, AGENTCOMM_DAEMON_DIR: cacheDir }),
+    );
+    expect(uri).toMatch(/^file:/); // non-github host, no token path → local default
+    expect(Date.now() - started).toBeLessThan(6000); // no 8s probe timeout burned
+  });
+});
