@@ -37,11 +37,25 @@ const pending = Array.isArray(peek?.json) ? peek.json.length : 0;
 const roster = agents && Array.isArray(agents.json) ? agents.json : [];
 const names = roster.map((a) => a.name).sort();
 let known = [];
+let knownStatuses = {};
 try {
-  known = JSON.parse(await fs.readFile(rosterFile, 'utf8'));
+  const snap = JSON.parse(await fs.readFile(rosterFile, 'utf8'));
+  if (Array.isArray(snap)) known = snap; // pre-0.14.2 snapshot shape
+  else {
+    known = snap.names ?? [];
+    knownStatuses = snap.statuses ?? {};
+  }
 } catch { /* no snapshot yet */ }
-await fs.writeFile(rosterFile, JSON.stringify(names)).catch(() => {});
+const statuses = Object.fromEntries(roster.filter((a) => a.status).map((a) => [a.name, a.status]));
+await fs.writeFile(rosterFile, JSON.stringify({ names, statuses: { ...knownStatuses, ...statuses } })).catch(() => {});
 const joined = known.length ? names.filter((n) => !known.includes(n)) : [];
+// a status CHANGE is news in itself — "X started doing Y" must reach the
+// others within one digest cycle, not wait for unrelated traffic
+const statusChanges = known.length
+  ? roster.filter(
+      (a) => a.status && a.name !== aliasFrom(peek?.stderr) && knownStatuses[a.name] !== a.status,
+    )
+  : [];
 const activeAgents = roster.filter((a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000);
 const alias0 = aliasFrom(peek?.stderr);
 // status adoption: an agent with no declared status is invisible to
@@ -79,8 +93,11 @@ if (joined.length)
   );
 const isAsk = (t) => /^(blocked|need|help)\b/i.test(t ?? '');
 const asks = activeAgents.filter((a) => a.name !== aliasFrom(peek?.stderr) && isAsk(a.status));
+const changed = statusChanges.filter((a) => !isAsk(a.status));
+if (changed.length)
+  bits.push(`now working — ${changed.slice(0, 4).map((a) => `${a.name}: ${a.status}`).join(' · ')}`);
 const withStatus = activeAgents
-  .filter((a) => a.status && !isAsk(a.status))
+  .filter((a) => a.status && !isAsk(a.status) && !changed.some((c) => c.name === a.name))
   .map((a) => `${a.name}: ${a.status}`);
 if (withStatus.length) bits.push(`working — ${withStatus.slice(0, 4).join(' · ')}`);
 bits.push(`${activeAgents.length}/${roster.length} agents active`);
@@ -92,7 +109,14 @@ for (const a of asks.slice(0, 3)) {
       'Otherwise continue your own task.',
   );
 }
-if (!pending && joined.length === 0 && ctas.length === 0 && activity.length === 0 && !statusNudge)
+if (
+  !pending &&
+  joined.length === 0 &&
+  ctas.length === 0 &&
+  activity.length === 0 &&
+  statusChanges.length === 0 &&
+  !statusNudge
+)
   process.exit(0); // no news, no noise
 
 process.stdout.write(

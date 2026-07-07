@@ -283,6 +283,17 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     for (const f of await fs.readdir(dir)) {
       if (f.startsWith('agentcomm-digest-') && !f.includes('roster')) await fs.rm(path.join(dir, f));
     }
+    // clearing the ask IS news (the change to plain work is announced, no CTA)
+    const cleared = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const clearedOut = JSON.parse(cleared.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(clearedOut.hookSpecificOutput.additionalContext).toContain('now working — worker-1: building auth');
+    expect(clearedOut.hookSpecificOutput.additionalContext).not.toContain('call to action');
+
+    // and once seen, steady state → silence
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster') && !f.includes('acts'))
+        await fs.rm(path.join(dir, f));
+    }
     const quiet = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     expect(quiet.stdout).toBe('');
   });
@@ -427,6 +438,35 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     }
     const second = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     expect(second.stdout).toBe('');
+  });
+
+  it("a status CHANGE alone is news — 'X started doing Y' reaches others in one cycle", async () => {
+    const dir = await markedRepo();
+    cliSync(['register', '--status', 'my own work'], dir);
+    cliSync(['register', '--status', 'idling'], dir, 'schema-worker');
+
+    // prime the snapshot (statuses recorded)
+    await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+
+    // ONLY a status change — no mail, no riders, no asks
+    cliSync(['register', '--status', 'designing the auth schema'], dir, 'schema-worker');
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster') && !f.includes('acts'))
+        await fs.rm(path.join(dir, f));
+    }
+    const news = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(news.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain(
+      'now working — schema-worker: designing the auth schema',
+    );
+
+    // unchanged next cycle → silence again
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster') && !f.includes('acts'))
+        await fs.rm(path.join(dir, f));
+    }
+    const quiet = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    expect(quiet.stdout).toBe('');
   });
 
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
