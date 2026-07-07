@@ -61,7 +61,20 @@ function run(
 afterEach(async () => {
   for (const dir of tmpRoots.splice(0)) {
     await run(['daemon', 'stop'], dir).catch(() => {});
-    await fs.rm(dir, { recursive: true, force: true });
+    // stop acks before the daemon fully exits (it drains its outbox first) —
+    // wait for the pid file to disappear so rm doesn't race daemon writes
+    const dsock = path.join(dir, 'dsock');
+    for (let i = 0; i < 30; i++) {
+      let alive = false;
+      try {
+        alive = (await fs.readdir(dsock)).some((f) => f.endsWith('.pid'));
+      } catch {
+        break; // no daemon dir at all
+      }
+      if (!alive) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
 
@@ -70,11 +83,11 @@ describe('bus daemon: same semantics, immediate answers', () => {
     const dir = await mkTmp();
 
     const reg = await run(['register', '--as', 'alpha', '--daemon'], dir);
-    expect(reg.code).toBe(0);
+    expect(reg.code, reg.stderr).toBe(0);
     expect(reg.stdout).toContain('registered alpha');
 
     const status = await run(['daemon', 'status', '--json'], dir);
-    expect(status.code).toBe(0);
+    expect(status.code, status.stderr).toBe(0);
     const info = JSON.parse(status.stdout) as { running: boolean; pollMs: number; claimable: boolean };
     expect(info.running).toBe(true);
     expect(info.pollMs).toBe(500); // AGENTCOMM_POLL_MS=300 clamped to the 500ms floor
