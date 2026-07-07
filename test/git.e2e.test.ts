@@ -158,4 +158,27 @@ describe('GitBackend (local bare remotes — same code path as any host)', () =>
     expect(bad.code).toBe(1);
     expect(bad.stderr).toMatch(/unsupported query parameter/);
   }, 60000);
+
+describe('commit messages are the feed', () => {
+  it('statuses and sends read as a timeline in the bus branch history', async () => {
+    const { uri, cache } = await bareRemote();
+    const backend = await open(uri, cache);
+    const bare = uri.replace('git+file://', '');
+    try {
+      await backend.put(
+        'agents/worker-1.json',
+        Buffer.from(JSON.stringify({ name: 'worker-1', registeredAt: 'x', lastSeen: 'x', status: 'reviewing PR 12' })),
+      );
+      await backend.put(
+        'inbox/planner/00001-abc.json',
+        Buffer.from(JSON.stringify({ id: 'abc', from: 'worker-1', to: 'planner', subject: 'done', body: 'shipped', ts: 'x' })),
+      );
+      const log = execFileSync('git', ['-C', bare, 'log', '--format=%s', 'agentcomm'], { encoding: 'utf8' });
+      expect(log).toContain('agentcomm: worker-1 — reviewing PR 12');
+      expect(log).toContain('agentcomm: worker-1 → planner [done]');
+    } finally {
+      await backend.close?.();
+    }
+  });
+});
 });

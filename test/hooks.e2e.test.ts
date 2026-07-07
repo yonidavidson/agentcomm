@@ -222,7 +222,7 @@ describe('plugin hooks: bus discipline made mechanical', () => {
 
   it('prompt digest: news-only, throttled, silent when quiet', async () => {
     const dir = await markedRepo();
-    cliSync(['register'], dir);
+    cliSync(['register', '--status', 'quiet work'], dir); // status declared → no nudge; quiet means quiet
     cliSync(['register'], dir, 'sender');
 
     // quiet bus (roster snapshot primes on first run) → silence
@@ -408,6 +408,25 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     const ctx = out.hookSpecificOutput.additionalContext;
     expect(ctx).toContain('bus activity since last digest');
     expect(ctx).toContain('planner → worker-1 [done]: "auth module is done, tests green"');
+  });
+
+  it('digest nudges an agent that carries no status (once per 30min)', async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir); // no --status
+
+    const first = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(first.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain('You carry no bus status');
+
+    // declared → clear throttles → no nudge, and (quiet bus) full silence
+    cliSync(['register', '--status', 'building the feed'], dir);
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster') && !f.includes('acts'))
+        await fs.rm(path.join(dir, f));
+      if (f.startsWith('agentcomm-nudge-')) await fs.rm(path.join(dir, f));
+    }
+    const second = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    expect(second.stdout).toBe('');
   });
 
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {

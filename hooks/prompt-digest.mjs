@@ -44,6 +44,22 @@ await fs.writeFile(rosterFile, JSON.stringify(names)).catch(() => {});
 const joined = known.length ? names.filter((n) => !known.includes(n)) : [];
 const activeAgents = roster.filter((a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000);
 const alias0 = aliasFrom(peek?.stderr);
+// status adoption: an agent with no declared status is invisible to
+// coordination — nudge it (gently: at most once per 30min per repo)
+let statusNudge = null;
+const myRec = roster.find((a) => a.name === alias0);
+if (myRec && !myRec.status) {
+  const nudgeStamp = path.join(os.tmpdir(), `agentcomm-nudge-${id}`);
+  let due = true;
+  try {
+    due = Date.now() - (await fs.stat(nudgeStamp)).mtimeMs > 30 * 60_000;
+  } catch { /* first */ }
+  if (due) {
+    statusNudge =
+      'You carry no bus status — declare what you are working on now: `agentcomm register --status "<short task>"` (or "blocked: <need>" to recruit help).';
+    await fs.writeFile(nudgeStamp, '').catch(() => {});
+  }
+}
 const { lines: activity } = await activitySince(
   cwd,
   alias0,
@@ -76,7 +92,7 @@ for (const a of asks.slice(0, 3)) {
       'Otherwise continue your own task.',
   );
 }
-if (!pending && joined.length === 0 && ctas.length === 0 && activity.length === 0)
+if (!pending && joined.length === 0 && ctas.length === 0 && activity.length === 0 && !statusNudge)
   process.exit(0); // no news, no noise
 
 process.stdout.write(
@@ -86,7 +102,8 @@ process.stdout.write(
       additionalContext:
         `agentcomm digest: ${bits.join(' · ')}.` +
         (activity.length ? `\nbus activity since last digest:\n  ${activity.join('\n  ')}` : '') +
-        (ctas.length ? `\n${ctas.join('\n')}` : ''),
+        (ctas.length ? `\n${ctas.join('\n')}` : '') +
+        (statusNudge ? `\n${statusNudge}` : ''),
     },
   }),
 );
