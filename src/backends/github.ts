@@ -1,3 +1,4 @@
+import { describePut } from './git.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { type Backend } from '../types.js';
@@ -159,7 +160,7 @@ export class GithubBackend implements Backend {
     let sha = await this.shaOf(key);
     for (let attempt = 1; ; attempt++) {
       const res = await this.api('PUT', this.contentsUrl(key), {
-        message: `agentcomm: put ${this.k(key)}`,
+        message: describePut(this.k(key), data),
         content: data.toString('base64'),
         branch: this.branch,
         ...(sha ? { sha } : {}),

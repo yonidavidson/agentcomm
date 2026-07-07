@@ -66,4 +66,10 @@ export declare class GitBackend implements Backend, Claimable {
      */
     claim(queue: string, _owner: string): Promise<Message | null>;
 }
+/**
+ * The commit message IS the human feed: on git buses the branch page should
+ * read like a timeline, not like storage. Bus content is already in-repo,
+ * so echoing names/subjects/statuses adds visibility, not exposure.
+ */
+export declare function describePut(key: string, data: Buffer): string;
 //# sourceMappingURL=git.d.ts.map

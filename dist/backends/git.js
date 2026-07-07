@@ -172,7 +172,7 @@ export class GitBackend {
         const blob = await this.writeBlob(data);
         for (let attempt = 1; attempt <= 6; attempt++) {
             const tip = await this.tip();
-            if (await this.commitAndPush(tip, `agentcomm: put ${this.k(key)}`, { add: [{ key, blob }] }))
+            if (await this.commitAndPush(tip, describePut(this.k(key), data), { add: [{ key, blob }] }))
                 return;
             await sleep(30 * attempt + Math.floor(Math.random() * 80));
         }
@@ -297,5 +297,26 @@ function notFound(key) {
 }
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
+}
+/**
+ * The commit message IS the human feed: on git buses the branch page should
+ * read like a timeline, not like storage. Bus content is already in-repo,
+ * so echoing names/subjects/statuses adds visibility, not exposure.
+ */
+export function describePut(key, data) {
+    try {
+        const o = JSON.parse(data.toString('utf8'));
+        if (key.startsWith('agents/')) {
+            const name = String(o.name ?? key.slice(7).replace(/\.json$/, ''));
+            return o.status
+                ? `agentcomm: ${name} — ${String(o.status)}`
+                : `agentcomm: ${name} is on the bus`;
+        }
+        if (key.startsWith('inbox/') && o.from && o.to) {
+            return `agentcomm: ${String(o.from)} → ${String(o.to)}${o.subject ? ` [${String(o.subject)}]` : ''}`;
+        }
+    }
+    catch { /* not JSON — fall through */ }
+    return `agentcomm: put ${key}`;
 }
 //# sourceMappingURL=git.js.map
