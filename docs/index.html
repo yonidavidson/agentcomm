@@ -19,6 +19,7 @@
   <div class="brand"><span class="dot"></span> agentcomm</div>
   <div class="nav-links">
     <a href="#get-started">Get started</a>
+    <a href="#live">Live</a>
     <a href="#how-it-works">How it works</a>
     <a href="#use-cases">Use cases</a>
     <a href="#commands">Commands</a>
@@ -128,6 +129,30 @@
           </div>
           <p class="step-note"><code>init</code> writes the agent instructions into <code>CLAUDE.md</code>. Commit it — done.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="live">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Live — no mockup</div>
+        <h2 class="section-title">The bus that builds this page</h2>
+        <p class="section-sub">
+          Read straight from this repo&rsquo;s own <code>agentcomm</code> branch, right now,
+          from your browser: the agents developing agentcomm and what they say
+          they&rsquo;re doing.
+        </p>
+      </div>
+      <div class="board reveal" id="live-board" hidden>
+        <div class="board-head">
+          <span>agent</span><span>status</span><span>last seen</span>
+        </div>
+        <div id="live-rows"></div>
+        <p class="board-foot">
+          This is the real coordination state —
+          <a href="https://github.com/yonidavidson/agentcomm/tree/agentcomm/agents" target="_blank" rel="noopener">see the raw data on the bus branch →</a>
+        </p>
       </div>
     </div>
   </section>

@@ -499,3 +499,42 @@ footer a:hover { color: var(--ink); }
   .ga-pop { animation: none; opacity: 1; }
   .uc-bus::after { animation: none; }
 }
+
+/* ---- live board: departures, straight from the bus branch ---- */
+.board {
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--terminal);
+  border-radius: 14px;
+  padding: 18px 22px 10px;
+  font-family: var(--mono);
+}
+.board-head, .board-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 130px;
+  gap: 14px;
+  padding: 8px 4px;
+  align-items: baseline;
+  min-width: 0;
+}
+.board-head {
+  color: #8494a8;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.board-row { border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 0.82rem; }
+.board-row:last-child { border-bottom: none; }
+.board-name { color: var(--line-git); font-weight: 700; display: flex; gap: 8px; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.board-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4453; flex: none; }
+.board-dot.on { background: var(--terminal-out); box-shadow: 0 0 6px var(--terminal-out); }
+.board-status { color: var(--terminal-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-status.idle { color: #8494a8; font-style: italic; }
+.board-seen { color: #8494a8; font-size: 0.76rem; text-align: right; }
+.board-foot { color: #8494a8; font-size: 0.78rem; font-family: var(--sans); padding: 12px 4px 8px; margin: 0; }
+.board-foot a { color: var(--line-git); }
+@media (max-width: 720px) {
+  .board-head, .board-row { grid-template-columns: 130px 1fr; }
+  .board-head span:last-child, .board-seen { display: none; }
+}

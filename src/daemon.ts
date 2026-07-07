@@ -57,16 +57,10 @@ export async function runDaemon(uri: string): Promise<void> {
   async function poll(): Promise<void> {
     // Snapshot the outbox BEFORE listing the store: a key is always in at
     // least one of the two (spool until delivered, store afterwards) — the
-    // other order can miss it mid-flush for a full poll cycle.
-    const spooled: string[] = [];
-    try {
-      for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
-        const { key } = JSON.parse(await fs.readFile(path.join(sockPath + '.spool', f), 'utf8')) as {
-          key: string;
-        };
-        spooled.push(key);
-      }
-    } catch { /* spool not created yet */ }
+    // other order can miss it mid-flush for a full poll cycle. The snapshot
+    // runs under the flush mutex (issue #79): reading a spool file while the
+    // flusher rm's it silently dropped the key for a cycle under load.
+    const spooled: string[] = await snapshotSpool();
     const listed = await backend.list('');
     const next = new Set([...listed, ...spooled]);
     for (const k of listed) {
@@ -81,6 +75,26 @@ export async function runDaemon(uri: string): Promise<void> {
     for (const k of mirror.keys()) if (!next.has(k)) mirror.delete(k);
     keys = next;
   }
+
+  async function snapshotSpool(): Promise<string[]> {
+    const take = async (): Promise<string[]> => {
+      const keys: string[] = [];
+      try {
+        for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
+          try {
+            const { key } = JSON.parse(
+              await fs.readFile(path.join(sockPath + '.spool', f), 'utf8'),
+            ) as { key: string };
+            keys.push(key);
+          } catch { /* entry mid-write */ }
+        }
+      } catch { /* spool not created yet */ }
+      return keys;
+    };
+    // before the socket dir exists (first poll) there is no spool nor mutex state
+    return typeof withSpoolRef === 'function' ? withSpoolRef(take) : take();
+  }
+  let withSpoolRef: (<T>(fn: () => Promise<T>) => Promise<T>) | null = null;
 
   await poll();
 
@@ -249,6 +263,7 @@ export async function runDaemon(uri: string): Promise<void> {
     spoolChain = next.catch(() => {});
     return next;
   }
+  withSpoolRef = withSpool;
   function flush(): Promise<void> {
     return withSpool(async () => {
       const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();
