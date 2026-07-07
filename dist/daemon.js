@@ -39,15 +39,10 @@ export async function runDaemon(uri) {
     async function poll() {
         // Snapshot the outbox BEFORE listing the store: a key is always in at
         // least one of the two (spool until delivered, store afterwards) — the
-        // other order can miss it mid-flush for a full poll cycle.
-        const spooled = [];
-        try {
-            for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
-                const { key } = JSON.parse(await fs.readFile(path.join(sockPath + '.spool', f), 'utf8'));
-                spooled.push(key);
-            }
-        }
-        catch { /* spool not created yet */ }
+        // other order can miss it mid-flush for a full poll cycle. The snapshot
+        // runs under the flush mutex (issue #79): reading a spool file while the
+        // flusher rm's it silently dropped the key for a cycle under load.
+        const spooled = await snapshotSpool();
         const listed = await backend.list('');
         const next = new Set([...listed, ...spooled]);
         for (const k of listed) {
@@ -65,6 +60,25 @@ export async function runDaemon(uri) {
                 mirror.delete(k);
         keys = next;
     }
+    async function snapshotSpool() {
+        const take = async () => {
+            const keys = [];
+            try {
+                for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
+                    try {
+                        const { key } = JSON.parse(await fs.readFile(path.join(sockPath + '.spool', f), 'utf8'));
+                        keys.push(key);
+                    }
+                    catch { /* entry mid-write */ }
+                }
+            }
+            catch { /* spool not created yet */ }
+            return keys;
+        };
+        // before the socket dir exists (first poll) there is no spool nor mutex state
+        return typeof withSpoolRef === 'function' ? withSpoolRef(take) : take();
+    }
+    let withSpoolRef = null;
     await poll();
     let lastActivity = Date.now();
     const sockPath = socketPathFor(uri);
@@ -228,6 +242,7 @@ export async function runDaemon(uri) {
         spoolChain = next.catch(() => { });
         return next;
     }
+    withSpoolRef = withSpool;
     function flush() {
         return withSpool(async () => {
             const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();

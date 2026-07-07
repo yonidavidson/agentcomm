@@ -7,5 +7,6 @@ export default defineConfig({
     // 5s default is margin-less on a loaded runner or laptop; unit tests
     // don't care about the extra headroom.
     testTimeout: 30000,
+    fileParallelism: false,
   },
 });

@@ -18,6 +18,58 @@
     block.prepend(btn);
   });
 
+  // Live board: the repo's own bus, read client-side. Listing via the
+  // contents API (60/hr anon is plenty), bodies via the raw CDN. Any
+  // failure hides the section — the page never shows a broken board.
+  (async () => {
+    const board = document.getElementById('live-board');
+    if (!board) return;
+    try {
+      const list = await fetch(
+        'https://api.github.com/repos/yonidavidson/agentcomm/contents/agents?ref=agentcomm',
+      ).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))));
+      const files = list.filter((f) => f.name.endsWith('.json')).slice(0, 12);
+      const agents = (
+        await Promise.all(
+          files.map((f) =>
+            fetch(f.download_url).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          ),
+        )
+      ).filter(Boolean);
+      if (!agents.length) return;
+      agents.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+      const rows = document.getElementById('live-rows');
+      const rel = (iso) => {
+        const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+        if (!isFinite(m)) return '';
+        if (m < 1) return 'just now';
+        if (m < 60) return m + 'm ago';
+        if (m < 48 * 60) return Math.round(m / 60) + 'h ago';
+        return Math.round(m / 1440) + 'd ago';
+      };
+      for (const a of agents.slice(0, 8)) {
+        const row = document.createElement('div');
+        row.className = 'board-row';
+        const name = document.createElement('span');
+        name.className = 'board-name';
+        const dot = document.createElement('span');
+        dot.className = 'board-dot' + (Date.now() - Date.parse(a.lastSeen) < 10 * 60000 ? ' on' : '');
+        name.append(dot, document.createTextNode(a.name));
+        const status = document.createElement('span');
+        status.className = 'board-status' + (a.status ? '' : ' idle');
+        status.textContent = a.status || '(no status declared)';
+        const seen = document.createElement('span');
+        seen.className = 'board-seen';
+        seen.textContent = rel(a.lastSeen);
+        row.append(name, status, seen);
+        rows.append(row);
+      }
+      board.hidden = false;
+    } catch {
+      /* stay hidden */
+    }
+  })();
+
   const canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
