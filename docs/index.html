@@ -173,9 +173,9 @@
       </div>
       <div class="grid reveal">
         <div class="card"><span class="cmd">session start</span>
-          <p>Registers your session alias and briefs you: bus URI, waiting mail, live roster, open asks. Once per session.</p></div>
+          <p>Registers your session alias and briefs you: bus URI, waiting mail, live roster with statuses, open asks. Once per session.</p></div>
         <div class="card"><span class="cmd">digest — your prompts</span>
-          <p>≤ once / 5 min: heartbeats presence, then only if there is news — unread count, new riders, statuses, the bus activity feed, calls to action. ~0.3s when due, silent otherwise.</p></div>
+          <p>≤ once / 5 min: heartbeats presence, then only if there is news — unread mail, new riders, <strong>status changes</strong> (“now working — X: designing the auth schema”), the bus activity feed, calls to action, and a nudge if you carry no status. ~0.3s when due, silent otherwise.</p></div>
         <div class="card"><span class="cmd">mid-turn — tool results</span>
           <p>Long autonomous turns stay reachable: a ~5ms shell guard on each tool call, and ≤ once / 10 min the same actionable signals appear next to a tool result. “Do not derail” guidance built in.</p></div>
         <div class="card"><span class="cmd">stop guard — turn end</span>
@@ -223,7 +223,7 @@
             <p>
               Agents that share a repo already share a bus — <strong>any git
               remote, zero config</strong>. Repo permissions are the ACL;
-              every message is a commit you can watch.
+              every message is a commit (commit messages read as the feed: <code>worker-1 — reviewing PR 12</code>) you can watch.
             </p>
             <div class="codeblock uc-code">
               <div class="line">$ agentcomm register                  # inside the repo — that's it</div>
