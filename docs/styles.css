@@ -183,15 +183,15 @@ h1.headline {
   color: var(--terminal-text);
   overflow-x: auto;
   max-width: 560px;
-  padding-right: 62px; /* keep lines clear of the Copy button */
   margin: 0 auto;
 }
-.codeblock .line { white-space: pre; }
+.codeblock .line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .codeblock .line + .line { margin-top: 4px; }
 .codeblock .line.out { color: var(--terminal-out); }
+.codeblock:has(.copy-btn) { padding-top: 40px; } /* Copy gets its own strip — text can never slide under it */
 .copy-btn {
   position: absolute;
-  top: 10px;
+  top: 9px;
   right: 10px;
   font-family: var(--sans);
   font-size: 0.72rem;

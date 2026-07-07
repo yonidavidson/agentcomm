@@ -2,6 +2,22 @@
 // "message" pulses along their connections. Purely decorative, paused
 // under prefers-reduced-motion.
 (function agentNetwork() {
+  // every code box gets a Copy button (commands only — outputs and comments
+  // are display, not paste material); blocks with a hand-set data-copy keep it
+  document.querySelectorAll('.codeblock').forEach((block) => {
+    if (block.querySelector('.copy-btn')) return;
+    const cmds = [...block.querySelectorAll('.line')]
+      .filter((l) => !l.classList.contains('out') && !l.textContent.trim().startsWith('#'))
+      .map((l) => l.textContent.replace(/^\$\s?/, '').trim())
+      .filter(Boolean);
+    if (!cmds.length) return;
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.dataset.copy = cmds.join('\n');
+    block.prepend(btn);
+  });
+
   const canvas = document.getElementById('bg-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
