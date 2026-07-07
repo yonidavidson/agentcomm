@@ -123,9 +123,11 @@ export class SocketBackend {
         catch {
             return null;
         }
-        // a git-backed daemon warms its mirror (a full fetch) before listening —
-        // give it a realistic window before falling back to a direct connection
-        for (let i = 0; i < 100; i++) {
+        // a git-backed daemon warms its mirror (a full fetch) before listening,
+        // and on loaded machines (CI) even node startup can crawl — the window
+        // is tunable so tests on starved runners can wait longer
+        const waitMs = Math.max(1_000, Number(process.env.AGENTCOMM_DAEMON_SPAWN_WAIT_MS ?? 10_000));
+        for (let waited = 0; waited < waitMs; waited += 100) {
             await new Promise((r) => setTimeout(r, 100));
             const client = await SocketBackend.connect(uri);
             if (client)

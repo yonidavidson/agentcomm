@@ -97,6 +97,37 @@ export function busUriFrom(stderr) {
   return m?.[1] ?? process.env.AGENTCOMM_BACKEND ?? null;
 }
 
+/**
+ * What moved on the bus since this hook last looked: recent messages
+ * (including between OTHER agents — the bus is a shared, trusted space),
+ * excluding our own sends. High-water mark kept in stateFile. First run
+ * primes the mark silently — no history dump on fresh sessions.
+ */
+export async function activitySince(cwd, me, stateFile, cap = 4) {
+  const res = await cli(['log', '--limit', '30', '--json'], cwd, 3_000);
+  if (!res || !Array.isArray(res.json)) return { lines: [] };
+  const msgs = res.json;
+  let lastTs = 0;
+  let first = true;
+  try {
+    const st = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+    if (typeof st?.lastTs === 'number') {
+      lastTs = st.lastTs;
+      first = false;
+    }
+  } catch { /* first run */ }
+  const newest = msgs.reduce((m, x) => Math.max(m, Date.parse(x.ts) || 0), lastTs);
+  await fs.writeFile(stateFile, JSON.stringify({ lastTs: newest })).catch(() => {});
+  if (first) return { lines: [] };
+  const fresh = msgs.filter((m) => (Date.parse(m.ts) || 0) > lastTs && m.from !== me);
+  return {
+    lines: fresh.slice(-cap).map((m) => {
+      const body = m.body.length > 70 ? m.body.slice(0, 70) + '…' : m.body;
+      return `${m.from} → ${m.to}${m.subject ? ` [${m.subject}]` : ''}: "${body}"`;
+    }),
+  };
+}
+
 export function aliasFrom(stderr) {
   const m = /acting as (\S+)/.exec(stderr ?? '');
   return m?.[1] ?? null;

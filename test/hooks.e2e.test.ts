@@ -313,6 +313,103 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     );
   });
 
+  it('mid-turn digest: surfaces unread + asks during long turns, throttled, quiet otherwise', async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir);
+    cliSync(['register', '--status', 'blocked: need prod credentials', '--as', 'stuck-worker'], dir);
+
+    const me = await derivedAlias(dir);
+    cliSync(['send', me, 'mid-task news'], dir, 'stuck-worker');
+
+    const first = await runHook('midturn-digest.mjs', { cwd: dir, tool_name: 'Bash' }, dir);
+    const out = JSON.parse(first.stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(out.hookSpecificOutput.hookEventName).toBe('PostToolUse');
+    expect(out.hookSpecificOutput.additionalContext).toContain('1 unread message(s)');
+    expect(out.hookSpecificOutput.additionalContext).toContain('stuck-worker is asking');
+    expect(out.hookSpecificOutput.additionalContext).toContain('do not derail');
+
+    // immediately again → throttled silence (this is the every-tool-call path)
+    const throttled = await runHook('midturn-digest.mjs', { cwd: dir, tool_name: 'Read' }, dir);
+    expect(throttled.stdout).toBe('');
+
+    // clear throttle + quiet bus → silence
+    cliSync(['inbox', '--json'], dir);
+    cliSync(['register', '--status', 'working again', '--as', 'stuck-worker'], dir);
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-midturn-')) await fs.rm(path.join(dir, f));
+    }
+    const quiet = await runHook('midturn-digest.mjs', { cwd: dir, tool_name: 'Bash' }, dir);
+    expect(quiet.stdout).toBe('');
+  });
+
+  it('mid-turn fast path: a fresh stamp short-circuits in shell — node never spawns', async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir);
+    cliSync(['send', (await derivedAlias(dir)), 'pending news', '--as', 'sender'], dir);
+
+    const hooksJson = JSON.parse(await fs.readFile(path.join(root, 'hooks', 'hooks.json'), 'utf8')) as {
+      hooks: { PostToolUse: { hooks: { command: string }[] }[] };
+    };
+    const guardCmd = hooksJson.hooks.PostToolUse[0].hooks[0].command;
+
+    // fresh stamp, exactly as the node script writes it
+    const key = dir.replace(/[^A-Za-z0-9]/g, '_');
+    await fs.writeFile(path.join(dir, `agentcomm-midturn-${key}`), '');
+
+    const started = Date.now();
+    const r = await new Promise<{ code: number; stdout: string }>((resolve, reject) => {
+      const child = spawn('sh', ['-c', guardCmd.replace(/^sh -c '/, '').replace(/'$/, '')], {
+        stdio: ['pipe', 'pipe', 'ignore'],
+        cwd: dir,
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
+          AGENTCOMM_NO_GIT_PROBE: '1',
+          AGENTCOMM_SESSION: 'hook-session',
+          TMPDIR: dir,
+          CLAUDE_PROJECT_DIR: dir,
+          CLAUDE_PLUGIN_ROOT: root,
+        },
+      });
+      let stdout = '';
+      child.stdout.on('data', (d) => (stdout += d.toString()));
+      child.on('error', reject);
+      child.on('exit', (code) => resolve({ code: code ?? -1, stdout }));
+      child.stdin.end(JSON.stringify({ cwd: dir }));
+    });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe(''); // news exists, but the guard never reached node
+    expect(Date.now() - started).toBeLessThan(500); // shell path, not node startup + bus reads
+  });
+
+  it("digest carries a bus-activity feed: other agents traffic since last digest", async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir);
+    cliSync(['register'], dir, 'planner');
+    cliSync(['register'], dir, 'worker-1');
+
+    // prime: first digest sets the high-water mark silently (send self mail so it fires)
+    const me = await derivedAlias(dir);
+    cliSync(['send', me, 'wake up', '--as', 'planner'], dir);
+    await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    cliSync(['inbox', '--json'], dir); // consume own mail
+
+    // traffic BETWEEN OTHERS after the mark
+    cliSync(['send', 'worker-1', 'auth module is done, tests green', '--as', 'planner', '--subject', 'done'], dir);
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('acts') && !f.includes('roster'))
+        await fs.rm(path.join(dir, f));
+    }
+    const news = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(news.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    expect(ctx).toContain('bus activity since last digest');
+    expect(ctx).toContain('planner → worker-1 [done]: "auth module is done, tests green"');
+  });
+
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
     const dir = await markedRepo();
     cliSync(['register'], dir);

@@ -151,7 +151,13 @@ the discipline mechanical — don't duplicate them:
   mailbox and blocks finishing once if unread messages exist — handle them via
   `agentcomm inbox --json` (or tell the user why not), then finish.
 - **During the session**: a throttled digest (≤ once per 5min) heartbeats
-  your presence and — only when there is news — may appear in your context — unread count, riders that
+  your presence and — only when there is news — may appear in your context;
+  during LONG turns a mid-task digest (≤ once per 10min, via tool results)
+  keeps you reachable: act on its unread/ask signals per the same rules.
+  Digests carry a bus-activity feed (recent messages, including between
+  other agents — the bus is a trusted space): read it and ACT when it
+  affects you — someone finished what you depend on, duplicates your work,
+  or corrected something you're using. Ignore what doesn't touch your task — unread count, riders that
   joined, and what active agents say they're doing. Act on it like any bus
   fact; no need to re-check what it reports.
 

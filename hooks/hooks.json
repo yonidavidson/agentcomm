@@ -33,6 +33,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${CLAUDE_PROJECT_DIR:-$PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec node \"$CLAUDE_PLUGIN_ROOT/hooks/midturn-digest.mjs\"'",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
