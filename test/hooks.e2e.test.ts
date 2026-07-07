@@ -266,6 +266,53 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(out.hookSpecificOutput.additionalContext).toContain('building the auth module');
   });
 
+  it('an ask-status becomes a call to action in others\' digests (and stops when cleared)', async () => {
+    const dir = await markedRepo();
+    cliSync(['register'], dir);
+    cliSync(['register', '--status', 'blocked: need the auth schema', '--as', 'worker-1'], dir);
+
+    const news = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    const out = JSON.parse(news.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const ctx = out.hookSpecificOutput.additionalContext;
+    expect(ctx).toContain('call to action — worker-1 is asking: "blocked: need the auth schema"');
+    expect(ctx).toContain('agentcomm send worker-1');
+    expect(ctx).not.toContain('working — worker-1'); // an ask is a CTA, not a fact line
+
+    // unblocked: plain status again → next digest (throttle cleared) has no CTA and is silent
+    cliSync(['register', '--status', 'building auth', '--as', 'worker-1'], dir);
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-digest-') && !f.includes('roster')) await fs.rm(path.join(dir, f));
+    }
+    const quiet = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
+    expect(quiet.stdout).toBe('');
+  });
+
+  it('session-start surfaces active asks as calls to action', async () => {
+    const dir = await markedRepo();
+    // the asker must be ANOTHER session — own asks are not self-recruiting
+    execFileSync(
+      process.execPath,
+      [path.join(root, 'dist', 'cli.js'), 'register', '--status', 'need: someone to review PR 7', '--as', 'reviewer-seeker'],
+      {
+        cwd: dir,
+        stdio: 'ignore',
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
+          AGENTCOMM_NO_GIT_PROBE: '1',
+          AGENTCOMM_SESSION: 'someone-elses-session',
+        },
+      },
+    );
+
+    const r = await runHook('session-start.mjs', { cwd: dir, hook_event_name: 'SessionStart' }, dir);
+    const out = JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain(
+      'call to action — reviewer-seeker is asking: "need: someone to review PR 7"',
+    );
+  });
+
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
     const dir = await markedRepo();
     cliSync(['register'], dir);

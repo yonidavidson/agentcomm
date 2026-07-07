@@ -40,6 +40,9 @@ const names = roster
   .map((a) => a.name + (a.thisSession ? ' (this session)' : '') + (a.status ? ` [${a.status}]` : ''))
   .join(', ');
 
+const asks = roster.filter(
+  (a) => !a.thisSession && Date.now() - Date.parse(a.lastSeen) < 10 * 60_000 && /^(blocked|need|help)\b/i.test(a.status ?? ''),
+);
 const lines = [
   `agentcomm: this repo is on a message bus${bus ? ` (${bus})` : ''}.`,
   alias ? `You are registered as ${alias} — bare commands use this alias automatically.` : null,
@@ -47,6 +50,10 @@ const lines = [
   roster.length
     ? `Roster: ${roster.length} agent(s)${active.length ? `, ${active.length} active in the last 10m` : ''} — ${names}.`
     : 'Roster: empty — you would be the first to register.',
+  ...asks.map(
+    (a) =>
+      `call to action — ${a.name} is asking: "${a.status}". If you can answer from what you already know, reply: \`agentcomm send ${a.name} "<answer>" --subject status\`.`,
+  ),
   'To coordinate: `agentcomm send <to> <msg>` / `inbox --json` / `wait`; the agentcomm skill has the conventions.',
 ].filter(Boolean);
 

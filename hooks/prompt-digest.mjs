@@ -44,21 +44,36 @@ await fs.writeFile(rosterFile, JSON.stringify(names)).catch(() => {});
 const joined = known.length ? names.filter((n) => !known.includes(n)) : [];
 const activeAgents = roster.filter((a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000);
 
-if (!pending && joined.length === 0) process.exit(0); // no news, no noise
+// (asks computed below also count as news)
 
 const alias = aliasFrom(peek?.stderr) ?? 'you';
 const bits = [];
+const ctas = [];
 if (pending) bits.push(`${pending} unread message(s) for ${alias} — \`agentcomm inbox --json\``);
 if (joined.length) bits.push(`new on the bus: ${joined.join(', ')}`);
-const withStatus = activeAgents.filter((a) => a.status).map((a) => `${a.name}: ${a.status}`);
+const isAsk = (t) => /^(blocked|need|help)\b/i.test(t ?? '');
+const asks = activeAgents.filter((a) => a.name !== aliasFrom(peek?.stderr) && isAsk(a.status));
+const withStatus = activeAgents
+  .filter((a) => a.status && !isAsk(a.status))
+  .map((a) => `${a.name}: ${a.status}`);
 if (withStatus.length) bits.push(`working — ${withStatus.slice(0, 4).join(' · ')}`);
 bits.push(`${activeAgents.length}/${roster.length} agents active`);
+for (const a of asks.slice(0, 3)) {
+  ctas.push(
+    `call to action — ${a.name} is asking: "${a.status}". If you can answer from what you ` +
+      `already know, reply now: \`agentcomm send ${a.name} "<answer>" --subject status\` ` +
+      '(check `agentcomm log --limit 10` first — it may already be answered). ' +
+      'Otherwise continue your own task.',
+  );
+}
+if (!pending && joined.length === 0 && ctas.length === 0) process.exit(0); // no news, no noise
 
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `agentcomm digest: ${bits.join(' · ')}.`,
+      additionalContext:
+        `agentcomm digest: ${bits.join(' · ')}.` + (ctas.length ? `\n${ctas.join('\n')}` : ''),
     },
   }),
 );

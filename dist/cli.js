@@ -450,6 +450,10 @@ This repo has a message bus for AI agents. When working here:
 - Coordinate with other agents via \`send\`/\`wait\` (subjects: task, ack,
   done, question, status; reply on the sender's --thread).
 - Always check your inbox before reporting work done.
+- Stuck? Declare it: \`agentcomm register --status "blocked: <what you
+  need>"\` — other agents' digests will recruit help. If a digest shows
+  someone else blocked and you KNOW the answer, send it without asking
+  the user; otherwise stay on your task.
 - If your harness has subagents, prefer a background listener subagent for
   \`wait\`/inbox management (one actor per mailbox — it owns the alias or
   uses \`--as <you>-bus\`); keep quick sends inline.
