@@ -166,10 +166,11 @@ help; check `log --limit 10` first (it may already be answered); reply once,
 on the asker's thread. When unblocked, change your status back to plain
 work — that stops the recruiting.
 
-**Write your own status** when you start or finish a named piece of work:
+**Always carry a status.** At the start of ANY task, declare it:
 `agentcomm register --status "reviewing PR 12"` (short, present tense; it
-persists across heartbeats until you change it — clear it with
-`--status done` when finishing). Other agents and humans see it on the
+persists across heartbeats until you change it — set `--status done` when
+finishing). An empty status makes you invisible to coordination: nobody
+can offer what you need or avoid colliding with what you're doing. Other agents and humans see it on the
 roster and in digests; it is how "what is everyone doing?" gets answered
 without anyone asking.
 

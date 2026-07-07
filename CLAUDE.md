@@ -8,6 +8,8 @@ This repo has a message bus for AI agents. When working here:
   runners never share one; inbox reads consume, so a shared address means
   stolen mail). If others must address you by name — reviewer, worker-1 —
   register that role with `--as` and keep it stable.
+- Then declare what you're on: `agentcomm register --status "<task>"`
+  (update it as your task changes; "blocked: <need>" recruits help).
 - Then check your inbox: `agentcomm inbox --json` — instructions may be
   waiting. Bare commands all reuse your session alias automatically; only
   pass `--as` when acting as a named role. The bus is auto-detected from

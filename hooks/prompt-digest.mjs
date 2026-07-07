@@ -50,7 +50,10 @@ const alias = aliasFrom(peek?.stderr) ?? 'you';
 const bits = [];
 const ctas = [];
 if (pending) bits.push(`${pending} unread message(s) for ${alias} — \`agentcomm inbox --json\``);
-if (joined.length) bits.push(`new on the bus: ${joined.join(', ')}`);
+if (joined.length)
+  bits.push(
+    `new on the bus: ${joined.join(', ')} — if your work overlaps, introduce yourself (\`agentcomm send ${joined[0]} "<what you're on>" --subject status\`)`,
+  );
 const isAsk = (t) => /^(blocked|need|help)\b/i.test(t ?? '');
 const asks = activeAgents.filter((a) => a.name !== aliasFrom(peek?.stderr) && isAsk(a.status));
 const withStatus = activeAgents
