@@ -42,7 +42,9 @@ interface Req {
 }
 
 export async function runDaemon(uri: string): Promise<void> {
-  const pollMs = Math.max(500, Number(process.env.AGENTCOMM_POLL_MS ?? 10_000));
+  // github:// pays REST quota per poll (5,000/hr shared) — default gently
+  const defaultPollMs = uri.startsWith('github://') ? 30_000 : 10_000;
+  const pollMs = Math.max(500, Number(process.env.AGENTCOMM_POLL_MS ?? defaultPollMs));
   const idleMs = Math.max(5_000, Number(process.env.AGENTCOMM_DAEMON_IDLE_MS ?? 30 * 60_000));
   const backend: Backend = await createBackend(uri);
   const claimable = isClaimable(backend);

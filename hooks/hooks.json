@@ -33,6 +33,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/midturn-digest.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
