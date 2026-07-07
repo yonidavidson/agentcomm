@@ -34,6 +34,7 @@ function env(dir: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv
     AGENTCOMM_POLL_MS: '300',
     AGENTCOMM_SESSION: 'daemon-test',
     AGENTCOMM_NO_GIT_PROBE: '1',
+    AGENTCOMM_DAEMON_SPAWN_WAIT_MS: '30000', // CI runners under parallel load start node slowly
     ...extra,
   };
 }

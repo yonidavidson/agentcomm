@@ -10,15 +10,16 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHash } from 'node:crypto';
-import { readStdinJson, onTheBus, cli, aliasFrom } from './lib.mjs';
+import { readStdinJson, onTheBus, cli, aliasFrom, activitySince } from './lib.mjs';
 
 const input = await readStdinJson();
 const cwd = input.cwd || process.cwd();
 
-// throttle FIRST — this path runs on every tool call and must be ~free
-const id = createHash('sha1').update(cwd).digest('hex').slice(0, 12);
-const stamp = path.join(os.tmpdir(), `agentcomm-midturn-${id}`);
+// throttle stamp — the hooks.json sh guard checks THIS file's age (~5ms)
+// before node ever spawns, so key derivation must match it exactly:
+// sanitized CLAUDE_PROJECT_DIR (fallback cwd), non-alnum → _
+const stampDirKey = (process.env.CLAUDE_PROJECT_DIR ?? cwd).replace(/[^A-Za-z0-9]/g, '_');
+const stamp = path.join(os.tmpdir(), `agentcomm-midturn-${stampDirKey}`);
 try {
   if (Date.now() - (await fs.stat(stamp)).mtimeMs < 10 * 60_000) process.exit(0);
 } catch { /* first check */ }
@@ -38,9 +39,17 @@ const asks = roster.filter(
     Date.now() - Date.parse(a.lastSeen) < 10 * 60_000 &&
     /^(blocked|need|help)\b/i.test(a.status ?? ''),
 );
-if (!pending && asks.length === 0) process.exit(0);
+const { lines: activity } = await activitySince(
+  cwd,
+  me,
+  path.join(os.tmpdir(), `agentcomm-midturn-acts-${stampDirKey}`),
+  3,
+);
+if (!pending && asks.length === 0 && activity.length === 0) process.exit(0);
 
 const lines = [];
+if (activity.length)
+  lines.push(`agentcomm (mid-task) bus activity FYI:\n  ${activity.join('\n  ')}`);
 if (pending)
   lines.push(
     `agentcomm (mid-task): ${pending} unread message(s) for ${me ?? 'you'} — if it may affect the current work, \`agentcomm inbox --json\` now; otherwise finish first (the stop guard will hold it).`,
