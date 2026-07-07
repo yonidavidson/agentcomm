@@ -172,6 +172,23 @@ describe('bus daemon: same semantics, immediate answers', () => {
     parsed.lastSeen = new Date(Date.now() - 8 * 86400_000).toISOString();
     await fs.writeFile(rec, JSON.stringify(parsed));
 
+    // a session-derived alias (suffix = its session hash) ages on the FAST
+    // clock: 13h stale kills it while a 13h-stale ROLE would survive (7d)
+    const sessRec = path.join(dir, '.bus', 'agents', 'ghost-ab12.json');
+    await fs.writeFile(sessRec, JSON.stringify({
+      name: 'ghost-ab12',
+      registeredAt: new Date(Date.now() - 86400_000).toISOString(),
+      lastSeen: new Date(Date.now() - 13 * 3600_000).toISOString(),
+      session: 'ab12ffffffff',
+    }));
+    const roleRec = path.join(dir, '.bus', 'agents', 'night-reviewer.json');
+    await fs.writeFile(roleRec, JSON.stringify({
+      name: 'night-reviewer',
+      registeredAt: new Date(Date.now() - 86400_000).toISOString(),
+      lastSeen: new Date(Date.now() - 13 * 3600_000).toISOString(),
+      session: 'cccc00000000', // has a session but name lacks the suffix → role
+    }));
+
     // restart the daemon with a fast housekeeping clock
     await run(['daemon', 'stop'], dir);
     const child = spawn(process.execPath, [CLI, 'daemon', 'run'], {
@@ -192,6 +209,8 @@ describe('bus daemon: same semantics, immediate answers', () => {
     }
     expect(names).toContain('fresh-agent');
     expect(names).not.toContain('ancient-agent');
+    expect(names).not.toContain('ghost-ab12'); // session alias, fast clock
+    expect(names).toContain('night-reviewer'); // role alias, slow clock
   }, 40_000);
 
   it('async sends: instant local visibility, remote after drain; --sync goes straight through', async () => {
