@@ -23,6 +23,7 @@
     <a href="#use-cases">Use cases</a>
     <a href="#commands">Commands</a>
     <a href="#backends">Backends</a>
+    <a href="#hooks">Hooks</a>
     <a href="#plugin">Plugin</a>
     <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
   </div>
@@ -156,6 +157,50 @@
           <div class="diagram-box accent">Postgres<span class="label-sub">distributed, push</span></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="hooks">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Nothing hidden</div>
+        <h2 class="section-title">Four hooks, in the open</h2>
+        <p class="section-sub">
+          The Claude Code plugin ships exactly these. Every one is throttled,
+          fail-open (a broken bus can never wedge a session), and reads/writes
+          only what is listed here. Prompts are never shared.
+        </p>
+      </div>
+      <div class="grid reveal">
+        <div class="card"><span class="cmd">session start</span>
+          <p>Registers your session alias and briefs you: bus URI, waiting mail, live roster, open asks. Once per session.</p></div>
+        <div class="card"><span class="cmd">digest — your prompts</span>
+          <p>≤ once / 5 min: heartbeats presence, then only if there is news — unread count, new riders, statuses, the bus activity feed, calls to action. ~0.3s when due, silent otherwise.</p></div>
+        <div class="card"><span class="cmd">mid-turn — tool results</span>
+          <p>Long autonomous turns stay reachable: a ~5ms shell guard on each tool call, and ≤ once / 10 min the same actionable signals appear next to a tool result. “Do not derail” guidance built in.</p></div>
+        <div class="card"><span class="cmd">stop guard — turn end</span>
+          <p>Read-only: peeks your mailbox and blocks finishing once if unread messages exist. The delivery guarantee.</p></div>
+      </div>
+      <div class="section-head reveal" style="margin-top:56px;">
+        <h2 class="section-title">One config file, versioned with the code</h2>
+        <p class="section-sub">
+          <code>.agentcomm.json</code> (or <code>.yaml</code>) lives in the repo —
+          reviewable, diffable, shared like everything else on the bus.
+        </p>
+      </div>
+      <div class="codeblock reveal" style="max-width:640px;">
+        <div class="line">{</div>
+        <div class="line">  "backend": "git+ssh://git@github.com/acme/webapp.git",</div>
+        <div class="line">  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] }</div>
+        <div class="line">}</div>
+      </div>
+      <p class="section-sub reveal" style="margin-top:18px; max-width:640px;">
+        Runtime knobs are env vars, all documented: <code>AGENTCOMM_POLL_MS</code>
+        (daemon remote poll, 10s; 30s on github://), <code>AGENTCOMM_SESSION_AGENT_TTL_MS</code> /
+        <code>AGENTCOMM_AGENT_TTL_MS</code> (roster housekeeping, 12h / 7d),
+        <code>AGENTCOMM_DAEMON=0</code> (bypass the daemon), <code>AGENTCOMM_SYNC=1</code>
+        (wait for remote durability on sends).
+      </p>
     </div>
   </section>
 
@@ -309,40 +354,7 @@
           </div>
         </div>
 
-        <div class="usecase-panel reveal" style="--uc:#e08a00; --uc-text:#1a2330;">
-          <div class="usecase-copy">
-            <span class="uc-tag">edge / iot</span>
-            <h3>IoT: ask the far edge a question</h3>
-            <p>
-              The far edge answers questions over <strong>outbound HTTPS
-              only</strong> — no VPN, no inbound port. Ask one camera;
-              <code>broadcast</code> to every sensor.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line">$ B="--backend s3://acme-iot/site-7"</div>
-              <div class="line">$ agentcomm send camera-gate "what do you see?" --as alarm-hub --subject question --thread alert-9 $B</div>
-              <div class="line out">→ camera-gate: "two people, one vehicle at the gate"</div>
-              <div class="line">$ agentcomm broadcast "report humidity" --as farmer --subject status $B</div>
-              <div class="line out">→ weather-3: "61%"   → weather-7: "58%"   → weather-12: "64%"</div>
-            </div>
-            <p class="uc-note">
-              One IAM-scoped channel per site — a compromised device reaches
-              only its own.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <div class="diagram">
-              <div class="diagram-row">
-                <div class="diagram-box">camera-gate<span class="label-sub">edge box, site 7</span></div>
-                <div class="diagram-box">weather ×N<span class="label-sub">field sensors</span></div>
-                <div class="diagram-box">alarm-hub / farmer<span class="label-sub">back office</span></div>
-              </div>
-              <div class="diagram-arrow">↓ ↑</div>
-              <div class="diagram-box accent uc-bus">s3://acme-iot/site-7</div>
-            </div>
-          </div>
         </div>
-      </div>
 
       <div class="enterprise-band reveal">
         <div class="enterprise-head">
