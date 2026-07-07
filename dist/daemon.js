@@ -274,13 +274,21 @@ export async function runDaemon(uri) {
     const housekeepMs = Math.max(10_000, Number(process.env.AGENTCOMM_HOUSEKEEP_MS ?? 6 * 3600_000));
     const archiveTtl = Number(process.env.AGENTCOMM_PURGE_AFTER_MS ?? 30 * 24 * 3600_000);
     const agentTtl = Number(process.env.AGENTCOMM_AGENT_TTL_MS ?? 7 * 24 * 3600_000);
+    // session-derived aliases (name carries the session-hash suffix) are
+    // ephemeral by construction — one per session, dead when it ends. They
+    // age out much faster than durable role aliases.
+    const sessionAgentTtl = Number(process.env.AGENTCOMM_SESSION_AGENT_TTL_MS ?? 12 * 3600_000);
     async function housekeep() {
         const now = Date.now();
-        if (agentTtl > 0) {
+        if (agentTtl > 0 || sessionAgentTtl > 0) {
             for (const k of await backend.list('agents/')) {
                 try {
                     const rec = JSON.parse((await backend.get(k)).toString('utf8'));
-                    if (rec.lastSeen && now - Date.parse(rec.lastSeen) > agentTtl)
+                    if (!rec.lastSeen)
+                        continue;
+                    const isSessionAlias = !!rec.session && !!rec.name && rec.name.endsWith('-' + rec.session.slice(0, 4));
+                    const ttl = isSessionAlias ? sessionAgentTtl : agentTtl;
+                    if (ttl > 0 && now - Date.parse(rec.lastSeen) > ttl)
                         await backend.delete(k);
                 }
                 catch { /* unreadable record: leave it */ }
