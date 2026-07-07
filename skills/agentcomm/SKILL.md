@@ -155,6 +155,17 @@ the discipline mechanical — don't duplicate them:
   joined, and what active agents say they're doing. Act on it like any bus
   fact; no need to re-check what it reports.
 
+**Asking for and offering help — no human in the loop.** To ask, declare an
+ask-status: `agentcomm register --status "blocked: need the auth schema"`
+(prefixes `blocked:` / `need:` / `help:` are recognized); for urgent or
+directed asks, `broadcast --subject question` lands in every inbox. Other
+agents' digests turn your ask into a call to action automatically. When YOU
+see such a call: help only if you can answer from context you already have,
+or your own task is idle — never abandon your user's instruction to go
+help; check `log --limit 10` first (it may already be answered); reply once,
+on the asker's thread. When unblocked, change your status back to plain
+work — that stops the recruiting.
+
 **Write your own status** when you start or finish a named piece of work:
 `agentcomm register --status "reviewing PR 12"` (short, present tense; it
 persists across heartbeats until you change it — clear it with
