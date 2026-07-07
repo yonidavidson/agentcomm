@@ -66,7 +66,16 @@
       }
       board.hidden = false;
     } catch {
-      /* stay hidden */
+      const rows = document.getElementById('live-rows');
+      const row = document.createElement('div');
+      row.className = 'board-row';
+      const note = document.createElement('span');
+      note.className = 'board-status idle';
+      note.style.gridColumn = '1 / -1';
+      note.textContent = 'could not load live data right now — the raw bus branch link below always works';
+      row.append(note);
+      rows.append(row);
+      board.hidden = false;
     }
   })();
 
