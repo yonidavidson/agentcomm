@@ -57,7 +57,7 @@
         name.append(dot, document.createTextNode(a.name));
         const status = document.createElement('span');
         status.className = 'board-status' + (a.status ? '' : ' idle');
-        status.textContent = a.status || '(no status declared)';
+        status.textContent = a.status || '— no task set';
         const seen = document.createElement('span');
         seen.className = 'board-seen';
         seen.textContent = rel(a.lastSeen);

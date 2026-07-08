@@ -427,7 +427,7 @@ describe('plugin hooks: bus discipline made mechanical', () => {
 
     const first = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     const out = JSON.parse(first.stdout) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/bus status is (unset|just the branch)/);
+    expect(out.hookSpecificOutput.additionalContext).toContain("no bus status");
 
     // declared → clear throttles → no nudge, and (quiet bus) full silence
     cliSync(['register', '--status', 'building the feed'], dir);
@@ -469,33 +469,29 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(quiet.stdout).toBe('');
   });
 
-  it('session-start sets a mechanical branch-default status; a real status is never clobbered', async () => {
+  it('a created task auto-sets the bus status; completing it shows "done: …"', async () => {
     const dir = await markedRepo();
-    execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', 'feat-auth']);
+    cliSync(['register'], dir); // on the roster, no status yet
 
-    // fresh session, no status → hook sets "on feat-auth"
-    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
+    await runHook(
+      'task-status.mjs',
+      { cwd: dir, hook_event_name: 'TaskCreated', task_subject: 'implement the auth endpoints' },
+      dir,
+    );
     let me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
-    expect(me.status).toBe('on feat-auth');
+    expect(me.status).toBe('implement the auth endpoints');
 
-    // agent declares a real status → later session-start must NOT overwrite it
-    cliSync(['register', '--status', 'reviewing PR 12'], dir);
-    // clear the register throttle so the hook re-registers
-    for (const f of await fs.readdir(dir)) {
-      if (f.startsWith('agentcomm-register-')) await fs.rm(path.join(dir, f));
-    }
-    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
+    await runHook(
+      'task-status.mjs',
+      { cwd: dir, hook_event_name: 'TaskCompleted', task_subject: 'implement the auth endpoints' },
+      dir,
+    );
     me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
-    expect(me.status).toBe('reviewing PR 12'); // preserved
+    expect(me.status).toBe('done: implement the auth endpoints');
 
-    // switching branches only moves a branch-DEFAULT status, not a real one
-    execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', 'feat-other']);
-    for (const f of await fs.readdir(dir)) {
-      if (f.startsWith('agentcomm-register-')) await fs.rm(path.join(dir, f));
-    }
-    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
-    me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
-    expect(me.status).toBe('reviewing PR 12'); // still the declared one
+    // silent outside opted-in repos / with no subject
+    const noSub = await runHook('task-status.mjs', { cwd: dir, hook_event_name: 'TaskCreated' }, dir);
+    expect(noSub.code).toBe(0);
   });
 
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
