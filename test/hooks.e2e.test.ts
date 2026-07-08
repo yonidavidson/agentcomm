@@ -427,7 +427,7 @@ describe('plugin hooks: bus discipline made mechanical', () => {
 
     const first = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     const out = JSON.parse(first.stdout) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toContain('You carry no bus status');
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/bus status is (unset|just the branch)/);
 
     // declared → clear throttles → no nudge, and (quiet bus) full silence
     cliSync(['register', '--status', 'building the feed'], dir);
@@ -467,6 +467,35 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     }
     const quiet = await runHook('prompt-digest.mjs', { cwd: dir }, dir);
     expect(quiet.stdout).toBe('');
+  });
+
+  it('session-start sets a mechanical branch-default status; a real status is never clobbered', async () => {
+    const dir = await markedRepo();
+    execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', 'feat-auth']);
+
+    // fresh session, no status → hook sets "on feat-auth"
+    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
+    let me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
+    expect(me.status).toBe('on feat-auth');
+
+    // agent declares a real status → later session-start must NOT overwrite it
+    cliSync(['register', '--status', 'reviewing PR 12'], dir);
+    // clear the register throttle so the hook re-registers
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-register-')) await fs.rm(path.join(dir, f));
+    }
+    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
+    me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
+    expect(me.status).toBe('reviewing PR 12'); // preserved
+
+    // switching branches only moves a branch-DEFAULT status, not a real one
+    execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', 'feat-other']);
+    for (const f of await fs.readdir(dir)) {
+      if (f.startsWith('agentcomm-register-')) await fs.rm(path.join(dir, f));
+    }
+    await runHook('session-start.mjs', { cwd: dir, source: 'startup' }, dir);
+    me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
+    expect(me.status).toBe('reviewing PR 12'); // still the declared one
   });
 
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {

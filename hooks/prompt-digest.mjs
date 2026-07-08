@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readStdinJson, onTheBus, cli, aliasFrom, activitySince } from './lib.mjs';
+import { readStdinJson, onTheBus, cli, aliasFrom, activitySince, gitBranch, branchStatusArgs } from './lib.mjs';
 
 const input = await readStdinJson();
 const cwd = input.cwd || process.cwd();
@@ -23,13 +23,14 @@ try {
   if (Date.now() - (await fs.stat(stamp)).mtimeMs < 5 * 60_000) process.exit(0);
 } catch { /* first digest */ }
 
-// Heartbeat rides the digest: a prompt is the strongest "this session is
-// alive" signal, and both want the same ~5min cadence. register is async
-// through the daemon outbox, so this costs ~0.3s. No --status: a heartbeat
-// never overwrites a declared status.
-await cli(['register', '--json'], cwd, 3_000);
+// Heartbeat rides the digest (~5min). Fetch roster first to read our own
+// status, then register — refreshing the mechanical "on <branch>" default
+// without ever clobbering a status the agent declared.
+const preAgents = await cli(['agents', '--json'], cwd, 3_000);
+const myPre = preAgents && Array.isArray(preAgents.json) ? preAgents.json.find((a) => a.thisSession) : null;
+await cli(['register', '--json', ...branchStatusArgs(myPre?.status, await gitBranch(cwd))], cwd, 3_000);
 const peek = await cli(['peek', '--json'], cwd, 3_000);
-const agents = await cli(['agents', '--json'], cwd, 3_000);
+const agents = (await cli(['agents', '--json'], cwd, 3_000)) ?? preAgents;
 await fs.writeFile(stamp, '').catch(() => {});
 if (!peek && !agents) process.exit(0);
 
@@ -62,7 +63,9 @@ const alias0 = aliasFrom(peek?.stderr);
 // coordination — nudge it (gently: at most once per 30min per repo)
 let statusNudge = null;
 const myRec = roster.find((a) => a.name === alias0);
-if (myRec && !myRec.status) {
+// nudge when there is no status OR only the mechanical branch default —
+// agents should upgrade "on <branch>" to what they are actually doing
+if (myRec && (!myRec.status || /^on \S+$/.test(myRec.status))) {
   const nudgeStamp = path.join(os.tmpdir(), `agentcomm-nudge-${id}`);
   let due = true;
   try {
@@ -70,7 +73,7 @@ if (myRec && !myRec.status) {
   } catch { /* first */ }
   if (due) {
     statusNudge =
-      'You carry no bus status — declare what you are working on now: `agentcomm register --status "<short task>"` (or "blocked: <need>" to recruit help).';
+      `Your bus status is ${myRec.status ? `just the branch ("${myRec.status}")` : 'unset'} — say what you are actually doing so teammates see it: \`agentcomm register --status "<short task>"\` (or "blocked: <need>" to recruit help).`;
     await fs.writeFile(nudgeStamp, '').catch(() => {});
   }
 }
