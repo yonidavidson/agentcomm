@@ -5,7 +5,7 @@
  * its derived session alias, and the live roster — before the first prompt.
  * Silent everywhere else; silent on any failure.
  */
-import { readStdinJson, onTheBus, cli, busUriFrom, aliasFrom, gitBranch, branchStatusArgs } from './lib.mjs';
+import { readStdinJson, onTheBus, cli, busUriFrom, aliasFrom } from './lib.mjs';
 
 const input = await readStdinJson();
 const cwd = input.cwd || process.cwd();
@@ -25,22 +25,11 @@ try {
   fresh = Date.now() - (await fsp.stat(stamp)).mtimeMs < 10 * 60_000;
 } catch { /* never registered from here */ }
 
-// Know our current status before registering, so a mechanical branch
-// default never clobbers a real one the agent declared.
-const pre = await cli(['agents', '--json'], cwd, 20_000);
-const branch = await gitBranch(cwd);
-let myStatus;
-if (pre && Array.isArray(pre.json)) {
-  const mine = pre.json.find((a) => a.thisSession);
-  myStatus = mine?.status;
-}
-const reg = fresh
-  ? null
-  : await cli(['register', '--json', ...branchStatusArgs(myStatus, branch)], cwd, 20_000);
+const reg = fresh ? null : await cli(['register', '--json'], cwd, 20_000);
 if (reg) await fsp.writeFile(stamp, '').catch(() => {});
 const peek = await cli(['peek', '--json'], cwd);
 if (!peek) process.exit(0);
-const res = (await cli(['agents', '--json'], cwd)) ?? pre;
+const res = await cli(['agents', '--json'], cwd);
 
 const bus = busUriFrom(peek.stderr) ?? busUriFrom(reg?.stderr);
 const alias = aliasFrom(peek.stderr) ?? reg?.json?.name;
@@ -65,7 +54,7 @@ const lines = [
     (a) =>
       `call to action — ${a.name} is asking: "${a.status}". If you can answer from what you already know, reply: \`agentcomm send ${a.name} "<answer>" --subject status\`.`,
   ),
-  `As your FIRST action, declare what you are actually doing so teammates can see it: \`agentcomm register --status "<short task>"\`${branch ? ` (currently shown as "on ${branch}")` : ''}. Update it when your task changes; "blocked: <need>" recruits help.`,
+  'Your status shows on the shared board — it auto-follows your task list (TaskCreate), or set it explicitly: `agentcomm register --status "<short task>"`; "blocked: <need>" recruits help.',
   'To coordinate: `agentcomm send <to> <msg>` / `inbox --json` / `wait`; the agentcomm skill has the conventions.',
 ].filter(Boolean);
 

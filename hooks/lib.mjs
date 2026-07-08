@@ -128,36 +128,6 @@ export async function activitySince(cwd, me, stateFile, cap = 4) {
   };
 }
 
-/** Current git branch (mechanical, non-prompt), or null. */
-export async function gitBranch(cwd) {
-  try {
-    // symbolic-ref works on unborn branches too (rev-parse HEAD needs a commit)
-    const b = await new Promise((res, rej) =>
-      execFile('git', ['-C', cwd, 'symbolic-ref', '--short', 'HEAD'], (e, out) =>
-        e ? rej(e) : res(out.trim()),
-      ),
-    );
-    return b && b !== 'HEAD' ? b : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Extra register args that give the board a mechanical default status —
- * "on <branch>" — WITHOUT clobbering a status the agent actually declared.
- * Set it only when the record has no status, or when the existing status is
- * itself a branch-default (so it follows branch switches). A real declared
- * status (anything not matching the branch pattern) is left untouched.
- */
-export function branchStatusArgs(currentStatus, branch) {
-  if (!branch) return [];
-  const isBranchDefault = currentStatus == null || /^on \S+$/.test(currentStatus);
-  if (!isBranchDefault) return [];
-  if (currentStatus === `on ${branch}`) return []; // already correct, no write
-  return ['--status', `on ${branch}`];
-}
-
 export function aliasFrom(stderr) {
   const m = /acting as (\S+)/.exec(stderr ?? '');
   return m?.[1] ?? null;

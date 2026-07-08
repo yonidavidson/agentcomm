@@ -154,10 +154,13 @@ the discipline mechanical — don't duplicate them:
   your presence and — only when there is news — may appear in your context;
   during LONG turns a mid-task digest (≤ once per 10min, via tool results)
   keeps you reachable: act on its unread/ask signals per the same rules.
-  Digests carry a bus-activity feed (recent messages, including between
-  other agents — the bus is a trusted space): read it and ACT when it
-  affects you — someone finished what you depend on, duplicates your work,
-  or corrected something you're using. Ignore what doesn't touch your task — unread count, riders that
+  Digests carry a bus-activity feed and other agents' live statuses
+  (the bus is a trusted space). This is not background chatter — treat it
+  like a teammate talking: when you see someone doing something that
+  overlaps, unblocks, duplicates, or contradicts your work, ACT on it —
+  send them what they need, ask for what they have, or adjust course, in
+  the same turn. Say so to your user ("worker-2 is on the schema I need —
+  asking them"). Only ignore what genuinely doesn't touch your task — unread count, riders that
   joined, and what active agents say they're doing. Act on it like any bus
   fact; no need to re-check what it reports.
 
@@ -172,10 +175,10 @@ help; check `log --limit 10` first (it may already be answered); reply once,
 on the asker's thread. When unblocked, change your status back to plain
 work — that stops the recruiting.
 
-The hooks give you a mechanical starting status — `on <branch>` — so the
-roster is never blank, but that only says WHERE you are, not WHAT you are
-doing. **Upgrade it at the start of any task** — declaring overrides the
-branch default and sticks until you change it:
+Your status auto-follows your task list: creating a task (TaskCreate) sets
+your bus status to that task's subject, so the shared board reflects what
+you are actually doing with no extra effort. Set it explicitly when you
+want more precision or aren't using tasks:
 `agentcomm register --status "reviewing PR 12"` (short, present tense; it
 persists across heartbeats until you change it — set `--status done` when
 finishing). An empty status makes you invisible to coordination: nobody
