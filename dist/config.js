@@ -77,6 +77,10 @@ export function parseArgs(argv) {
             case 'status':
                 flags.status = takeVal();
                 break;
+            case 'status-auto':
+                flags.status = takeVal();
+                flags.statusAuto = true;
+                break;
             case 'limit':
                 flags.limit = Number(takeVal());
                 break;

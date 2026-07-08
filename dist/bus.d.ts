@@ -19,7 +19,7 @@ import { type Backend, type Message } from './types.js';
 export declare class Bus {
     private readonly backend;
     constructor(backend: Backend);
-    register(name: string, session?: string, status?: string): Promise<AgentRecord & {
+    register(name: string, session?: string, status?: string, statusAuto?: boolean): Promise<AgentRecord & {
         previous?: AgentRecord;
     }>;
     agents(): Promise<AgentRecord[]>;
@@ -62,7 +62,9 @@ export interface AgentRecord {
     lastSeen: string;
     /** Fingerprint of the registering session — lets tooling tell "stale me" from "someone else". */
     session?: string;
-    /** Self-declared "what I'm doing" — set via register --status, kept across heartbeats. */
+    /** "What I'm doing" — from register --status (explicit, sticky) or the task list (auto). */
     status?: string;
+    /** True when the status came from the task list; explicit declarations set false and win. */
+    statusAuto?: boolean;
 }
 //# sourceMappingURL=bus.d.ts.map

@@ -1,6 +1,6 @@
 {
   "name": "agentcomm",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "A tiny mailbox/message bus for AI agents that shell out to one CLI. Pluggable storage backends behind a single Backend interface.",
   "type": "module",
   "license": "MIT",

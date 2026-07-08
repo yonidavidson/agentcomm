@@ -494,6 +494,26 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     expect(noSub.code).toBe(0);
   });
 
+  it('an explicit --status is sticky: the task list never overwrites it', async () => {
+    const dir = await markedRepo();
+    cliSync(['register', '--status', 'shipping the release: sticky statuses'], dir);
+
+    // a task fires — must NOT clobber the explicit declaration
+    await runHook(
+      'task-status.mjs',
+      { cwd: dir, hook_event_name: 'TaskCreated', task_subject: 'Fix flaky test' },
+      dir,
+    );
+    let me = rosterJson(dir).find((a) => a.name.startsWith('hooky-'))!;
+    expect(me.status).toBe('shipping the release: sticky statuses');
+
+    // auto statuses still update each other when no explicit one stands
+    cliSync(['register', '--status-auto', 'first task'], dir, 'auto-bot');
+    cliSync(['register', '--status-auto', 'second task'], dir, 'auto-bot');
+    const bot = rosterJson(dir).find((a) => a.name === 'auto-bot')!;
+    expect(bot.status).toBe('second task');
+  });
+
   it('stop guard honors stop_hook_active (no loops) and throttles repeat checks', async () => {
     const dir = await markedRepo();
     cliSync(['register'], dir);

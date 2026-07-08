@@ -25,6 +25,7 @@ export interface ParsedFlags {
     direct?: boolean;
     sync?: boolean;
     status?: string;
+    statusAuto?: boolean;
     limit?: number;
     _: string[];
 }

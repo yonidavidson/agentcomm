@@ -18,5 +18,5 @@ const status =
   input.hook_event_name === 'TaskCompleted' ? `done: ${subject}` : subject;
 const clipped = status.length > 80 ? status.slice(0, 79) + '…' : status;
 
-await cli(['register', '--status', clipped], cwd, 3_000);
+await cli(['register', '--status-auto', clipped], cwd, 3_000);
 process.exit(0);
