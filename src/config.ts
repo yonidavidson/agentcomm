@@ -34,6 +34,7 @@ export interface ParsedFlags {
   direct?: boolean;
   sync?: boolean;
   status?: string;
+  statusAuto?: boolean;
   limit?: number;
   _: string[]; // positional args
 }
@@ -102,6 +103,10 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'status':
         flags.status = takeVal();
+        break;
+      case 'status-auto':
+        flags.status = takeVal();
+        flags.statusAuto = true;
         break;
       case 'limit':
         flags.limit = Number(takeVal());

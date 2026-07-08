@@ -27,17 +27,30 @@ export class Bus {
     name: string,
     session?: string,
     status?: string,
+    statusAuto = false,
   ): Promise<AgentRecord & { previous?: AgentRecord }> {
     assertName(name);
     const now = new Date().toISOString();
     const existing = await this.tryGetAgent(name);
+    // Status precedence: an EXPLICIT declaration (register --status) is
+    // intentional and sticky; an AUTO status (from the task list) fills in
+    // only when no explicit one stands, and updates among other autos. A
+    // heartbeat (no status arg) preserves whatever is there.
+    let nextStatus = existing?.status;
+    let nextAuto = existing?.statusAuto;
+    if (status !== undefined) {
+      const explicitStands = existing?.status != null && existing.statusAuto === false;
+      if (!statusAuto || !explicitStands) {
+        nextStatus = status;
+        nextAuto = statusAuto;
+      }
+    }
     const record: AgentRecord = {
       name,
       registeredAt: existing?.registeredAt ?? now,
       lastSeen: now,
       ...(session ? { session } : {}),
-      // a heartbeat (no explicit status) must not erase the declared status
-      ...((status ?? existing?.status) ? { status: status ?? existing?.status } : {}),
+      ...(nextStatus ? { status: nextStatus, statusAuto: nextAuto } : {}),
     };
     await this.backend.put(agentKey(name), encode(record));
     // The previous record lets callers detect an alias collision: same name,
@@ -250,6 +263,8 @@ export interface AgentRecord {
   lastSeen: string;
   /** Fingerprint of the registering session — lets tooling tell "stale me" from "someone else". */
   session?: string;
-  /** Self-declared "what I'm doing" — set via register --status, kept across heartbeats. */
+  /** "What I'm doing" — from register --status (explicit, sticky) or the task list (auto). */
   status?: string;
+  /** True when the status came from the task list; explicit declarations set false and win. */
+  statusAuto?: boolean;
 }

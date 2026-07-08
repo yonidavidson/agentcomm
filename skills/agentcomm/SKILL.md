@@ -177,8 +177,10 @@ work — that stops the recruiting.
 
 Your status auto-follows your task list: creating a task (TaskCreate) sets
 your bus status to that task's subject, so the shared board reflects what
-you are actually doing with no extra effort. Set it explicitly when you
-want more precision or aren't using tasks:
+you are actually doing with no extra effort. For a richer, narrative status
+(e.g. "shipping 0.16 — sticky statuses"), set it explicitly — an explicit
+declaration is STICKY and the task list will not overwrite it until you
+change it yourself:
 `agentcomm register --status "reviewing PR 12"` (short, present tense; it
 persists across heartbeats until you change it — set `--status done` when
 finishing). An empty status makes you invisible to coordination: nobody

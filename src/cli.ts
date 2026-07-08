@@ -57,9 +57,10 @@ Flags:
   --direct                 Bypass the daemon for this call
   --sync                   Wait for remote durability on writes (default: the
                            daemon acks from its disk outbox and delivers async)
-  --status <text>          register: declare what you're doing — shown on the
-                           roster and in other agents' digests; heartbeats
-                           keep it until you change it
+  --status <text>          register: declare what you're doing (explicit,
+                           sticky) — shown on the roster and in digests
+  --status-auto <text>     register: set an automatic status (task list) that
+                           yields to any explicit --status declaration
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -124,7 +125,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     switch (command) {
       case 'register':
-        return await cmdRegister(bus, cfg, flags.status);
+        return await cmdRegister(bus, cfg, flags.status, flags.statusAuto);
       case 'init':
         return await cmdInit(bus, cfg);
       case 'agents':
@@ -583,9 +584,9 @@ async function sessionHash(): Promise<string> {
 }
 
 /** register + collision alarm: fresh lastSeen under a DIFFERENT session = two live processes on one consuming mailbox. */
-async function registerWithCollisionCheck(bus: Bus, me: string, status?: string) {
+async function registerWithCollisionCheck(bus: Bus, me: string, status?: string, statusAuto?: boolean) {
   const session = await sessionHash();
-  const record = await bus.register(me, session, status);
+  const record = await bus.register(me, session, status, statusAuto);
   const prev = record.previous;
   if (prev && prev.session !== session && Date.now() - Date.parse(prev.lastSeen) < 10 * 60 * 1000) {
     process.stderr.write(
@@ -596,9 +597,14 @@ async function registerWithCollisionCheck(bus: Bus, me: string, status?: string)
   return record;
 }
 
-async function cmdRegister(bus: Bus, cfg: ResolvedConfig, status?: string): Promise<number> {
+async function cmdRegister(
+  bus: Bus,
+  cfg: ResolvedConfig,
+  status?: string,
+  statusAuto?: boolean,
+): Promise<number> {
   const me = await resolveAgent(cfg);
-  const record = await registerWithCollisionCheck(bus, me, status);
+  const record = await registerWithCollisionCheck(bus, me, status, statusAuto);
   if (cfg.json) emit(record);
   else process.stdout.write(`registered ${record.name}\n`);
   return 0;

@@ -55,9 +55,10 @@ Flags:
   --direct                 Bypass the daemon for this call
   --sync                   Wait for remote durability on writes (default: the
                            daemon acks from its disk outbox and delivers async)
-  --status <text>          register: declare what you're doing — shown on the
-                           roster and in other agents' digests; heartbeats
-                           keep it until you change it
+  --status <text>          register: declare what you're doing (explicit,
+                           sticky) — shown on the roster and in digests
+  --status-auto <text>     register: set an automatic status (task list) that
+                           yields to any explicit --status declaration
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -117,7 +118,7 @@ async function main(argv) {
     try {
         switch (command) {
             case 'register':
-                return await cmdRegister(bus, cfg, flags.status);
+                return await cmdRegister(bus, cfg, flags.status, flags.statusAuto);
             case 'init':
                 return await cmdInit(bus, cfg);
             case 'agents':
@@ -538,9 +539,9 @@ async function sessionHash() {
     return sessionHashMemo;
 }
 /** register + collision alarm: fresh lastSeen under a DIFFERENT session = two live processes on one consuming mailbox. */
-async function registerWithCollisionCheck(bus, me, status) {
+async function registerWithCollisionCheck(bus, me, status, statusAuto) {
     const session = await sessionHash();
-    const record = await bus.register(me, session, status);
+    const record = await bus.register(me, session, status, statusAuto);
     const prev = record.previous;
     if (prev && prev.session !== session && Date.now() - Date.parse(prev.lastSeen) < 10 * 60 * 1000) {
         process.stderr.write(`agentcomm: WARNING — alias "${me}" was active ${Math.round((Date.now() - Date.parse(prev.lastSeen)) / 60000)}m ago from a DIFFERENT session. ` +
@@ -548,9 +549,9 @@ async function registerWithCollisionCheck(bus, me, status) {
     }
     return record;
 }
-async function cmdRegister(bus, cfg, status) {
+async function cmdRegister(bus, cfg, status, statusAuto) {
     const me = await resolveAgent(cfg);
-    const record = await registerWithCollisionCheck(bus, me, status);
+    const record = await registerWithCollisionCheck(bus, me, status, statusAuto);
     if (cfg.json)
         emit(record);
     else
