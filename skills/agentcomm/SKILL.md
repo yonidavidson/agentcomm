@@ -172,7 +172,10 @@ help; check `log --limit 10` first (it may already be answered); reply once,
 on the asker's thread. When unblocked, change your status back to plain
 work — that stops the recruiting.
 
-**Always carry a status.** At the start of ANY task, declare it:
+The hooks give you a mechanical starting status — `on <branch>` — so the
+roster is never blank, but that only says WHERE you are, not WHAT you are
+doing. **Upgrade it at the start of any task** — declaring overrides the
+branch default and sticks until you change it:
 `agentcomm register --status "reviewing PR 12"` (short, present tense; it
 persists across heartbeats until you change it — set `--status done` when
 finishing). An empty status makes you invisible to coordination: nobody
