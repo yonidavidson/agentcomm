@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isClaimable, isWaitable } from './types.js';
+/** How long an explicit status stays sticky before a newer task can refresh it. */
+const EXPLICIT_STICKY_MS = Number(process.env.AGENTCOMM_EXPLICIT_STICKY_MS ?? 15 * 60_000);
 /**
  * The Bus implements the mailbox semantics on top of any {@link Backend}.
  * It only ever uses the blob primitives, so every backend works identically.
@@ -27,17 +29,21 @@ export class Bus {
         assertName(name);
         const now = new Date().toISOString();
         const existing = await this.tryGetAgent(name);
-        // Status precedence: an EXPLICIT declaration (register --status) is
-        // intentional and sticky; an AUTO status (from the task list) fills in
-        // only when no explicit one stands, and updates among other autos. A
-        // heartbeat (no status arg) preserves whatever is there.
+        // Status precedence: an EXPLICIT declaration (register --status) wins over
+        // an AUTO status (task list) while it is FRESH, so a rich narrative isn't
+        // clobbered by terse task subjects mid-work. But stickiness is bounded —
+        // once the explicit status is stale, a newer task takes over, so the
+        // board can't freeze on old work. A heartbeat (no status arg) preserves.
         let nextStatus = existing?.status;
         let nextAuto = existing?.statusAuto;
+        let nextStatusAt = existing?.statusAt;
         if (status !== undefined) {
-            const explicitStands = existing?.status != null && existing.statusAuto === false;
+            const explicitAge = existing?.statusAt ? Date.parse(now) - Date.parse(existing.statusAt) : Infinity;
+            const explicitStands = existing?.status != null && existing.statusAuto === false && explicitAge < EXPLICIT_STICKY_MS;
             if (!statusAuto || !explicitStands) {
                 nextStatus = status;
                 nextAuto = statusAuto;
+                nextStatusAt = now;
             }
         }
         const record = {
@@ -45,7 +51,7 @@ export class Bus {
             registeredAt: existing?.registeredAt ?? now,
             lastSeen: now,
             ...(session ? { session } : {}),
-            ...(nextStatus ? { status: nextStatus, statusAuto: nextAuto } : {}),
+            ...(nextStatus ? { status: nextStatus, statusAuto: nextAuto, statusAt: nextStatusAt } : {}),
         };
         await this.backend.put(agentKey(name), encode(record));
         // The previous record lets callers detect an alias collision: same name,
