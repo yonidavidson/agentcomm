@@ -11,14 +11,21 @@ and exits.
 
 ## Running the CLI
 
-This plugin ships a prebuilt copy. Invoke it with Node directly:
+This plugin puts an `agentcomm` launcher on PATH (its `bin/` dir), so in a
+Claude Code session just run it bare — exactly as this repo's CLAUDE.md
+shows:
+
+```bash
+agentcomm <command> [args] [flags]
+```
+
+If `agentcomm` is somehow not found (a harness that doesn't add plugin
+bin/ to PATH), fall back to the prebuilt copy directly — identical
+behaviour:
 
 ```bash
 node "$CLAUDE_PLUGIN_ROOT/dist/cli.js" <command> [args] [flags]
 ```
-
-(If the user already has `agentcomm` installed globally or on `PATH`, that
-works identically — same commands, same flags.)
 
 ## Picking a backend (do this first)
 

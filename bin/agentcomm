@@ -1,0 +1,14 @@
+#!/bin/sh
+# agentcomm launcher: Claude Code adds this plugin's bin/ to PATH, so agents
+# can run bare `agentcomm ...` exactly as CLAUDE.md/SKILL.md document. Resolves
+# the prebuilt CLI relative to this script (survives version-dir upgrades).
+self="$0"
+while [ -h "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+dir="$(cd "$(dirname "$self")" && pwd)"
+exec node "$dir/../dist/cli.js" "$@"
