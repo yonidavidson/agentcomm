@@ -167,7 +167,7 @@ h1.headline {
 .hero-bus svg { display: block; width: 100%; height: auto; }
 .hb-road { stroke: var(--ink); stroke-width: 4; }
 .hb-dash { stroke: var(--paper-dim); stroke-width: 3; stroke-dasharray: 18 14; animation: hb-roll 1.6s linear infinite; }
-@keyframes hb-roll { to { stroke-dashoffset: -32; } }
+@keyframes hb-roll { to { stroke-dashoffset: 32; } } /* road streams LEFT so the right-facing bus reads as moving forward */
 @media (prefers-reduced-motion: reduce) { .hb-dash { animation: none; } }
 
 /* ---- code: always a dark terminal island ---- */
