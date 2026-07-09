@@ -154,3 +154,36 @@ for (const [name, factory] of Object.entries(factories)) {
     }
   });
 }
+
+describe('status precedence: explicit wins while fresh, task refreshes when stale', () => {
+  it('a fresh explicit status blocks task auto-status; a stale one yields', async () => {
+    const backend = new LocalBackend(await mkTmp());
+    const bus = new Bus(backend);
+
+    // explicit declaration (statusAuto=false), fresh
+    await bus.register('dev', 'sess', 'narrative: shipping the thing', false);
+    // an auto (task) status must NOT overwrite the fresh explicit one
+    await bus.register('dev', 'sess', 'terse task', true);
+    let rec = (await bus.agents()).find((a) => a.name === 'dev')!;
+    expect(rec.status).toBe('narrative: shipping the thing');
+
+    // backdate the explicit status past the sticky window
+    const key = `agents/dev.json`;
+    const raw = JSON.parse((await backend.get(key)).toString('utf8'));
+    raw.statusAt = '2020-01-01T00:00:00.000Z';
+    await backend.put(key, Buffer.from(JSON.stringify(raw)));
+
+    // now a task refreshes it — the board can't freeze on old work
+    await bus.register('dev', 'sess', 'the new task', true);
+    rec = (await bus.agents()).find((a) => a.name === 'dev')!;
+    expect(rec.status).toBe('the new task');
+
+    // and an explicit re-declaration always wins immediately
+    await bus.register('dev', 'sess', 'fresh narrative again', false);
+    await bus.register('dev', 'sess', 'another task', true);
+    rec = (await bus.agents()).find((a) => a.name === 'dev')!;
+    expect(rec.status).toBe('fresh narrative again');
+
+    await backend.close?.();
+  });
+});

@@ -64,7 +64,9 @@ export interface AgentRecord {
     session?: string;
     /** "What I'm doing" — from register --status (explicit, sticky) or the task list (auto). */
     status?: string;
-    /** True when the status came from the task list; explicit declarations set false and win. */
+    /** True when the status came from the task list; explicit declarations set false and win while fresh. */
     statusAuto?: boolean;
+    /** ISO 8601 time the status was set — bounds how long an explicit one stays sticky. */
+    statusAt?: string;
 }
 //# sourceMappingURL=bus.d.ts.map
