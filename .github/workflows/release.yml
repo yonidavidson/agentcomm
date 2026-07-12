@@ -1,0 +1,65 @@
+name: release
+
+# Publishes the OpenCode plugin (`agentcomm-opencode`) to the npm registry so
+# `"plugin": ["agentcomm-opencode"]` works with no local checkout. Publishing
+# is idempotent: the job skips any version already on npm, so it is safe to
+# re-run and only ever ships a genuinely new version.
+#
+# Triggers:
+#   - a published GitHub Release (the normal path — cut a release for the
+#     version in package.json and CI ships it), or
+#   - a manual run (workflow_dispatch), with an optional dry-run that packs
+#     without publishing.
+#
+# Requires repo secret NPM_TOKEN (an npm automation/granular token with
+# publish rights). The root `agentcomm` CLI is intentionally NOT published
+# here — it installs straight from GitHub by design.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack only — do not publish'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-opencode-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      # build + regenerate plugins/agentcomm-opencode (dist + publishable
+      # package.json) so we publish exactly what the repo would produce.
+      - run: npm run plugin:sync
+
+      - name: Publish agentcomm-opencode (skip if version already on npm)
+        working-directory: plugins/agentcomm-opencode
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Resolved $NAME@$VERSION"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::$NAME@$VERSION already published — skipping."
+          elif [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "Dry run — packing only."
+            npm pack --dry-run
+          else
+            npm publish
+            echo "::notice::Published $NAME@$VERSION"
+          fi
