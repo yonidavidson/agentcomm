@@ -12,21 +12,18 @@ optional, lazy-loaded driver.
 
 Get yourself (and this repo) on the bus — takes under a minute:
 
-1. **Claude Code**: ask your user to run
+1. **If you are Claude Code**, ask your user to run
    `/plugin marketplace add yonidavidson/agentcomm` and
    `/plugin install agentcomm@yonidavidson-plugins`. The plugin ships the
    CLI, a skill with the conventions, and hooks that register you on the
-   repo bus automatically at session start — plus `/plugin` keeps it fresh.
-2. **Codex**: ask your user to run `codex plugin marketplace add yonidavidson/agentcomm`
+   repo bus automatically at session start. Then run `agentcomm init`; it
+   adds the coordination contract to `CLAUDE.md`.
+2. **If you are Codex**, ask your user to run `codex plugin marketplace add yonidavidson/agentcomm`
    and `codex plugin add agentcomm@yonidavidson-plugins`. The plugin ships the
    CLI, coordination skill, and lifecycle hooks. Review and trust its hooks
-   with `/hooks` after installation.
-3. **OpenCode and other harnesses** (Cursor, CI, scripts): `npm i -g github:yonidavidson/agentcomm`,
-   then run `agentcomm register` at session start and check
-   `agentcomm inbox --json` before reporting work done.
-4. **In every harness**, run `agentcomm init` once in the target repo and
-   commit the `CLAUDE.md` and `AGENTS.md` files it writes. Claude Code and
-   Codex teammates self-onboard from then on.
+   with `/hooks` after installation. Then ask Codex to use agentcomm to
+   initialize the repo; the skill runs `init --harness codex` and adds the
+   coordination contract to `AGENTS.md`.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -95,12 +92,20 @@ requires explicit trust for non-managed hooks: open `/hooks`, review the
 agentcomm definitions, and trust them. Start a new thread after installing
 or upgrading so the plugin components are loaded.
 
+Ask Codex directly so its skill uses the bundled CLI:
+
+```text
+Use agentcomm to initialize this Codex repo for the team.
+```
+
 ## Quick start
 
 ```bash
 # in a git repo: zero config. You're on the repo bus under a session-unique
-# alias; one bare `init` writes CLAUDE.md + AGENTS.md so all harnesses join.
+# alias; init defaults to Claude Code and writes CLAUDE.md.
 agentcomm init                      # → acting as yoni-3f2a · on the bus: git+ssh://…
+# Codex uses its own repo guidance file.
+agentcomm init --harness codex      # → AGENTS.md created
 agentcomm agents                    # who's here: yoni-3f2a · dana-97b1 · ci-bot
 agentcomm send ci-bot "hold deploys" --subject status
 
@@ -135,8 +140,8 @@ echo "from a pipe" | agentcomm send bob --as alice
 - **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
 - **IoT edge agents** — a camera answering "what do you see?", weather sensors
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
-- **Two AI tools pairing on one machine** (Claude Code implements, Cursor
-  reviews) — zero config inside a shared repo.
+- **Claude Code and Codex pairing on one machine** — each native plugin uses
+  its own guidance file while both communicate over the same repo bus.
 
 All illustrated with runnable commands on the
 [use-cases page](https://yonidavidson.github.io/agentcomm/#use-cases) — plus
@@ -146,7 +151,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Command            | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
-| `init`             | Put this repo on the bus: writes agent instructions into `CLAUDE.md` and `AGENTS.md` (idempotent), registers you, shows the roster. Commit both files to onboard the whole team's agents. |
+| `init`             | Put this repo on the bus: writes `CLAUDE.md` by default or `AGENTS.md` with `--harness codex`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
@@ -174,6 +179,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `--older-than <dur>` | Age threshold for `purge` (`45s`, `30m`, `12h`, `30d`).      |
 | `--dry-run`        | `purge` only lists what it would delete.                       |
 | `--limit <n>`      | `log`: keep the most recent n messages (default 50).           |
+| `--harness <name>` | `init`: select `claude` (default, `CLAUDE.md`) or `codex` (`AGENTS.md`). |
 | `--json`           | Machine-readable JSON output (available on every command).     |
 
 ## Backends

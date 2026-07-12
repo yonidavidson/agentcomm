@@ -15,8 +15,8 @@ Usage:
 
 Commands:
   init                     Put this repo on the bus: writes agent instructions
-                           into CLAUDE.md and AGENTS.md (idempotent), registers
-                           you, shows the roster. Commit both files to onboard
+                           for --harness claude|codex (default: claude),
+                           registers you, and shows the roster
   register                 Register/heartbeat the calling agent (--as)
   agents                   List registered agents
   network                  Situation report: who is on the bus and what
@@ -63,6 +63,7 @@ Flags:
                            sticky) — shown on the roster and in digests
   --status-auto <text>     register: set an automatic status (task list) that
                            yields to any explicit --status declaration
+  --harness <name>         init: claude (CLAUDE.md) or codex (AGENTS.md)
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -129,7 +130,7 @@ async function main(argv: string[]): Promise<number> {
       case 'register':
         return await cmdRegister(bus, cfg, flags.status, flags.statusAuto);
       case 'init':
-        return await cmdInit(bus, cfg);
+        return await cmdInit(bus, cfg, flags.harness);
       case 'agents':
         return await cmdAgents(bus, cfg);
       case 'network':
@@ -509,10 +510,15 @@ This repo has a message bus for AI agents. When working here:
   uses \`--as <you>-bus\`); keep quick sends inline.
 `;
 
-async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
-  // One-command team activation: write the agent instructions into
-  // each harness's repo guidance file, register the caller, and prove the bus
-  // works. Committing the files is the user's call, so we report it only.
+async function cmdInit(bus: Bus, cfg: ResolvedConfig, requestedHarness?: string): Promise<number> {
+  const harness = requestedHarness ?? 'claude';
+  if (harness !== 'claude' && harness !== 'codex') {
+    throw new Error(`agentcomm: --harness must be claude or codex (received ${harness})`);
+  }
+  const guidanceFile = harness === 'claude' ? 'CLAUDE.md' : 'AGENTS.md';
+
+  // One-command team activation: write instructions for the selected harness,
+  // register the caller, and prove the bus works.
   const { promises: fsp } = await import('node:fs');
   const os = await import('node:os');
   type InstructionState = 'created' | 'appended' | 'already-present';
@@ -529,8 +535,7 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
     await fsp.writeFile(filename, existing + sep + AGENT_INSTRUCTIONS_SNIPPET);
     return state;
   };
-  const claudeMdState = await writeInstructions('CLAUDE.md');
-  const agentsMdState = await writeInstructions('AGENTS.md');
+  const guidanceState = await writeInstructions(guidanceFile);
 
   const me = await resolveAgent(cfg);
   await registerWithCollisionCheck(bus, me);
@@ -541,8 +546,11 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
       backend: cfg.backendUri,
       registered: me,
       agents: roster.map((a) => a.name),
-      claudeMd: claudeMdState,
-      agentsMd: agentsMdState,
+      harness,
+      guidanceFile,
+      guidance: guidanceState,
+      claudeMd: harness === 'claude' ? guidanceState : 'not-selected',
+      agentsMd: harness === 'codex' ? guidanceState : 'not-selected',
     });
     return 0;
   }
@@ -550,8 +558,8 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
     [
       `on the bus: ${cfg.backendUri}`,
       `registered ${me} — ${roster.length} agent${roster.length === 1 ? '' : 's'} here: ${roster.map((a) => a.name).join(', ')}`,
-      `agent guidance: CLAUDE.md ${claudeMdState}; AGENTS.md ${agentsMdState}.`,
-      'Commit both files and every teammate\'s AI agent joins this bus automatically.',
+      `agent guidance: ${guidanceFile} ${guidanceState}.`,
+      `Commit ${guidanceFile} and every ${harness === 'claude' ? 'Claude Code' : 'Codex'} teammate joins this bus automatically.`,
       '',
     ].join('\n'),
   );
@@ -870,7 +878,7 @@ async function resolveAgent(cfg: ResolvedConfig): Promise<string> {
       name = sanitize(os.userInfo().username);
       source = 'OS username';
     }
-    // Session suffix: multiple runners on one machine (several Claude/Cursor
+    // Session suffix: multiple runners on one machine (several Claude/Codex
     // sessions, parallel workers) must not share a mailbox — inbox reads
     // consume. The suffix is the session fingerprint (see sessionHash).
     if (name) {

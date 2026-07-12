@@ -251,7 +251,7 @@
 
 // Keep the selected install harness in sync across each command surface.
 const harnessSwitchers = [...document.querySelectorAll('[data-harness-switcher]')];
-const supportedHarnesses = new Set(['opencode', 'claude', 'codex']);
+const supportedHarnesses = new Set(['claude', 'codex']);
 function selectHarness(harness, updateUrl = true) {
   if (!supportedHarnesses.has(harness)) harness = 'claude';
   for (const switcher of harnessSwitchers) {

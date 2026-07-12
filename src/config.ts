@@ -36,6 +36,7 @@ export interface ParsedFlags {
   status?: string;
   statusAuto?: boolean;
   limit?: number;
+  harness?: string;
   _: string[]; // positional args
 }
 
@@ -110,6 +111,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'limit':
         flags.limit = Number(takeVal());
+        break;
+      case 'harness':
+        flags.harness = takeVal();
         break;
       case 'help':
         flags._.push('--help');
