@@ -24,9 +24,10 @@ Get yourself (and this repo) on the bus — takes under a minute:
    with `/hooks` after installation. Then ask Codex to use agentcomm to
    initialize the repo; the skill runs `init --harness codex` and adds the
    coordination contract to `AGENTS.md`.
-3. **If you are OpenCode**, add the plugin to your `opencode.json`
-   (`"plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"]`). It puts
-   every session on the repo bus in-process. OpenCode reads `AGENTS.md`
+3. **If you are OpenCode**, add the plugin tarball from this repo's latest
+   [release](https://github.com/yonidavidson/agentcomm/releases) to your
+   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.9/agentcomm-opencode-0.16.9.tgz"]`.
+   It puts every session on the repo bus in-process. OpenCode reads `AGENTS.md`
    natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
    also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
 
@@ -106,26 +107,35 @@ Use agentcomm to initialize this Codex repo for the team.
 ### As an OpenCode plugin
 
 [OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
-its agents already onboard from this repo's `AGENTS.md`. The plugin
-(`plugins/agentcomm-opencode`) adds the lifecycle — it registers each session
-on the bus, briefs it, surfaces unread mail before the session goes idle, and
-keeps long turns reachable — by importing the agentcomm library in-process
-(no subprocess). Because OpenCode's `session.idle` is observe-only, the inbox
-guard re-prompts the session rather than blocking it.
+its agents already onboard from this repo's `AGENTS.md`. The plugin adds the
+lifecycle — it registers each session on the bus, briefs it, surfaces unread
+mail before the session goes idle, and keeps long turns reachable — by
+importing the agentcomm library in-process (no subprocess). Because OpenCode's
+`session.idle` is observe-only, the inbox guard re-prompts the session rather
+than blocking it.
 
-Point OpenCode at the plugin in your `opencode.json`:
+Install it from the plugin tarball attached to each
+[release](https://github.com/yonidavidson/agentcomm/releases) — OpenCode fetches
+the `.tgz` directly, no clone and no npm registry:
 
 ```json
 {
-  "plugin": ["/absolute/path/to/agentcomm/plugins/agentcomm-opencode"]
+  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.9/agentcomm-opencode-0.16.9.tgz"]
 }
 ```
 
-(The plugin ships its own compiled copy of the library, so no build step is
-needed once the repo is present. OpenCode resolves each `plugin` entry through
-npm's own installer, so once `agentcomm-opencode` is published to the registry
-`"plugin": ["agentcomm-opencode"]` will work with no local checkout — that
-publish is on the roadmap.)
+OpenCode loads the plugin from the tarball's package root via its
+`exports["./server"]` entry (the compiled library ships inside, so there's no
+build step and — for the file/git backends — zero runtime dependencies). Bump
+the version in the URL to upgrade; grab the current one from the
+[releases page](https://github.com/yonidavidson/agentcomm/releases).
+
+> **Why a tarball and not `github:…`?** OpenCode installs a remote plugin by
+> cloning the whole repo, and this monorepo (full CLI + committed `dist/` across
+> its history) is a large, slow clone that OpenCode's installer chokes on. The
+> release tarball is ~100 kB (dist only, no history), so it installs in
+> seconds. **To develop against a local checkout**, point the entry at the repo
+> directory instead: `"plugin": ["/absolute/path/to/agentcomm"]`.
 
 ## Quick start
 

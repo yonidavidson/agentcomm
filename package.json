@@ -1,6 +1,6 @@
 {
   "name": "agentcomm",
-  "version": "0.16.8",
+  "version": "0.16.9",
   "description": "A tiny mailbox/message bus for AI agents that shell out to one CLI. Pluggable storage backends behind a single Backend interface.",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,13 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": "./dist/opencode-plugin.js"
+  },
   "files": [
     "dist",
     "bin",
@@ -34,7 +41,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "plugin:sync": "npm run build && node scripts/sync-plugins.mjs",
-    "publish:opencode": "npm run plugin:sync && npm publish plugins/agentcomm-opencode",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -47,6 +53,7 @@
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@google-cloud/storage": "^7.0.0",
+    "@opencode-ai/plugin": "^1.17.18",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
