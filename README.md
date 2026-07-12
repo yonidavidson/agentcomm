@@ -1,6 +1,6 @@
 # agentcomm
 
-🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Codex plugin](#as-a-codex-plugin) · [Claude Code plugin](#as-a-claude-code-plugin)
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin) · [Codex plugin](#as-a-codex-plugin) · [OpenCode plugin](#as-an-opencode-plugin)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
@@ -24,6 +24,11 @@ Get yourself (and this repo) on the bus — takes under a minute:
    with `/hooks` after installation. Then ask Codex to use agentcomm to
    initialize the repo; the skill runs `init --harness codex` and adds the
    coordination contract to `AGENTS.md`.
+3. **If you are OpenCode**, add the plugin to your `opencode.json`
+   (`"plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"]`). It puts
+   every session on the repo bus in-process. OpenCode reads `AGENTS.md`
+   natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
+   also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -117,8 +122,10 @@ Point OpenCode at the plugin in your `opencode.json`:
 ```
 
 (The plugin ships its own compiled copy of the library, so no build step is
-needed once the repo is present. A published `agentcomm-opencode` npm package —
-so `opencode plugin agentcomm-opencode` works directly — is on the roadmap.)
+needed once the repo is present. OpenCode resolves each `plugin` entry through
+npm's own installer, so once `agentcomm-opencode` is published to the registry
+`"plugin": ["agentcomm-opencode"]` will work with no local checkout — that
+publish is on the roadmap.)
 
 ## Quick start
 
@@ -162,7 +169,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 - **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
 - **IoT edge agents** — a camera answering "what do you see?", weather sensors
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
-- **Claude Code and Codex pairing on one machine** — each native plugin uses
+- **Claude Code, Codex, and OpenCode pairing on one machine** — each native plugin uses
   its own guidance file while both communicate over the same repo bus.
 
 All illustrated with runnable commands on the
@@ -173,7 +180,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Command            | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
-| `init`             | Put this repo on the bus: writes `CLAUDE.md` by default or `AGENTS.md` with `--harness codex`, registers you, and shows the roster. Commit the selected harness file. |
+| `init`             | Put this repo on the bus: writes `CLAUDE.md` by default, or `AGENTS.md` with `--harness codex\|opencode\|agents`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |

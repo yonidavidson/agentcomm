@@ -14,7 +14,8 @@ Usage:
 
 Commands:
   init                     Put this repo on the bus: writes agent instructions
-                           for --harness claude|codex (default: claude),
+                           for --harness claude|codex|opencode|agents
+                           (default: claude; all but claude write AGENTS.md),
                            registers you, and shows the roster
   register                 Register/heartbeat the calling agent (--as)
   agents                   List registered agents
@@ -62,7 +63,7 @@ Flags:
                            sticky) — shown on the roster and in digests
   --status-auto <text>     register: set an automatic status (task list) that
                            yields to any explicit --status declaration
-  --harness <name>         init: claude (CLAUDE.md) or codex (AGENTS.md)
+  --harness <name>         init: claude (CLAUDE.md); codex|opencode|agents (AGENTS.md)
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -472,10 +473,20 @@ This repo has a message bus for AI agents. When working here:
 `;
 async function cmdInit(bus, cfg, requestedHarness) {
     const harness = requestedHarness ?? 'claude';
-    if (harness !== 'claude' && harness !== 'codex') {
-        throw new Error(`agentcomm: --harness must be claude or codex (received ${harness})`);
+    // Claude Code reads CLAUDE.md; everyone else (Codex, OpenCode, and any harness
+    // that honors the AGENTS.md standard) reads AGENTS.md. `agents` is the neutral
+    // alias for that file, so no harness has to init "as" another one.
+    const HARNESS_FILE = {
+        claude: 'CLAUDE.md',
+        codex: 'AGENTS.md',
+        opencode: 'AGENTS.md',
+        agents: 'AGENTS.md',
+    };
+    const guidanceFile = HARNESS_FILE[harness];
+    if (!guidanceFile) {
+        throw new Error(`agentcomm: --harness must be one of ${Object.keys(HARNESS_FILE).join(', ')} (received ${harness})`);
     }
-    const guidanceFile = harness === 'claude' ? 'CLAUDE.md' : 'AGENTS.md';
+    const harnessLabel = harness === 'claude' ? 'Claude Code' : harness === 'opencode' ? 'OpenCode' : harness === 'codex' ? 'Codex' : 'AGENTS.md';
     // One-command team activation: write instructions for the selected harness,
     // register the caller, and prove the bus works.
     const { promises: fsp } = await import('node:fs');
@@ -507,8 +518,8 @@ async function cmdInit(bus, cfg, requestedHarness) {
             harness,
             guidanceFile,
             guidance: guidanceState,
-            claudeMd: harness === 'claude' ? guidanceState : 'not-selected',
-            agentsMd: harness === 'codex' ? guidanceState : 'not-selected',
+            claudeMd: guidanceFile === 'CLAUDE.md' ? guidanceState : 'not-selected',
+            agentsMd: guidanceFile === 'AGENTS.md' ? guidanceState : 'not-selected',
         });
         return 0;
     }
@@ -516,7 +527,7 @@ async function cmdInit(bus, cfg, requestedHarness) {
         `on the bus: ${cfg.backendUri}`,
         `registered ${me} — ${roster.length} agent${roster.length === 1 ? '' : 's'} here: ${roster.map((a) => a.name).join(', ')}`,
         `agent guidance: ${guidanceFile} ${guidanceState}.`,
-        `Commit ${guidanceFile} and every ${harness === 'claude' ? 'Claude Code' : 'Codex'} teammate joins this bus automatically.`,
+        `Commit ${guidanceFile} and every ${harnessLabel} teammate joins this bus automatically.`,
         '',
     ].join('\n'));
     return 0;

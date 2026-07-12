@@ -96,12 +96,29 @@ describe('CLI init (one-command team activation)', () => {
     await expect(fs.stat(path.join(dir, 'CLAUDE.md'))).rejects.toThrow();
   });
 
+  it('writes AGENTS.md for OpenCode (its own harness, no "as Codex" detour)', async () => {
+    const dir = await mkTmp();
+    const bus = `file://${path.join(dir, '.bus')}`;
+
+    const r = await run(['init', '--harness', 'opencode', '--as', 'alice', '--json'], dir, bus);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({
+      harness: 'opencode',
+      guidanceFile: 'AGENTS.md',
+      guidance: 'created',
+      claudeMd: 'not-selected',
+      agentsMd: 'created',
+    });
+    expect(await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8')).toContain('<!-- agentcomm -->');
+    await expect(fs.stat(path.join(dir, 'CLAUDE.md'))).rejects.toThrow();
+  });
+
   it('rejects an unsupported harness', async () => {
     const dir = await mkTmp();
     const bus = `file://${path.join(dir, '.bus')}`;
-    const r = await run(['init', '--harness', 'opencode'], dir, bus);
+    const r = await run(['init', '--harness', 'gemini'], dir, bus);
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain('--harness must be claude or codex');
+    expect(r.stderr).toContain('--harness must be one of');
   });
 
   it('appends to an existing CLAUDE.md without touching its content', async () => {

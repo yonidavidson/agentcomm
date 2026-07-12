@@ -1,6 +1,6 @@
 {
   "name": "agentcomm-codex-plugin",
-  "version": "0.16.7",
+  "version": "0.16.8",
   "private": true,
   "type": "module",
   "engines": {
