@@ -34,6 +34,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "plugin:sync": "npm run build && node scripts/sync-plugins.mjs",
+    "publish:opencode": "npm run plugin:sync && npm publish plugins/agentcomm-opencode",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
