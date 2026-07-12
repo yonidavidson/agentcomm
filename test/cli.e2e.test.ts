@@ -74,6 +74,32 @@ describe('CLI e2e (sqlite backend)', () => {
     expect(JSON.parse(empty.stdout)).toEqual([]);
   });
 
+  it('network reports active/idle agents, statuses, and recent activity', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+    const env = { ...process.env, AGENTCOMM_SESSION: 'net-test', AGENTCOMM_NO_GIT_PROBE: '1' };
+
+    await run(['register', '--as', 'planner', '--status', 'designing the schema', '--backend', db], undefined, env);
+    await run(['register', '--as', 'worker-1', '--backend', db], undefined, env);
+    await run(['send', 'worker-1', 'take the auth task', '--as', 'planner', '--subject', 'task', '--backend', db], undefined, env);
+
+    const json = await run(['network', '--backend', db, '--json'], undefined, env);
+    expect(json.code).toBe(0);
+    const board = JSON.parse(json.stdout) as {
+      bus: string;
+      active: { name: string; status?: string }[];
+      idle: unknown[];
+      recent: { from: string; to: string; body: string }[];
+    };
+    expect(board.active.map((a) => a.name).sort()).toEqual(['planner', 'worker-1']);
+    expect(board.active.find((a) => a.name === 'planner')!.status).toBe('designing the schema');
+    expect(board.recent.at(-1)!.body).toBe('take the auth task');
+
+    // human output names the agents and the status
+    const human = await run(['network', '--backend', db], undefined, env);
+    expect(human.stdout).toContain('active (2)');
+    expect(human.stdout).toContain('designing the schema');
+  });
+
   it('send reads body from stdin when no body arg', async () => {
     const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
     await run(['send', 'bob', '--as', 'alice', '--backend', db], 'from stdin');
