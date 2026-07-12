@@ -27,7 +27,7 @@ Get yourself (and this repo) on the bus — takes under a minute:
 3. **If you are OpenCode**, add the plugin to your `opencode.json`
    (`"plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"]`). It puts
    every session on the repo bus in-process. OpenCode reads `AGENTS.md`
-   natively, so `agentcomm init --harness codex` (which writes `AGENTS.md`)
+   natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
    also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
 
 ```
@@ -122,8 +122,10 @@ Point OpenCode at the plugin in your `opencode.json`:
 ```
 
 (The plugin ships its own compiled copy of the library, so no build step is
-needed once the repo is present. A published `agentcomm-opencode` npm package —
-so `opencode plugin agentcomm-opencode` works directly — is on the roadmap.)
+needed once the repo is present. OpenCode resolves each `plugin` entry through
+npm's own installer, so once `agentcomm-opencode` is published to the registry
+`"plugin": ["agentcomm-opencode"]` will work with no local checkout — that
+publish is on the roadmap.)
 
 ## Quick start
 
@@ -178,7 +180,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Command            | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
-| `init`             | Put this repo on the bus: writes `CLAUDE.md` by default or `AGENTS.md` with `--harness codex`, registers you, and shows the roster. Commit the selected harness file. |
+| `init`             | Put this repo on the bus: writes `CLAUDE.md` by default, or `AGENTS.md` with `--harness codex\|opencode\|agents`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
