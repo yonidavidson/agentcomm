@@ -22,6 +22,20 @@ for (const file of ['lib.mjs', 'midturn-digest.mjs', 'prompt-digest.mjs', 'sessi
 }
 
 const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+await writeFile(
+  path.join(plugin, 'package.json'),
+  `${JSON.stringify(
+    {
+      name: 'agentcomm-codex-plugin',
+      version: packageJson.version,
+      private: true,
+      type: packageJson.type,
+      engines: packageJson.engines,
+    },
+    null,
+    2,
+  )}\n`,
+);
 const manifestPath = path.join(plugin, '.codex-plugin', 'plugin.json');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 manifest.version = packageJson.version;
