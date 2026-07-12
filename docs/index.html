@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>agentcomm — a mailbox for AI agents</title>
-<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends (local, SQLite/WAL, S3, GCS) behind a single interface. Also a Claude Code plugin." />
+<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends, and native plugins for Codex and Claude Code." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='15' rx='4' fill='%23f2a900' stroke='%231a2330' stroke-width='2'/%3E%3Crect x='6' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='14' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='22' y='11' width='5' height='5' rx='1.5' fill='%23dbe6f2'/%3E%3Ccircle cx='9' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='9' cy='24' r='1.6' fill='%23faf7f2'/%3E%3Ccircle cx='23' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='23' cy='24' r='1.6' fill='%23faf7f2'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -75,13 +75,36 @@
     </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
-      <a class="btn btn-ghost" href="#plugin">Use as a Claude Code plugin</a>
+      <a class="btn btn-ghost" href="#plugin">Install the agent plugin</a>
     </div>
-    <div class="codeblock" style="margin-bottom:22px;">
-      <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
+    <div class="harness-switcher hero-installs" data-harness-switcher>
+      <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
+        <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
+        <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
+        <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+      </div>
+      <div role="tabpanel" data-harness-panel="opencode" hidden>
+        <div class="codeblock">
+          <button class="copy-btn" data-copy="npm i -g github:yonidavidson/agentcomm">Copy</button>
+          <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
+        </div>
+      </div>
+      <div role="tabpanel" data-harness-panel="claude">
+        <div class="codeblock">
+          <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
 /plugin install agentcomm@yonidavidson-plugins">Copy</button>
-      <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
-      <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+          <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+          <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+        </div>
+      </div>
+      <div role="tabpanel" data-harness-panel="codex" hidden>
+        <div class="codeblock">
+          <button class="copy-btn" data-copy="codex plugin marketplace add yonidavidson/agentcomm
+codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
+          <div class="line">$ codex plugin marketplace add yonidavidson/agentcomm</div>
+          <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
+        </div>
+      </div>
     </div>
     <div class="badges">
       <span class="badge">MIT licensed</span>
@@ -100,12 +123,23 @@
       <div class="steps reveal">
         <div class="step">
           <div class="step-head"><span class="step-n">1</span><h3>Install</h3></div>
-          <div class="codeblock step-code">
-            <div class="line"># Claude Code (auto-updates via /plugin)</div>
-            <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
-            <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
-            <div class="line"># other harnesses / CI only:</div>
-            <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
+          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
+            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
+              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+              <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
+              <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+              <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
+              <div class="line">$ codex plugin marketplace add yonidavidson/agentcomm</div>
+              <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
+            </div>
           </div>
         </div>
         <div class="step">
@@ -123,11 +157,11 @@
           <div class="codeblock step-code">
             <div class="line">$ agentcomm init</div>
             <div class="line out">→ on the bus: git+ssh://…/webapp.git</div>
-            <div class="line out">→ CLAUDE.md created — commit it, done</div>
+            <div class="line out">→ CLAUDE.md + AGENTS.md created</div>
             <div class="line"># several workers? alias them:</div>
             <div class="line">$ agentcomm init --as worker-2</div>
           </div>
-          <p class="step-note"><code>init</code> writes the agent instructions into <code>CLAUDE.md</code>. Commit it — done.</p>
+          <p class="step-note"><code>init</code> writes Claude Code and Codex guidance. Commit both files.</p>
         </div>
       </div>
     </div>
@@ -191,9 +225,9 @@
         <div class="kicker">Nothing hidden</div>
         <h2 class="section-title">Four hooks, in the open</h2>
         <p class="section-sub">
-          The Claude Code plugin ships exactly these. Every one is throttled,
-          fail-open (a broken bus can never wedge a session), and reads/writes
-          only what is listed here. Prompts are never shared.
+          The Codex and Claude Code plugins ship these same lifecycle hooks.
+          Every one is throttled, fail-open (a broken bus can never wedge a
+          session), and reads/writes only what is listed here. Prompts are never shared.
         </p>
       </div>
       <div class="grid reveal">
@@ -490,30 +524,54 @@
   <section id="plugin">
     <div class="wrap">
       <div class="section-head reveal">
-        <div class="kicker">Claude Code</div>
-        <h2 class="section-title">Install it as a plugin</h2>
-        <p class="section-sub">This repo is its own marketplace — no npm publish required.</p>
+        <div class="kicker">OpenCode · Claude Code · Codex</div>
+        <h2 class="section-title">Choose your harness</h2>
+        <p class="section-sub">Native plugins where supported, one shared CLI everywhere else.</p>
       </div>
       <div class="plugin-panel reveal">
         <div>
-          <h3>A skill that knows the CLI</h3>
+          <h3>Coordination built into the session</h3>
           <p>
-            Claude picks up a skill describing every command, flag, and
-            backend tradeoff above — and uses it whenever you ask it to
-            message, hand off to, or wait on another agent or session.
+            Each harness gets the same commands, flags, and backend tradeoffs
+            whenever you ask it to message, hand off to, or wait on another
+            agent or session.
           </p>
           <ul>
-            <li>Ships a prebuilt CLI — no global install needed.</li>
-            <li>Skill-only: stays inert unless coordination is relevant.</li>
+            <li>Native plugins ship the prebuilt CLI and lifecycle hooks.</li>
+            <li>OpenCode uses the same CLI through the global install.</li>
             <li>In a git repo, defaults to the repo bus — <code>git+&lt;origin&gt;</code> auto-detected.</li>
           </ul>
         </div>
-        <div class="codeblock">
-          <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
+        <div class="harness-switcher plugin-installs" data-harness-switcher>
+          <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
+            <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
+            <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
+            <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+          </div>
+          <div role="tabpanel" data-harness-panel="opencode" hidden>
+            <div class="codeblock">
+              <button class="copy-btn" data-copy="npm i -g github:yonidavidson/agentcomm">Copy</button>
+              <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
+            </div>
+          </div>
+          <div role="tabpanel" data-harness-panel="claude">
+            <div class="codeblock">
+              <button class="copy-btn" data-copy="/plugin marketplace add yonidavidson/agentcomm
 /plugin install agentcomm@yonidavidson-plugins">Copy</button>
-          <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
-          <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+              <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
+              <div class="line">/plugin install agentcomm@yonidavidson-plugins</div>
+            </div>
+          </div>
+          <div role="tabpanel" data-harness-panel="codex" hidden>
+            <div class="codeblock">
+              <button class="copy-btn" data-copy="codex plugin marketplace add yonidavidson/agentcomm
+codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
+              <div class="line">$ codex plugin marketplace add yonidavidson/agentcomm</div>
+              <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
+            </div>
+          </div>
         </div>
+        <p class="install-note" data-harness-note="codex" hidden>Review and trust the bundled hooks with <code>/hooks</code>, then start a new thread.</p>
       </div>
     </div>
   </section>

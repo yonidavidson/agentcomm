@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/session-start.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Joining the agentcomm bus"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/stop-inbox-guard.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Checking the agentcomm inbox"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/prompt-digest.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec node \"$PLUGIN_ROOT/hooks/midturn-digest.mjs\"'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -15,8 +15,8 @@ Usage:
 
 Commands:
   init                     Put this repo on the bus: writes agent instructions
-                           into CLAUDE.md (idempotent), registers you, shows the
-                           roster. Commit CLAUDE.md to onboard your whole team
+                           into CLAUDE.md and AGENTS.md (idempotent), registers
+                           you, shows the roster. Commit both files to onboard
   register                 Register/heartbeat the calling agent (--as)
   agents                   List registered agents
   send <to> [body]         Send a message (body from arg or stdin)
@@ -472,8 +472,8 @@ async function cmdLog(
   return 0;
 }
 
-const CLAUDE_MD_MARKER = '<!-- agentcomm -->';
-const CLAUDE_MD_SNIPPET = `${CLAUDE_MD_MARKER}
+const AGENT_INSTRUCTIONS_MARKER = '<!-- agentcomm -->';
+const AGENT_INSTRUCTIONS_SNIPPET = `${AGENT_INSTRUCTIONS_MARKER}
 ## Agent coordination (agentcomm)
 
 This repo has a message bus for AI agents. When working here:
@@ -504,26 +504,26 @@ This repo has a message bus for AI agents. When working here:
 
 async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   // One-command team activation: write the agent instructions into
-  // CLAUDE.md (idempotent — marker-guarded), register the caller, prove the
-  // bus works. Committing CLAUDE.md is what onboards every teammate's
-  // agents; that's the user's call, so we say it rather than do it.
+  // each harness's repo guidance file, register the caller, and prove the bus
+  // works. Committing the files is the user's call, so we report it only.
   const { promises: fsp } = await import('node:fs');
   const os = await import('node:os');
-  const claudeMd = 'CLAUDE.md';
-  let claudeMdState: 'created' | 'appended' | 'already-present';
-  let existing = '';
-  try {
-    existing = await fsp.readFile(claudeMd, 'utf8');
-  } catch {
-    /* no file yet */
-  }
-  if (existing.includes(CLAUDE_MD_MARKER)) {
-    claudeMdState = 'already-present';
-  } else {
-    claudeMdState = existing ? 'appended' : 'created';
+  type InstructionState = 'created' | 'appended' | 'already-present';
+  const writeInstructions = async (filename: string): Promise<InstructionState> => {
+    let existing = '';
+    try {
+      existing = await fsp.readFile(filename, 'utf8');
+    } catch {
+      /* no file yet */
+    }
+    if (existing.includes(AGENT_INSTRUCTIONS_MARKER)) return 'already-present';
+    const state = existing ? 'appended' : 'created';
     const sep = existing && !existing.endsWith('\n\n') ? (existing.endsWith('\n') ? '\n' : '\n\n') : '';
-    await fsp.writeFile(claudeMd, existing + sep + CLAUDE_MD_SNIPPET);
-  }
+    await fsp.writeFile(filename, existing + sep + AGENT_INSTRUCTIONS_SNIPPET);
+    return state;
+  };
+  const claudeMdState = await writeInstructions('CLAUDE.md');
+  const agentsMdState = await writeInstructions('AGENTS.md');
 
   const me = await resolveAgent(cfg);
   await registerWithCollisionCheck(bus, me);
@@ -535,6 +535,7 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
       registered: me,
       agents: roster.map((a) => a.name),
       claudeMd: claudeMdState,
+      agentsMd: agentsMdState,
     });
     return 0;
   }
@@ -542,9 +543,8 @@ async function cmdInit(bus: Bus, cfg: ResolvedConfig): Promise<number> {
     [
       `on the bus: ${cfg.backendUri}`,
       `registered ${me} — ${roster.length} agent${roster.length === 1 ? '' : 's'} here: ${roster.map((a) => a.name).join(', ')}`,
-      claudeMdState === 'already-present'
-        ? 'CLAUDE.md already has the agentcomm section.'
-        : `CLAUDE.md ${claudeMdState} — commit it and every teammate's AI agent joins this bus automatically.`,
+      `agent guidance: CLAUDE.md ${claudeMdState}; AGENTS.md ${agentsMdState}.`,
+      'Commit both files and every teammate\'s AI agent joins this bus automatically.',
       '',
     ].join('\n'),
   );

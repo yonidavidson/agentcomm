@@ -9,6 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
+import { onTheBus } from '../hooks/lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
@@ -39,6 +40,7 @@ function runHook(
   script: string,
   stdinJson: object,
   cwd: string,
+  extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(root, 'hooks', script)], {
@@ -51,6 +53,7 @@ function runHook(
         AGENTCOMM_NO_GIT_PROBE: '1',
         AGENTCOMM_SESSION: 'hook-session',
         TMPDIR: cwd, // isolate the stop-guard throttle stamp per test
+        ...extraEnv,
       },
     });
     let stdout = '';
@@ -102,6 +105,12 @@ async function derivedAlias(dir: string): Promise<string> {
 }
 
 describe('plugin hooks: bus discipline made mechanical', () => {
+  it('accepts AGENTS.md as the Codex consent gate', async () => {
+    const dir = await mkTmp();
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), '<!-- agentcomm -->\n');
+    expect(await onTheBus(dir)).toBe(true);
+  });
+
   it('session-start REGISTERS the session onto the roster and announces it', async () => {
     const dir = await markedRepo();
     cliSync(['register'], dir, 'reviewer');
@@ -133,6 +142,19 @@ describe('plugin hooks: bus discipline made mechanical', () => {
       },
     ).toString();
     expect(roster).toMatch(/hooky-[0-9a-f]{4}/);
+  });
+
+  it('does not advertise Claude-only task status hooks to Codex', async () => {
+    const dir = await markedRepo();
+    const r = await runHook(
+      'session-start.mjs',
+      { cwd: dir, hook_event_name: 'SessionStart' },
+      dir,
+      { PLUGIN_ROOT: root },
+    );
+    const out = JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain('set it with `agentcomm register --status');
+    expect(out.hookSpecificOutput.additionalContext).not.toContain('TaskCreate');
   });
 
   it('session-start stays silent outside opted-in repos', async () => {
