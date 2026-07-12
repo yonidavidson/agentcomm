@@ -1,0 +1,62 @@
+name: release
+
+# Attaches the OpenCode plugin tarball to each GitHub Release so OpenCode can
+# install it from a small artifact instead of cloning the whole repo.
+#
+# Why a tarball and not a `github:` plugin spec: OpenCode installs a remote
+# plugin by git-cloning the entire repo, and this monorepo (full CLI + committed
+# dist/ across its history) is a large, slow clone its installer chokes on. A
+# `npm pack` tarball is ~100 kB (dist only, no history) and OpenCode/arborist
+# installs it straight from a URL — verified against the real binary.
+#
+# Install spec for users (see README):
+#   "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/vX.Y.Z/agentcomm-opencode-X.Y.Z.tgz"]
+#
+# No secrets: uploads use the built-in GITHUB_TOKEN. The npm registry is not
+# involved — the root `agentcomm` package stays install-from-GitHub by design.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach the tarball to (e.g. v0.16.9)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  attach-opencode-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack the plugin tarball
+        id: pack
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          # `npm pack` emits agentcomm-<version>.tgz (dist-only, per package.json "files").
+          npm pack
+          SRC="agentcomm-${VERSION}.tgz"
+          ASSET="agentcomm-opencode-${VERSION}.tgz"
+          mv "$SRC" "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "Packed $ASSET ($(du -h "$ASSET" | cut -f1))"
+
+      - name: Upload tarball to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh release upload "$TAG" "${{ steps.pack.outputs.asset }}" --clobber --repo "$GITHUB_REPOSITORY"
+          echo "::notice::Attached ${{ steps.pack.outputs.asset }} to $TAG"
