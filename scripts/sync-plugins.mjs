@@ -2,8 +2,12 @@
  * Sync the generated harness-plugin subtrees under plugins/ from the root
  * build. Each target gets the compiled library + its shipping payload, a
  * minimal package.json (version from root), and — if it has a manifest — a
- * version stamp. Authored sources (hooks.json for Codex, src/ for the TS
- * plugins) are NEVER touched here.
+ * version stamp. Authored sources (hooks.json for Codex) are NEVER touched.
+ *
+ * OpenCode is NOT a subtree: OpenCode installs the plugin from the repo root
+ * (`github:yonidavidson/agentcomm`, resolved via the root package's
+ * `exports["./server"]` → dist/opencode-plugin.js), so it needs no generated
+ * package here.
  */
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -29,52 +33,14 @@ const TARGETS = [
     manifest: '.codex-plugin/plugin.json',
     pkgExtra: {},
   },
-  {
-    // OpenCode: imports the library in-process (Bun); ships dist + authored src/.
-    // Publishable to the npm registry so `"plugin": ["agentcomm-opencode"]`
-    // installs with no local checkout — OpenCode resolves plugin entries through
-    // npm's own installer. The tarball carries the compiled library (dist/) so
-    // there is no build step and zero runtime deps for the file/git backends.
-    dir: 'agentcomm-opencode',
-    pkgName: 'agentcomm-opencode',
-    copy: ['dist'],
-    hooks: [],
-    manifest: null,
-    pkg: (rootPkg) => ({
-      name: 'agentcomm-opencode',
-      version: rootPkg.version,
-      description:
-        'OpenCode plugin for agentcomm — puts every OpenCode session on the agentcomm message bus (auto-register, inbox guard, mid-turn digests) in-process.',
-      type: rootPkg.type,
-      main: 'src/plugin.ts',
-      files: ['src', 'dist', 'README.md'],
-      engines: rootPkg.engines,
-      license: rootPkg.license,
-      author: rootPkg.author,
-      repository: { ...rootPkg.repository, directory: 'plugins/agentcomm-opencode' },
-      homepage: 'https://yonidavidson.github.io/agentcomm/',
-      keywords: ['opencode', 'opencode-plugin', 'agentcomm', 'ai-agents', 'message-bus', 'agent-coordination'],
-      publishConfig: { access: 'public' },
-    }),
-  },
 ];
 
 const rootPkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 
-// Default package.json for generated (non-published) subtrees: private, minimal.
-const defaultPkg = (t) => ({
-  name: t.pkgName,
-  version: rootPkg.version,
-  private: true,
-  type: rootPkg.type,
-  engines: rootPkg.engines,
-  ...t.pkgExtra,
-});
-
 for (const t of TARGETS) {
   const plugin = path.join(root, 'plugins', t.dir);
 
-  // Wipe + recopy only what we regenerate (authored src/ and hooks.json survive).
+  // Wipe + recopy only what we regenerate (authored hooks.json survives).
   for (const d of t.copy) await rm(path.join(plugin, d), { recursive: true, force: true });
   for (const d of t.copy) await cp(path.join(root, d), path.join(plugin, d), { recursive: true });
 
@@ -88,7 +54,11 @@ for (const t of TARGETS) {
 
   await writeFile(
     path.join(plugin, 'package.json'),
-    `${JSON.stringify(t.pkg ? t.pkg(rootPkg) : defaultPkg(t), null, 2)}\n`,
+    `${JSON.stringify(
+      { name: t.pkgName, version: rootPkg.version, private: true, type: rootPkg.type, engines: rootPkg.engines, ...t.pkgExtra },
+      null,
+      2,
+    )}\n`,
   );
 
   if (t.manifest) {

@@ -3,6 +3,11 @@
  * REAL `opencode` binary with our plugin loaded against a file:// bus and a
  * local mock model, asserting the plugin registered the session on the bus.
  *
+ * The plugin is loaded from the PACKAGE ROOT — the same resolution
+ * (`package.json` → `exports["./server"]` → dist/opencode-plugin.js) that
+ * `"plugin": ["github:yonidavidson/agentcomm"]` uses once OpenCode has cloned
+ * the repo. So this covers the github-install path minus the git clone itself.
+ *
  * Self-skips unless `opencode` is on PATH AND AGENTCOMM_TEST_OPENCODE is set —
  * so the normal `test` job stays green; CI's `e2e-harness` job installs the
  * binary and sets the flag (mirrors the github/s3/gcs suite convention).
@@ -17,7 +22,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url)) + '/..';
 const cli = path.join(root, 'dist', 'cli.js');
-const pluginDir = path.join(root, 'plugins', 'agentcomm-opencode');
+// OpenCode resolves the plugin from the package root via exports["./server"] —
+// the same path a `github:yonidavidson/agentcomm` install takes.
+const pluginDir = root;
 
 const opencodePresent = spawnSync('opencode', ['--version'], { stdio: 'ignore' }).status === 0;
 const RUN = opencodePresent && !!process.env.AGENTCOMM_TEST_OPENCODE;

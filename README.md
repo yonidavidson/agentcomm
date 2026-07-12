@@ -24,11 +24,11 @@ Get yourself (and this repo) on the bus — takes under a minute:
    with `/hooks` after installation. Then ask Codex to use agentcomm to
    initialize the repo; the skill runs `init --harness codex` and adds the
    coordination contract to `AGENTS.md`.
-3. **If you are OpenCode**, add the plugin to your `opencode.json`
-   (`"plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"]`). It puts
-   every session on the repo bus in-process. OpenCode reads `AGENTS.md`
-   natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
-   also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
+3. **If you are OpenCode**, add the plugin to your `opencode.json` straight
+   from GitHub — `"plugin": ["github:yonidavidson/agentcomm"]`. It puts every
+   session on the repo bus in-process. OpenCode reads `AGENTS.md` natively, so
+   `agentcomm init --harness opencode` (which writes `AGENTS.md`) also onboards
+   it — see [As an OpenCode plugin](#as-an-opencode-plugin).
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -106,26 +106,27 @@ Use agentcomm to initialize this Codex repo for the team.
 ### As an OpenCode plugin
 
 [OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
-its agents already onboard from this repo's `AGENTS.md`. The plugin
-(`plugins/agentcomm-opencode`) adds the lifecycle — it registers each session
-on the bus, briefs it, surfaces unread mail before the session goes idle, and
-keeps long turns reachable — by importing the agentcomm library in-process
-(no subprocess). Because OpenCode's `session.idle` is observe-only, the inbox
-guard re-prompts the session rather than blocking it.
+its agents already onboard from this repo's `AGENTS.md`. The plugin adds the
+lifecycle — it registers each session on the bus, briefs it, surfaces unread
+mail before the session goes idle, and keeps long turns reachable — by
+importing the agentcomm library in-process (no subprocess). Because OpenCode's
+`session.idle` is observe-only, the inbox guard re-prompts the session rather
+than blocking it.
 
-Point OpenCode at the plugin in your `opencode.json`:
+Install it straight from GitHub — OpenCode resolves each `plugin` entry through
+npm's own installer, so no registry publish and no local checkout are needed:
 
 ```json
 {
-  "plugin": ["/absolute/path/to/agentcomm/plugins/agentcomm-opencode"]
+  "plugin": ["github:yonidavidson/agentcomm"]
 }
 ```
 
-(The plugin ships its own compiled copy of the library, so no build step is
-needed once the repo is present. OpenCode resolves each `plugin` entry through
-npm's own installer, so once `agentcomm-opencode` is published to the registry
-`"plugin": ["agentcomm-opencode"]` will work with no local checkout — that
-publish is on the roadmap.)
+OpenCode loads the plugin from the package root via its `exports["./server"]`
+entry (the compiled library ships in the repo's committed `dist/`, so there's
+no build step and — for the file/git backends — zero runtime dependencies). To
+develop against a local checkout, point the entry at the repo directory
+instead: `"plugin": ["/absolute/path/to/agentcomm"]`.
 
 ## Quick start
 

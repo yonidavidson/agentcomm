@@ -1,6 +1,6 @@
 {
   "name": "agentcomm",
-  "version": "0.16.8",
+  "version": "0.16.9",
   "description": "Coordinate coding agents and sessions through a shared mailbox backed by Git, local files, SQLite, S3, GCS, or Postgres.",
   "author": {
     "name": "Yoni Davidson",
