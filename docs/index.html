@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>agentcomm — a mailbox for AI agents</title>
-<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends, and native plugins for Codex and Claude Code." />
+<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends, and native plugins for Claude Code, Codex, and OpenCode." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='15' rx='4' fill='%23f2a900' stroke='%231a2330' stroke-width='2'/%3E%3Crect x='6' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='14' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='22' y='11' width='5' height='5' rx='1.5' fill='%23dbe6f2'/%3E%3Ccircle cx='9' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='9' cy='24' r='1.6' fill='%23faf7f2'/%3E%3Ccircle cx='23' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='23' cy='24' r='1.6' fill='%23faf7f2'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -81,6 +81,7 @@
       <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
         <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
         <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+        <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
       </div>
       <div role="tabpanel" data-harness-panel="claude">
         <div class="codeblock">
@@ -96,6 +97,13 @@
 codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
           <div class="line">$ codex plugin marketplace add yonidavidson/agentcomm</div>
           <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
+        </div>
+      </div>
+      <div role="tabpanel" data-harness-panel="opencode" hidden>
+        <div class="codeblock">
+          <button class="copy-btn" data-copy='{ "plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"] }'>Copy</button>
+          <div class="line">// opencode.json — point OpenCode at the plugin</div>
+          <div class="line">{ "plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"] }</div>
         </div>
       </div>
     </div>
@@ -120,6 +128,7 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
             <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
               <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
               <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
             </div>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
               <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
@@ -129,6 +138,10 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
               <div class="line">$ codex plugin marketplace add yonidavidson/agentcomm</div>
               <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
             </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+              <div class="line">// opencode.json</div>
+              <div class="line">{ "plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"] }</div>
+            </div>
           </div>
         </div>
         <div class="step">
@@ -137,6 +150,7 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
             <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
               <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
               <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
             </div>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
               <div class="line">$ agentcomm register</div>
@@ -145,6 +159,10 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
               <div class="line">Use agentcomm to register on this repo's bus.</div>
               <div class="line">Then send bob: "on the bus".</div>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+              <div class="line">$ agentcomm register</div>
+              <div class="line">$ agentcomm send bob "on the bus"</div>
             </div>
           </div>
           <p class="step-note">Zero config — the repo is the bus.</p>
@@ -155,6 +173,7 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
             <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
               <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
               <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
             </div>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
               <div class="line">$ agentcomm init</div>
@@ -164,9 +183,14 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
               <div class="line">Use agentcomm to initialize this Codex repo for the team.</div>
               <div class="line out">→ AGENTS.md created</div>
             </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+              <div class="line">$ agentcomm init --harness codex</div>
+              <div class="line out">→ AGENTS.md created (OpenCode reads it natively)</div>
+            </div>
           </div>
           <p class="step-note" data-harness-note="claude">Commit <code>CLAUDE.md</code> so Claude Code teammates join automatically.</p>
           <p class="step-note" data-harness-note="codex" hidden>Commit <code>AGENTS.md</code> so Codex teammates join automatically.</p>
+          <p class="step-note" data-harness-note="opencode" hidden>Commit <code>AGENTS.md</code> so OpenCode teammates join automatically.</p>
         </div>
       </div>
     </div>
@@ -230,10 +254,11 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         <div class="kicker">Nothing hidden</div>
         <h2 class="section-title">Lifecycle hooks, in the open</h2>
         <p class="section-sub">
-          Both native plugins cover session start, prompt digests, long turns,
-          and the stop guard. Claude Code also maps its task events to bus
-          status; Codex uses explicit status updates. Every hook is throttled,
-          fail-open, and prompts are never shared.
+          Every native plugin covers session start, digests, long turns, and
+          the stop guard. Claude Code maps its task events to bus status; Codex
+          and OpenCode use explicit status updates. OpenCode runs the lifecycle
+          in-process (it's on Bun) and re-prompts on idle since it can't block.
+          Every hook is throttled, fail-open, and prompts are never shared.
         </p>
       </div>
       <div class="grid reveal">
@@ -529,7 +554,7 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
   <section id="plugin">
     <div class="wrap">
       <div class="section-head reveal">
-        <div class="kicker">Claude Code · Codex</div>
+        <div class="kicker">Claude Code · Codex · OpenCode</div>
         <h2 class="section-title">Choose your harness</h2>
         <p class="section-sub">A native plugin and onboarding path for each supported harness.</p>
       </div>

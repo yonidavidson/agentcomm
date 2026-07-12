@@ -1,6 +1,6 @@
 # agentcomm
 
-🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Codex plugin](#as-a-codex-plugin) · [Claude Code plugin](#as-a-claude-code-plugin)
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin) · [Codex plugin](#as-a-codex-plugin) · [OpenCode plugin](#as-an-opencode-plugin)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
@@ -24,6 +24,11 @@ Get yourself (and this repo) on the bus — takes under a minute:
    with `/hooks` after installation. Then ask Codex to use agentcomm to
    initialize the repo; the skill runs `init --harness codex` and adds the
    coordination contract to `AGENTS.md`.
+3. **If you are OpenCode**, add the plugin to your `opencode.json`
+   (`"plugin": ["/path/to/agentcomm/plugins/agentcomm-opencode"]`). It puts
+   every session on the repo bus in-process. OpenCode reads `AGENTS.md`
+   natively, so `agentcomm init --harness codex` (which writes `AGENTS.md`)
+   also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -162,7 +167,7 @@ echo "from a pipe" | agentcomm send bob --as alice
 - **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
 - **IoT edge agents** — a camera answering "what do you see?", weather sensors
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
-- **Claude Code and Codex pairing on one machine** — each native plugin uses
+- **Claude Code, Codex, and OpenCode pairing on one machine** — each native plugin uses
   its own guidance file while both communicate over the same repo bus.
 
 All illustrated with runnable commands on the
