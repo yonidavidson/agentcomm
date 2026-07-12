@@ -25,6 +25,7 @@
  */
 import type { Plugin } from '@opencode-ai/plugin';
 import { openBusSession, sessionStartContext, inboxGuardReason, midTurnContext, type BusSession } from './index.js';
+import { updateNotice } from './opencode-update.js';
 
 export const AgentcommPlugin: Plugin = async ({ directory, client }) => {
   // Context the bus wants the model to see on its next turn (OpenCode pulls
@@ -40,6 +41,16 @@ export const AgentcommPlugin: Plugin = async ({ directory, client }) => {
       const ctx = await sessionStartContext(session);
       if (ctx) pending.push(ctx);
     }
+  } catch {
+    /* fail open */
+  }
+
+  // omp-style "Update Available" nudge — independent of the bus (throttled to
+  // once a day, network-capped, fails open). OpenCode caches the tarball by URL,
+  // so the only way users learn a new release exists is if we tell them.
+  try {
+    const note = await updateNotice();
+    if (note) pending.push(note);
   } catch {
     /* fail open */
   }

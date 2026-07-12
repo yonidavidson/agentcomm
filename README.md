@@ -26,7 +26,7 @@ Get yourself (and this repo) on the bus — takes under a minute:
    coordination contract to `AGENTS.md`.
 3. **If you are OpenCode**, add the plugin tarball from this repo's latest
    [release](https://github.com/yonidavidson/agentcomm/releases) to your
-   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.9/agentcomm-opencode-0.16.9.tgz"]`.
+   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.10/agentcomm-opencode-0.16.10.tgz"]`.
    It puts every session on the repo bus in-process. OpenCode reads `AGENTS.md`
    natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
    also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
@@ -120,15 +120,20 @@ the `.tgz` directly, no clone and no npm registry:
 
 ```json
 {
-  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.9/agentcomm-opencode-0.16.9.tgz"]
+  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.16.10/agentcomm-opencode-0.16.10.tgz"]
 }
 ```
 
 OpenCode loads the plugin from the tarball's package root via its
 `exports["./server"]` entry (the compiled library ships inside, so there's no
-build step and — for the file/git backends — zero runtime dependencies). Bump
-the version in the URL to upgrade; grab the current one from the
-[releases page](https://github.com/yonidavidson/agentcomm/releases).
+build step and — for the file/git backends — zero runtime dependencies).
+
+**Updating.** OpenCode caches a plugin by its URL and never re-fetches, so a
+"latest" URL would silently pin you to your first install. The URL is versioned
+on purpose: **bump the version to upgrade.** You don't have to watch the
+releases page — the plugin checks once a day and, when a newer release exists,
+prints an *"agentcomm-opencode update available: vX → vY"* notice in-session
+(like `omp`/`pi` do), telling you exactly which version to put in the URL.
 
 > **Why a tarball and not `github:…`?** OpenCode installs a remote plugin by
 > cloning the whole repo, and this monorepo (full CLI + committed `dist/` across
