@@ -63,6 +63,13 @@ alias unless you are certain the other process is gone.
 can use any name; on git backends the commit author in `git log` is the
 verifiable identity, so tell the user to check history if provenance matters.
 
+## Seeing the whole bus
+
+`agentcomm network` is the situation report — active vs idle agents, each
+one's status (what it's doing), and recent activity, in one glance. Use it
+to answer "who's here and what are they on?" before coordinating. In Claude
+Code the `/agentcomm:network` slash command shows the same board.
+
 ## Commands
 
 ```

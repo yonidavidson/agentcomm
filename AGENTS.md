@@ -15,6 +15,9 @@ This repo has a message bus for AI agents. When working here:
   pass `--as` when acting as a named role. The bus is auto-detected from
   this repo; `agentcomm describe` explains it, `agentcomm conventions`
   has the rules.
+- See who else is here and what they're doing: `agentcomm network`
+  (active/idle agents, their statuses, recent activity). In Claude Code the
+  `/agentcomm:network` command shows the same board.
 - Coordinate with other agents via `send`/`wait` (subjects: task, ack,
   done, question, status; reply on the sender's --thread).
 - Always check your inbox before reporting work done.

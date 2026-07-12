@@ -17,6 +17,8 @@ Commands:
                            you, shows the roster. Commit both files to onboard
   register                 Register/heartbeat the calling agent (--as)
   agents                   List registered agents
+  network                  Situation report: who is on the bus and what
+                           they're doing (active/idle + recent activity)
   send <to> [body]         Send a message (body from arg or stdin)
   broadcast [body]         Send to every registered agent except yourself
   inbox                    Consume undelivered messages (archived under read/)
@@ -123,6 +125,8 @@ async function main(argv) {
                 return await cmdInit(bus, cfg);
             case 'agents':
                 return await cmdAgents(bus, cfg);
+            case 'network':
+                return await cmdNetwork(bus, backend, cfg);
             case 'send':
                 return await cmdSend(bus, cfg, flags.subject, flags.thread, positional.slice(1));
             case 'broadcast':
@@ -450,6 +454,9 @@ This repo has a message bus for AI agents. When working here:
   pass \`--as\` when acting as a named role. The bus is auto-detected from
   this repo; \`agentcomm describe\` explains it, \`agentcomm conventions\`
   has the rules.
+- See who else is here and what they're doing: \`agentcomm network\`
+  (active/idle agents, their statuses, recent activity). In Claude Code the
+  \`/agentcomm:network\` command shows the same board.
 - Coordinate with other agents via \`send\`/\`wait\` (subjects: task, ack,
   done, question, status; reply on the sender's --thread).
 - Always check your inbox before reporting work done.
@@ -576,6 +583,92 @@ async function cmdAgents(bus, cfg) {
         }
     }
     return 0;
+}
+/** Compact relative time from an ISO timestamp, for the board. */
+function relTime(iso) {
+    const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+    if (!Number.isFinite(m))
+        return '';
+    if (m < 1)
+        return 'just now';
+    if (m < 60)
+        return `${m}m ago`;
+    if (m < 48 * 60)
+        return `${Math.round(m / 60)}h ago`;
+    return `${Math.round(m / 1440)}d ago`;
+}
+/**
+ * The situation report: who is on the bus and what they are doing, in one
+ * glance. Active agents (seen < 10m) first with their status, idle below,
+ * plus the last few messages. Cross-harness — the same view backs the Claude
+ * Code and Codex `network` commands and a plain `agentcomm network` in a
+ * terminal.
+ */
+async function cmdNetwork(bus, backend, cfg) {
+    const list = await bus.agents();
+    const mySession = await sessionHash();
+    const isActive = (a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
+    const active = list.filter(isActive).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+    const idle = list.filter((a) => !isActive(a)).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+    const recent = await recentMessages(backend, 5);
+    if (cfg.json) {
+        emit({
+            bus: cfg.backendUri,
+            active: active.map((a) => ({ ...a, thisSession: a.session === mySession, active: true })),
+            idle: idle.map((a) => ({ ...a, thisSession: a.session === mySession, active: false })),
+            recent,
+        });
+        return 0;
+    }
+    const line = (a) => {
+        const mine = a.session === mySession ? ' (you)' : '';
+        const doing = a.status ? a.status : '—';
+        return `  ${(a.name + mine).padEnd(24)} ${doing.padEnd(42).slice(0, 42)} ${relTime(a.lastSeen)}`;
+    };
+    process.stdout.write(`bus  ${cfg.backendUri}\n\n`);
+    if (list.length === 0) {
+        process.stdout.write('(no agents on the bus yet)\n');
+        return 0;
+    }
+    if (active.length) {
+        process.stdout.write(`active (${active.length})\n${active.map(line).join('\n')}\n\n`);
+    }
+    if (idle.length) {
+        process.stdout.write(`idle (${idle.length})\n${idle.map(line).join('\n')}\n\n`);
+    }
+    if (recent.length) {
+        process.stdout.write('recent\n');
+        for (const m of recent) {
+            const subj = m.subject ? ` [${m.subject}]` : '';
+            const body = m.body.length > 48 ? `${m.body.slice(0, 47)}…` : m.body;
+            process.stdout.write(`  ${(`${m.from} → ${m.to}${subj}`).padEnd(32)} "${body}" ${relTime(m.ts)}\n`);
+        }
+    }
+    return 0;
+}
+/** Most-recent N messages across the channel (pending + archived), oldest→newest. */
+async function recentMessages(backend, limit) {
+    const entries = [];
+    for (const prefix of ['inbox/', 'read/']) {
+        for (const key of await backend.list(prefix)) {
+            if (!key.endsWith('.json'))
+                continue;
+            const ts = messageTimestamp(key);
+            if (ts !== null)
+                entries.push({ key, ts });
+        }
+    }
+    entries.sort((a, b) => a.ts - b.ts || a.key.localeCompare(b.key));
+    const out = [];
+    for (const { key } of entries.slice(-Math.max(0, limit))) {
+        try {
+            out.push(JSON.parse((await backend.get(key)).toString('utf8')));
+        }
+        catch {
+            /* skip unreadable */
+        }
+    }
+    return out;
 }
 async function cmdSend(bus, cfg, subject, thread, rest) {
     const me = await resolveAgent(cfg);
