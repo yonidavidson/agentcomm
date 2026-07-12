@@ -1,0 +1,13 @@
+{
+  "name": "agentcomm-opencode",
+  "version": "0.16.5",
+  "private": true,
+  "type": "module",
+  "main": "src/plugin.ts",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.17.18"
+  }
+}
