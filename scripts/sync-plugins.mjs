@@ -31,16 +31,45 @@ const TARGETS = [
   },
   {
     // OpenCode: imports the library in-process (Bun); ships dist + authored src/.
+    // Publishable to the npm registry so `"plugin": ["agentcomm-opencode"]`
+    // installs with no local checkout — OpenCode resolves plugin entries through
+    // npm's own installer. The tarball carries the compiled library (dist/) so
+    // there is no build step and zero runtime deps for the file/git backends.
     dir: 'agentcomm-opencode',
     pkgName: 'agentcomm-opencode',
     copy: ['dist'],
     hooks: [],
     manifest: null,
-    pkgExtra: { main: 'src/plugin.ts' },
+    pkg: (rootPkg) => ({
+      name: 'agentcomm-opencode',
+      version: rootPkg.version,
+      description:
+        'OpenCode plugin for agentcomm — puts every OpenCode session on the agentcomm message bus (auto-register, inbox guard, mid-turn digests) in-process.',
+      type: rootPkg.type,
+      main: 'src/plugin.ts',
+      files: ['src', 'dist', 'README.md'],
+      engines: rootPkg.engines,
+      license: rootPkg.license,
+      author: rootPkg.author,
+      repository: { ...rootPkg.repository, directory: 'plugins/agentcomm-opencode' },
+      homepage: 'https://yonidavidson.github.io/agentcomm/',
+      keywords: ['opencode', 'opencode-plugin', 'agentcomm', 'ai-agents', 'message-bus', 'agent-coordination'],
+      publishConfig: { access: 'public' },
+    }),
   },
 ];
 
 const rootPkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+
+// Default package.json for generated (non-published) subtrees: private, minimal.
+const defaultPkg = (t) => ({
+  name: t.pkgName,
+  version: rootPkg.version,
+  private: true,
+  type: rootPkg.type,
+  engines: rootPkg.engines,
+  ...t.pkgExtra,
+});
 
 for (const t of TARGETS) {
   const plugin = path.join(root, 'plugins', t.dir);
@@ -59,11 +88,7 @@ for (const t of TARGETS) {
 
   await writeFile(
     path.join(plugin, 'package.json'),
-    `${JSON.stringify(
-      { name: t.pkgName, version: rootPkg.version, private: true, type: rootPkg.type, engines: rootPkg.engines, ...t.pkgExtra },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(t.pkg ? t.pkg(rootPkg) : defaultPkg(t), null, 2)}\n`,
   );
 
   if (t.manifest) {
