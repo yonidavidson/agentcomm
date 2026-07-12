@@ -1,1 +1,1 @@
-{"name":"yonidavidson-a4fd","registeredAt":"2026-07-12T13:37:20.936Z","lastSeen":"2026-07-12T15:01:59.191Z","session":"a4fde1ee386b","status":"first-class --harness opencode (init no longer says 'as codex'); 0.16.8","statusAuto":false,"statusAt":"2026-07-12T14:34:47.484Z"}
+{"name":"yonidavidson-a4fd","registeredAt":"2026-07-12T13:37:20.936Z","lastSeen":"2026-07-12T15:07:16.431Z","session":"a4fde1ee386b","status":"opencode installs from github (exports./server); dropped npm-publish + subtree; 0.16.9","statusAuto":false,"statusAt":"2026-07-12T15:07:16.431Z"}
