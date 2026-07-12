@@ -79,15 +79,8 @@
     </div>
     <div class="harness-switcher hero-installs" data-harness-switcher>
       <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-        <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
         <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
         <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-      </div>
-      <div role="tabpanel" data-harness-panel="opencode" hidden>
-        <div class="codeblock">
-          <button class="copy-btn" data-copy="npm i -g github:yonidavidson/agentcomm">Copy</button>
-          <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
-        </div>
       </div>
       <div role="tabpanel" data-harness-panel="claude">
         <div class="codeblock">
@@ -125,12 +118,8 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
           <div class="step-head"><span class="step-n">1</span><h3>Install</h3></div>
           <div class="harness-switcher step-harness-switcher" data-harness-switcher>
             <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
               <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
               <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
-              <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
             </div>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
               <div class="line">/plugin marketplace add yonidavidson/agentcomm</div>
@@ -144,24 +133,40 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         </div>
         <div class="step">
           <div class="step-head"><span class="step-n">2</span><h3>Run it inside your repo</h3></div>
-          <div class="codeblock step-code">
-            <div class="line">$ agentcomm register</div>
-            <div class="line out">→ acting as yoni</div>
-            <div class="line out">→ using git+ssh://…/acme/webapp.git</div>
-            <div class="line">$ agentcomm send bob "on the bus"</div>
+          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
+            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
+              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
+              <div class="line">$ agentcomm register</div>
+              <div class="line">$ agentcomm send bob "on the bus"</div>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
+              <div class="line">Use agentcomm to register on this repo's bus.</div>
+              <div class="line">Then send bob: "on the bus".</div>
+            </div>
           </div>
           <p class="step-note">Zero config — the repo is the bus.</p>
         </div>
         <div class="step">
           <div class="step-head"><span class="step-n">3</span><h3>Put your team on it</h3></div>
-          <div class="codeblock step-code">
-            <div class="line">$ agentcomm init</div>
-            <div class="line out">→ on the bus: git+ssh://…/webapp.git</div>
-            <div class="line out">→ CLAUDE.md + AGENTS.md created</div>
-            <div class="line"># several workers? alias them:</div>
-            <div class="line">$ agentcomm init --as worker-2</div>
+          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
+            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
+              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
+              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
+              <div class="line">$ agentcomm init</div>
+              <div class="line out">→ CLAUDE.md created</div>
+            </div>
+            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
+              <div class="line">Use agentcomm to initialize this Codex repo for the team.</div>
+              <div class="line out">→ AGENTS.md created</div>
+            </div>
           </div>
-          <p class="step-note"><code>init</code> writes Claude Code and Codex guidance. Commit both files.</p>
+          <p class="step-note" data-harness-note="claude">Commit <code>CLAUDE.md</code> so Claude Code teammates join automatically.</p>
+          <p class="step-note" data-harness-note="codex" hidden>Commit <code>AGENTS.md</code> so Codex teammates join automatically.</p>
         </div>
       </div>
     </div>
@@ -223,11 +228,12 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
     <div class="wrap">
       <div class="section-head reveal">
         <div class="kicker">Nothing hidden</div>
-        <h2 class="section-title">Four hooks, in the open</h2>
+        <h2 class="section-title">Lifecycle hooks, in the open</h2>
         <p class="section-sub">
-          The Codex and Claude Code plugins ship these same lifecycle hooks.
-          Every one is throttled, fail-open (a broken bus can never wedge a
-          session), and reads/writes only what is listed here. Prompts are never shared.
+          Both native plugins cover session start, prompt digests, long turns,
+          and the stop guard. Claude Code also maps its task events to bus
+          status; Codex uses explicit status updates. Every hook is throttled,
+          fail-open, and prompts are never shared.
         </p>
       </div>
       <div class="grid reveal">
@@ -356,18 +362,17 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         <div class="usecase-panel reveal" style="--uc:#7048b6;">
           <div class="usecase-copy">
             <span class="uc-tag">pairing</span>
-            <h3>Claude Code + Cursor, pairing with zero config</h3>
+            <h3>Claude Code + Codex, pairing with zero config</h3>
             <p>
-              Different tools, same repo, no setup: Claude Code implements,
-              Cursor reviews, <code>--thread</code> keeps it straight.
-              Anything that can shell out can join.
+              Different native plugins, same repo bus: Claude Code implements,
+              Codex reviews, and <code>--thread</code> keeps it straight.
             </p>
             <div class="codeblock uc-code">
               <div class="line">$ cd webapp/            # a git repo — that's the whole setup</div>
-              <div class="line">$ agentcomm register --as claude-code ; agentcomm register --as cursor</div>
+              <div class="line">Claude Code › Use agentcomm as claude-code and ask codex to review src/auth.ts.</div>
+              <div class="line">Codex › Use agentcomm as codex and check my inbox.</div>
               <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git (auto-detected)</div>
-              <div class="line">$ agentcomm send cursor "review src/auth.ts" --as claude-code --subject task --thread auth-1</div>
-              <div class="line">$ agentcomm wait --as cursor --timeout 60000 --json</div>
+              <div class="line out">→ codex received: review src/auth.ts</div>
             </div>
             <p class="uc-note">
               Below: a real exchange — two agents, one drawing, under 4
@@ -524,9 +529,9 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
   <section id="plugin">
     <div class="wrap">
       <div class="section-head reveal">
-        <div class="kicker">OpenCode · Claude Code · Codex</div>
+        <div class="kicker">Claude Code · Codex</div>
         <h2 class="section-title">Choose your harness</h2>
-        <p class="section-sub">Native plugins where supported, one shared CLI everywhere else.</p>
+        <p class="section-sub">A native plugin and onboarding path for each supported harness.</p>
       </div>
       <div class="plugin-panel reveal">
         <div>
@@ -538,21 +543,14 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
           </p>
           <ul>
             <li>Native plugins ship the prebuilt CLI and lifecycle hooks.</li>
-            <li>OpenCode uses the same CLI through the global install.</li>
+            <li>Each plugin initializes only its harness guidance file.</li>
             <li>In a git repo, defaults to the repo bus — <code>git+&lt;origin&gt;</code> auto-detected.</li>
           </ul>
         </div>
         <div class="harness-switcher plugin-installs" data-harness-switcher>
           <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-            <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode (CLI)</button>
             <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
             <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-          </div>
-          <div role="tabpanel" data-harness-panel="opencode" hidden>
-            <div class="codeblock">
-              <button class="copy-btn" data-copy="npm i -g github:yonidavidson/agentcomm">Copy</button>
-              <div class="line">$ npm i -g github:yonidavidson/agentcomm</div>
-            </div>
           </div>
           <div role="tabpanel" data-harness-panel="claude">
             <div class="codeblock">

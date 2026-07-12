@@ -84,6 +84,9 @@ export function parseArgs(argv) {
             case 'limit':
                 flags.limit = Number(takeVal());
                 break;
+            case 'harness':
+                flags.harness = takeVal();
+                break;
             case 'help':
                 flags._.push('--help');
                 break;

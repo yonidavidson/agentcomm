@@ -326,10 +326,11 @@ session alias automatically.
   `claim`), and tell the user the bus branch URL
   (`https://github.com/<owner>/<repo>/tree/agentcomm`) so they can watch the
   conversation live.
-- If the user asks to set up agentcomm for their repo/team, run
-  `agentcomm init --as <user>` — it writes the coordination instructions
-  into `CLAUDE.md` and `AGENTS.md` (idempotent), registers them, and shows
-  the roster; remind them to commit both files so every teammate's agent joins.
+- If the user asks to set up agentcomm for their repo/team, run the init command
+  for the current harness: `agentcomm init --as <user>` in Claude Code, or
+  `agentcomm init --harness codex --as <user>` in Codex. It writes only that
+  harness's guidance file (`CLAUDE.md` or `AGENTS.md`), registers them, and
+  shows the roster; remind them to commit that file.
 - Housekeeping: mostly automatic — the bus daemon periodically trims the
   archive (30d) and stale registrations (7d). Manual: `purge --older-than
   <dur>` (archive) and/or `purge --agents-older-than <dur>` (idle

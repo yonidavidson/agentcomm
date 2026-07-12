@@ -27,6 +27,7 @@ export interface ParsedFlags {
     status?: string;
     statusAuto?: boolean;
     limit?: number;
+    harness?: string;
     _: string[];
 }
 /**
