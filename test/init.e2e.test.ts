@@ -1,6 +1,6 @@
 /**
  * e2e for `agentcomm init` — one-command team activation: writes the agent
- * instructions into CLAUDE.md (idempotent), registers the caller, reports
+ * instructions into CLAUDE.md and AGENTS.md (idempotent), registers the caller, reports
  * the roster.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -43,17 +43,19 @@ function run(args: string[], cwd: string, bus: string): Promise<{ code: number; 
 }
 
 describe('CLI init (one-command team activation)', () => {
-  it('creates CLAUDE.md with the coordination section, registers, reports the roster', async () => {
+  it('creates harness guidance with the coordination section, registers, reports the roster', async () => {
     const dir = await mkTmp();
     const bus = `file://${path.join(dir, '.bus')}`;
 
     const r = await run(['init', '--as', 'alice', '--json'], dir, bus);
     expect(r.code).toBe(0);
-    const out = JSON.parse(r.stdout) as { registered: string; agents: string[]; claudeMd: string };
-    expect(out).toMatchObject({ registered: 'alice', agents: ['alice'], claudeMd: 'created' });
+    const out = JSON.parse(r.stdout) as { registered: string; agents: string[]; claudeMd: string; agentsMd: string };
+    expect(out).toMatchObject({ registered: 'alice', agents: ['alice'], claudeMd: 'created', agentsMd: 'created' });
 
     const md = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    const agentsMd = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(md).toContain('<!-- agentcomm -->');
+    expect(agentsMd).toBe(md);
     expect(md).toContain('check your inbox before reporting work done');
 
     const agents = await run(['agents', '--json'], dir, bus);
@@ -65,10 +67,12 @@ describe('CLI init (one-command team activation)', () => {
     const bus = `file://${path.join(dir, '.bus')}`;
     await run(['init', '--as', 'alice'], dir, bus);
     const r2 = await run(['init', '--as', 'alice', '--json'], dir, bus);
-    expect((JSON.parse(r2.stdout) as { claudeMd: string }).claudeMd).toBe('already-present');
+    expect(JSON.parse(r2.stdout)).toMatchObject({ claudeMd: 'already-present', agentsMd: 'already-present' });
 
     const md = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
     expect(md.split('<!-- agentcomm -->')).toHaveLength(2); // exactly one marker
+    const agentsMd = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(agentsMd.split('<!-- agentcomm -->')).toHaveLength(2);
   });
 
   it('appends to an existing CLAUDE.md without touching its content', async () => {

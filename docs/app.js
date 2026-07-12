@@ -249,6 +249,35 @@
   }
 })();
 
+// Keep the selected install harness in sync across each command surface.
+const harnessSwitchers = [...document.querySelectorAll('[data-harness-switcher]')];
+const supportedHarnesses = new Set(['opencode', 'claude', 'codex']);
+function selectHarness(harness, updateUrl = true) {
+  if (!supportedHarnesses.has(harness)) harness = 'claude';
+  for (const switcher of harnessSwitchers) {
+    switcher.querySelectorAll('[data-harness-tab]').forEach((tab) => {
+      tab.setAttribute('aria-selected', String(tab.dataset.harnessTab === harness));
+    });
+    switcher.querySelectorAll('[data-harness-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.harnessPanel !== harness;
+    });
+  }
+  document.querySelectorAll('[data-harness-note]').forEach((note) => {
+    note.hidden = note.dataset.harnessNote !== harness;
+  });
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('harness', harness);
+    history.replaceState(null, '', url);
+  }
+}
+for (const switcher of harnessSwitchers) {
+  switcher.querySelectorAll('[data-harness-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => selectHarness(tab.dataset.harnessTab));
+  });
+}
+selectHarness(new URLSearchParams(window.location.search).get('harness') || 'claude', false);
+
 // Copy-to-clipboard for code blocks.
 document.querySelectorAll('[data-copy]').forEach((btn) => {
   btn.addEventListener('click', async () => {

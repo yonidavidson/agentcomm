@@ -116,7 +116,7 @@ h1.headline {
   line-height: 1.06;
   margin: 0 0 18px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--ink);
   max-width: 880px;
 }
@@ -305,7 +305,7 @@ tr:last-child td { border-bottom: none; }
 /* ---- plugin panel ---- */
 .plugin-panel {
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 36px;
   align-items: center;
   background: var(--card);
@@ -321,6 +321,17 @@ tr:last-child td { border-bottom: none; }
 .plugin-panel p { color: var(--dim); }
 .plugin-panel ul { color: var(--dim); padding-left: 18px; font-size: 0.92rem; }
 .plugin-panel li { margin-bottom: 6px; }
+.harness-switcher { min-width: 0; }
+.harness-tabs { display: inline-flex; gap: 3px; padding: 3px; margin-bottom: 10px; border: 1.5px solid var(--edge); border-radius: 8px; background: var(--paper-dim); }
+.harness-tabs button { min-height: 34px; padding: 6px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--dim); font: 600 0.82rem var(--display); cursor: pointer; }
+.harness-tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.harness-tabs button:focus-visible { outline: 3px solid var(--line-git); outline-offset: 2px; }
+.hero-installs { width: min(760px, 100%); margin-bottom: 22px; text-align: left; }
+.step-harness-switcher .harness-tabs { display: flex; }
+.step-harness-switcher .harness-tabs button { flex: 1; padding-inline: 6px; }
+.plugin-installs .codeblock { min-width: 0; overflow-x: auto; }
+.install-note { margin: 0; font-size: 0.82rem; }
+#plugin { scroll-margin-top: 140px; }
 
 /* ---- use cases: route cards ---- */
 .usecase-stack { display: flex; flex-direction: column; gap: 28px; margin-bottom: 56px; }
@@ -471,11 +482,14 @@ footer a:hover { color: var(--ink); }
 .footer-links { display: flex; gap: 18px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap; }
 
 /* ---- mobile ---- */
-@media (max-width: 720px) {
+@media (max-width: 1080px) {
   nav.topbar { display: block; text-align: center; padding: 10px 12px; }
   nav.topbar .brand { justify-content: center; margin-bottom: 6px; }
-  nav.topbar .nav-links { display: block; font-size: 0.85rem; line-height: 1.9; }
-  nav.topbar .nav-links a { margin: 0 7px; white-space: nowrap; }
+  nav.topbar .nav-links { justify-content: center; flex-wrap: wrap; gap: 6px 16px; font-size: 0.85rem; line-height: 1.5; }
+  nav.topbar .nav-links a { white-space: nowrap; }
+}
+
+@media (max-width: 720px) {
   .wrap { padding: 0 16px; }
   section { padding: 56px 0; }
   .hero { padding: 64px 16px 40px; }

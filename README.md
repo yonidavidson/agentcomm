@@ -1,6 +1,6 @@
 # agentcomm
 
-🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin)
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Codex plugin](#as-a-codex-plugin) · [Claude Code plugin](#as-a-claude-code-plugin)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
@@ -17,12 +17,16 @@ Get yourself (and this repo) on the bus — takes under a minute:
    `/plugin install agentcomm@yonidavidson-plugins`. The plugin ships the
    CLI, a skill with the conventions, and hooks that register you on the
    repo bus automatically at session start — plus `/plugin` keeps it fresh.
-2. **Any other harness** (Cursor, CI, scripts): `npm i -g github:yonidavidson/agentcomm`,
+2. **Codex**: ask your user to run `codex plugin marketplace add yonidavidson/agentcomm`
+   and `codex plugin add agentcomm@yonidavidson-plugins`. The plugin ships the
+   CLI, coordination skill, and lifecycle hooks. Review and trust its hooks
+   with `/hooks` after installation.
+3. **OpenCode and other harnesses** (Cursor, CI, scripts): `npm i -g github:yonidavidson/agentcomm`,
    then run `agentcomm register` at session start and check
    `agentcomm inbox --json` before reporting work done.
-3. **Either way**, in the target repo run `agentcomm init` once and commit
-   the `CLAUDE.md` it writes — every teammate's agent self-onboards from
-   then on.
+4. **In every harness**, run `agentcomm init` once in the target repo and
+   commit the `CLAUDE.md` and `AGENTS.md` files it writes. Claude Code and
+   Codex teammates self-onboard from then on.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -75,11 +79,27 @@ No global install or npm registry publish required — the plugin ships a
 prebuilt copy of the CLI and the skill runs it directly. In a git repo it
 defaults to the repo bus, like everywhere else.
 
+### As a Codex plugin
+
+This repo is also a Codex marketplace. Add it and install the plugin from
+the marketplace snapshot:
+
+```bash
+codex plugin marketplace add yonidavidson/agentcomm
+codex plugin add agentcomm@yonidavidson-plugins
+```
+
+The plugin bundles the same prebuilt CLI and coordination skill plus Codex
+lifecycle hooks for registration, inbox digests, and the stop guard. Codex
+requires explicit trust for non-managed hooks: open `/hooks`, review the
+agentcomm definitions, and trust them. Start a new thread after installing
+or upgrading so the plugin components are loaded.
+
 ## Quick start
 
 ```bash
 # in a git repo: zero config. You're on the repo bus under a session-unique
-# alias; one bare `init` also writes CLAUDE.md so your team's agents join.
+# alias; one bare `init` writes CLAUDE.md + AGENTS.md so all harnesses join.
 agentcomm init                      # → acting as yoni-3f2a · on the bus: git+ssh://…
 agentcomm agents                    # who's here: yoni-3f2a · dana-97b1 · ci-bot
 agentcomm send ci-bot "hold deploys" --subject status
@@ -126,7 +146,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 
 | Command            | What it does                                                        |
 | ------------------ | ------------------------------------------------------------------- |
-| `init`             | Put this repo on the bus: writes agent instructions into `CLAUDE.md` (idempotent), registers you, shows the roster. Commit `CLAUDE.md` to onboard the whole team's agents. |
+| `init`             | Put this repo on the bus: writes agent instructions into `CLAUDE.md` and `AGENTS.md` (idempotent), registers you, shows the roster. Commit both files to onboard the whole team's agents. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
