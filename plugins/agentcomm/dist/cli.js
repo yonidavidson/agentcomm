@@ -6,6 +6,7 @@ import { loadConventions } from './conventions.js';
 import { Bus } from './bus.js';
 import { parseArgs, resolveConfig } from './config.js';
 import { fileURLToPath } from 'node:url';
+import { deriveIdentity, sessionHash } from './identity.js';
 const USAGE = `agentcomm — a tiny mailbox/message bus for AI agents
 
 Usage:
@@ -520,37 +521,6 @@ async function cmdInit(bus, cfg, requestedHarness) {
     ].join('\n'));
     return 0;
 }
-let sessionHashMemo;
-/**
- * A fingerprint of THIS session, stable across the many CLI invocations one
- * agent session makes: AGENTCOMM_SESSION, else the terminal session id, else
- * the harness process (grandparent pid — each command's shell is a child of
- * the long-lived session process). Suffixes derived aliases and is recorded
- * in registrations, so tooling can tell "stale me" from "someone else".
- */
-async function sessionHash() {
-    if (sessionHashMemo !== undefined)
-        return sessionHashMemo;
-    const { createHash } = await import('node:crypto');
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    let session = process.env.AGENTCOMM_SESSION ??
-        process.env.ITERM_SESSION_ID ??
-        process.env.TERM_SESSION_ID ??
-        process.env.TMUX_PANE ??
-        '';
-    if (!session) {
-        try {
-            session =
-                'gppid:' + (await promisify(execFile)('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
-        }
-        catch {
-            session = 'ppid:' + String(process.ppid);
-        }
-    }
-    sessionHashMemo = createHash('sha1').update(session).digest('hex').slice(0, 12);
-    return sessionHashMemo;
-}
 /** register + collision alarm: fresh lastSeen under a DIFFERENT session = two live processes on one consuming mailbox. */
 async function registerWithCollisionCheck(bus, me, status, statusAuto) {
     const session = await sessionHash();
@@ -791,31 +761,8 @@ async function resolveAgent(cfg) {
     if (cfg.agent)
         return cfg.agent;
     if (derivedIdentity === undefined) {
-        const { execFile } = await import('node:child_process');
-        const { promisify } = await import('node:util');
-        const os = await import('node:os');
-        const sanitize = (raw) => raw.replace(/[^A-Za-z0-9._-]/g, '');
-        let name = '';
-        let source = '';
-        try {
-            const email = (await promisify(execFile)('git', ['config', 'user.email'])).stdout.trim();
-            name = sanitize(email.split('@')[0] ?? '');
-            source = 'from git config user.email';
-        }
-        catch {
-            /* not a repo / no git identity */
-        }
-        if (!name) {
-            name = sanitize(os.userInfo().username);
-            source = 'OS username';
-        }
-        // Session suffix: multiple runners on one machine (several Claude/Codex
-        // sessions, parallel workers) must not share a mailbox — inbox reads
-        // consume. The suffix is the session fingerprint (see sessionHash).
-        if (name) {
-            name = `${name}-${(await sessionHash()).slice(0, 4)}`;
-        }
-        derivedIdentity = name || null;
+        const { name, source } = await deriveIdentity();
+        derivedIdentity = name;
         if (derivedIdentity) {
             process.stderr.write(`agentcomm: acting as ${derivedIdentity} (${source} + session; --as or AGENTCOMM_AGENT overrides)\n`);
         }

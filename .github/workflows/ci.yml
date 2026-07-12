@@ -40,3 +40,31 @@ jobs:
       - name: Stop e2e services
         if: always()
         run: npm run test:e2e:down
+
+  # Drives the REAL harness binaries (OpenCode; Pi to follow) with the plugin
+  # loaded, against a file:// bus + a local mock model — regression coverage for
+  # the actual integration, not just the in-process module tests. Separate job:
+  # installing the binaries is slow and needs no docker backend stack. The
+  # suites self-skip without their binary/flag, so a broken install degrades to
+  # "skipped", never a red build.
+  e2e-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Install OpenCode
+        run: npm i -g opencode-ai && opencode --version
+
+      - name: Harness e2e (real binaries)
+        run: npm run test:e2e:harness
+        env:
+          AGENTCOMM_TEST_OPENCODE: '1'

@@ -1,92 +1,72 @@
 /**
  * agentcomm OpenCode plugin.
  *
- * Wires the agentcomm bus lifecycle onto OpenCode's plugin events, reusing the
- * exact same hook scripts (hooks/*.mjs) that back the Claude Code and Codex
- * plugins — so behavior stays identical and single-sourced.
+ * Puts every OpenCode session on the agentcomm bus: registers + briefs at
+ * start, surfaces unread mail before the session goes idle, and keeps long
+ * autonomous turns reachable — the same behavior the Claude Code and Codex
+ * plugins provide.
  *
- * Mapping (verified against @opencode-ai/plugin):
- *   event "session.created" → session-start.mjs   (register + brief)
- *   event "session.idle"    → stop-inbox-guard.mjs (unread-mail guard)
- *   "tool.execute.after"    → midturn-digest.mjs   (long-turn reachability)
- *
- * OpenCode injection is pull-based (the `experimental.chat.system.transform`
- * hook mutates the system prompt) and idle is observe-only (no veto), so:
- *   - hook `additionalContext` is buffered and injected on the next turn.
- *   - a stop-guard `decision:block` becomes a best-effort re-prompt, since
- *     OpenCode can't hold a session open the way Claude/Codex can.
+ * OpenCode runs on Bun, so this imports the agentcomm library directly (the
+ * synced ../dist) and calls the bus in-process rather than spawning the Node
+ * hook scripts. Verified against @opencode-ai/plugin:
+ *   - `opencode run` emits NO `session.created` — so register+brief happens in
+ *     the factory body (which OpenCode calls per project, with the directory).
+ *   - context injection is pull-based via `experimental.chat.system.transform`.
+ *   - `session.idle` is observe-only (no veto) — the inbox guard degrades to a
+ *     best-effort re-prompt, since OpenCode can't hold a session open.
+ * Everything fails open: a broken bus never wedges the session.
  */
 import type { Plugin } from '@opencode-ai/plugin';
-import { spawn } from 'node:child_process';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-// dist/ and hooks/ are synced next to this plugin (see scripts/sync-plugins.mjs)
-const pluginRoot = path.resolve(here, '..');
-
-/** Run a bundled hook script with synthesized stdin; return its parsed JSON output (or null). */
-function runHook(script: string, stdin: object, cwd: string): Promise<Record<string, unknown> | null> {
-  return new Promise((resolve) => {
-    let out = '';
-    const child = spawn(process.execPath, [path.join(pluginRoot, 'hooks', script)], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'ignore'],
-      // PLUGIN_ROOT lets the hook find dist/cli.js; a stable session seed keeps
-      // the extension's derived alias aligned with the agent's own CLI calls.
-      env: { ...process.env, PLUGIN_ROOT: pluginRoot },
-    });
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.on('error', () => resolve(null));
-    child.on('close', () => {
-      try {
-        resolve(out.trim() ? (JSON.parse(out) as Record<string, unknown>) : null);
-      } catch {
-        resolve(null);
-      }
-    });
-    child.stdin.end(JSON.stringify(stdin));
-  });
-}
-
-function contextOf(res: Record<string, unknown> | null): string | null {
-  const hso = res?.hookSpecificOutput as { additionalContext?: string } | undefined;
-  return hso?.additionalContext ?? null;
-}
+// The library is synced next to this plugin (see scripts/sync-plugins.mjs).
+import {
+  openBusSession,
+  sessionStartContext,
+  inboxGuardReason,
+  midTurnContext,
+  type BusSession,
+} from '../dist/index.js';
 
 export const AgentcommPlugin: Plugin = async ({ directory, client }) => {
-  const cwd = directory;
   // Context the bus wants the model to see on its next turn (OpenCode pulls
   // system-prompt additions via system.transform rather than us pushing).
   const pending: string[] = [];
+  let session: BusSession | null = null;
+
+  // OpenCode calls the factory per project with the directory; register + brief
+  // here since `session.created` never fires in `run` mode.
+  try {
+    session = await openBusSession(directory);
+    if (session) {
+      const ctx = await sessionStartContext(session);
+      if (ctx) pending.push(ctx);
+    }
+  } catch {
+    /* fail open */
+  }
 
   return {
     async event({ event }) {
+      if (!session || event.type !== 'session.idle') return;
       try {
-        if (event.type === 'session.created') {
-          const ctx = contextOf(await runHook('session-start.mjs', { cwd, source: 'startup' }, cwd));
-          if (ctx) pending.push(ctx);
-        } else if (event.type === 'session.idle') {
-          const res = await runHook('stop-inbox-guard.mjs', { cwd }, cwd);
-          const reason = res?.decision === 'block' ? (res.reason as string) : null;
-          if (reason) {
-            // Can't veto idle — re-engage the session with the guard's reason.
-            const sessionID = (event as { properties?: { sessionID?: string } }).properties?.sessionID;
-            if (sessionID) {
-              await client.session
-                .prompt({ path: { id: sessionID }, body: { parts: [{ type: 'text', text: reason }] } })
-                .catch(() => {});
-            }
+        const reason = await inboxGuardReason(session);
+        if (reason) {
+          // Can't veto idle — re-engage the session with the guard's reason.
+          const sessionID = (event as { properties?: { sessionID?: string } }).properties?.sessionID;
+          if (sessionID) {
+            await client.session
+              .prompt({ path: { id: sessionID }, body: { parts: [{ type: 'text', text: reason }] } })
+              .catch(() => {});
           }
         }
       } catch {
-        /* fail open — a broken bus never wedges the session */
+        /* fail open */
       }
     },
 
     async 'tool.execute.after'() {
+      if (!session) return;
       try {
-        const ctx = contextOf(await runHook('midturn-digest.mjs', { cwd, tool_name: 'tool' }, cwd));
+        const ctx = await midTurnContext(session);
         if (ctx) pending.push(ctx);
       } catch {
         /* fail open */
@@ -94,9 +74,11 @@ export const AgentcommPlugin: Plugin = async ({ directory, client }) => {
     },
 
     async 'experimental.chat.system.transform'(_input, output) {
-      if (pending.length) {
-        output.system.push(...pending.splice(0));
-      }
+      if (pending.length) output.system.push(...pending.splice(0));
+    },
+
+    async dispose() {
+      await session?.close().catch(() => {});
     },
   };
 };

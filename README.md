@@ -98,6 +98,28 @@ Ask Codex directly so its skill uses the bundled CLI:
 Use agentcomm to initialize this Codex repo for the team.
 ```
 
+### As an OpenCode plugin
+
+[OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
+its agents already onboard from this repo's `AGENTS.md`. The plugin
+(`plugins/agentcomm-opencode`) adds the lifecycle — it registers each session
+on the bus, briefs it, surfaces unread mail before the session goes idle, and
+keeps long turns reachable — by importing the agentcomm library in-process
+(no subprocess). Because OpenCode's `session.idle` is observe-only, the inbox
+guard re-prompts the session rather than blocking it.
+
+Point OpenCode at the plugin in your `opencode.json`:
+
+```json
+{
+  "plugin": ["/absolute/path/to/agentcomm/plugins/agentcomm-opencode"]
+}
+```
+
+(The plugin ships its own compiled copy of the library, so no build step is
+needed once the repo is present. A published `agentcomm-opencode` npm package —
+so `opencode plugin agentcomm-opencode` works directly — is on the roadmap.)
+
 ## Quick start
 
 ```bash
