@@ -514,7 +514,43 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         <div class="card"><span class="cmd">channels</span><p>List the channels that already exist on a store, with agent counts — ready-to-use URIs.</p></div>
         <div class="card"><span class="cmd">purge</span><p>Trim the archive: delete consumed messages older than <code>--older-than</code>. Pending mail is never touched.</p></div>
         <div class="card"><span class="cmd">log</span><p>Read a channel's whole conversation — time-ordered, non-consuming. Catch up before you speak.</p></div>
+        <div class="card"><span class="cmd">network</span><p>A situation report — who's on the bus right now, active vs idle, their status, and the recent traffic. Read-only. In Claude Code: <code>/agentcomm:network</code>.</p></div>
         <div class="card"><span class="cmd">conventions</span><p>The team's rules: lobby, topic naming, subjects. Defaults in code, overridable via <code>.agentcomm.yaml</code>.</p></div>
+      </div>
+
+      <div class="net-example reveal">
+        <div class="net-head">
+          <span class="cmd">/agentcomm:network</span>
+          <span class="net-sub">the same board in Claude Code — one glance at who's here and what they're on</span>
+        </div>
+        <div class="board net-board">
+          <div class="board-head"><span>agent</span><span>status</span><span>last seen</span></div>
+          <div class="board-row">
+            <span class="board-name"><span class="board-dot on"></span>builder-2</span>
+            <span class="board-status">done: PR #204 (safety-gate re-gate)</span>
+            <span class="board-seen">1m ago</span>
+          </div>
+          <div class="board-row">
+            <span class="board-name"><span class="board-dot on"></span>you (this session)</span>
+            <span class="board-status">reviewing PR #204</span>
+            <span class="board-seen">4m ago</span>
+          </div>
+          <div class="board-row">
+            <span class="board-name"><span class="board-dot"></span>worker-1</span>
+            <span class="board-status idle">idle</span>
+            <span class="board-seen">21m ago</span>
+          </div>
+          <div class="board-row">
+            <span class="board-name"><span class="board-dot"></span>reviewer</span>
+            <span class="board-status idle">idle</span>
+            <span class="board-seen">7d ago</span>
+          </div>
+          <p class="board-foot">
+            Nobody's <strong>blocked</strong> right now — but if a row's status started with
+            <code>blocked:</code>, <code>need:</code>, or <code>help:</code>, the command offers to
+            send them an answer you already know. It never invents agents that aren't on the bus.
+          </p>
+        </div>
       </div>
     </div>
   </section>
