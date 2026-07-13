@@ -208,6 +208,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
 | `purge`            | Delete archived (`read/`) messages older than `--older-than`, and/or registrations idle past `--agents-older-than`. Pending mail is never touched. The daemon runs both automatically (30d / 7d defaults). |
 | `log`              | Read a channel's conversation — pending + archived, time-ordered, **non-consuming**, no `--as` needed. `--thread`, `--limit`. |
+| `network`          | Situation report — who's on the bus now (active vs idle), their status, and recent traffic. Read-only. In Claude Code: `/agentcomm:network`. |
 | `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. |
 
 ### Flags

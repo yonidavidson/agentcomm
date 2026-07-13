@@ -552,3 +552,18 @@ footer a:hover { color: var(--ink); }
   .board-head, .board-row { grid-template-columns: 130px 1fr; }
   .board-head span:last-child, .board-seen { display: none; }
 }
+
+/* ---- /agentcomm:network — static example board ---- */
+.net-example { max-width: 760px; margin: 40px auto 0; }
+.net-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-bottom: 14px;
+}
+.net-head .cmd { font-size: 0.9rem; }
+.net-sub { color: #8494a8; font-size: 0.86rem; font-family: var(--sans); }
+.net-board { margin-top: 0; }
+.net-board .board-foot { border-top: 1px solid rgba(255, 255, 255, 0.06); margin-top: 4px; }
+.net-board .board-foot code { color: var(--line-git); }
