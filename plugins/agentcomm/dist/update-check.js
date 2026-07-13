@@ -1,21 +1,27 @@
 /**
- * OpenCode update check — the "Update Available" nudge (like omp/pi show).
+ * "Update available" nudge — shared across every harness (omp/pi-style).
  *
- * OpenCode installs the plugin from a versioned release tarball and caches it by
- * URL forever (a stable "latest" URL would NOT re-fetch — verified), so users
- * upgrade by bumping the version in their opencode.json. To make that visible,
- * the plugin compares its installed version to the latest GitHub release once a
- * day and, when behind, surfaces a one-line notice telling the user to bump the
- * URL. Everything fails open and is network-capped — never blocks a session.
+ * None of the harnesses auto-upgrade an installed plugin: OpenCode caches the
+ * tarball by URL forever, and Claude Code / Codex pin the installed commit and
+ * never re-check (there is no built-in "plugin outdated" notice — see
+ * anthropics/claude-code#31462). So the plugin itself compares its installed
+ * version to the latest GitHub release once a day and, when behind, surfaces a
+ * one-line notice telling the user how to upgrade for their harness. Everything
+ * fails open and is network-capped — it never blocks a session.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
 import * as path from 'node:path';
 const REPO = 'yonidavidson/agentcomm';
-const CACHE = path.join(os.tmpdir(), 'agentcomm-opencode-update.json');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
+/** Per-harness upgrade instructions — the "how" appended to the version line. */
+const HOW_TO_UPGRADE = {
+    opencode: (tag) => `Bump the plugin tarball URL in your opencode.json to ${tag} — OpenCode caches by URL, so the version in the URL is what triggers the upgrade.`,
+    claude: () => 'Upgrade with `/plugin update agentcomm` (or `/plugin` → Manage plugins).',
+    codex: () => 'Upgrade with `codex plugin marketplace upgrade yonidavidson-plugins`, then `codex plugin add agentcomm@yonidavidson-plugins` to reinstall.',
+};
 /** Numeric semver-ish compare of dotted versions: >0 if a is newer than b. */
 export function compareVersions(a, b) {
     const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
@@ -28,13 +34,13 @@ export function compareVersions(a, b) {
     return 0;
 }
 /** Build the user-facing notice, or null if `latest` is not newer than `mine`. */
-export function updateMessage(mine, latestTag) {
+export function updateMessage(mine, latestTag, harness) {
     if (compareVersions(latestTag, mine) <= 0)
         return null;
-    return (`agentcomm-opencode update available: v${mine.replace(/^v/, '')} → ${latestTag}. ` +
-        `Bump the plugin tarball URL in your opencode.json to ${latestTag} ` +
-        `(latest: https://github.com/${REPO}/releases/latest). OpenCode caches by URL, so ` +
-        `the version in the URL is what triggers the upgrade.`);
+    const v = mine.replace(/^v/, '');
+    return (`agentcomm update available: v${v} → ${latestTag}. ` +
+        `${HOW_TO_UPGRADE[harness](latestTag)} ` +
+        `(latest: https://github.com/${REPO}/releases/latest)`);
 }
 /** This package's installed version, read from its own package.json (dist/ is one level down). */
 function ownVersion() {
@@ -52,7 +58,7 @@ async function fetchLatestTag() {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
         const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'agentcomm-opencode' },
+            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'agentcomm' },
             signal: ctrl.signal,
         });
         clearTimeout(timer);
@@ -67,15 +73,16 @@ async function fetchLatestTag() {
 }
 /**
  * Returns an "update available" notice string, or null. Throttled to one network
- * check per day via a temp-file cache; always fails open.
+ * check per day per harness via a temp-file cache; always fails open.
  */
-export async function updateNotice() {
+export async function updateNotice(harness) {
     const mine = ownVersion();
     if (!mine)
         return null;
+    const cache = path.join(os.tmpdir(), `agentcomm-update-${harness}.json`);
     // Day-throttle: reuse a recent result rather than hitting GitHub every session.
     try {
-        const c = JSON.parse(readFileSync(CACHE, 'utf8'));
+        const c = JSON.parse(readFileSync(cache, 'utf8'));
         if (typeof c.at === 'number' && Date.now() - c.at < DAY_MS) {
             return c.forVersion === mine ? (c.notice ?? null) : null;
         }
@@ -84,13 +91,13 @@ export async function updateNotice() {
         /* no/invalid cache — fall through to a fresh check */
     }
     const tag = await fetchLatestTag();
-    const notice = tag ? updateMessage(mine, tag) : null;
+    const notice = tag ? updateMessage(mine, tag, harness) : null;
     try {
-        writeFileSync(CACHE, JSON.stringify({ at: Date.now(), forVersion: mine, notice }));
+        writeFileSync(cache, JSON.stringify({ at: Date.now(), forVersion: mine, notice }));
     }
     catch {
         /* best effort */
     }
     return notice;
 }
-//# sourceMappingURL=opencode-update.js.map
+//# sourceMappingURL=update-check.js.map

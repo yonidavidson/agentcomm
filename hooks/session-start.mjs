@@ -61,6 +61,17 @@ const lines = [
   'To coordinate: `agentcomm send <to> <msg>` / `inbox --json` / `wait`; the agentcomm skill has the conventions.',
 ].filter(Boolean);
 
+// "Update available" nudge — no harness auto-upgrades an installed plugin, so
+// the plugin checks the latest release once a day and, when behind, tells the
+// user how to upgrade. This hook only ever runs under Claude Code or Codex;
+// Claude Code sets CLAUDE_PLUGIN_ROOT, Codex sets PLUGIN_ROOT. Fails open.
+try {
+  const harness = process.env.CLAUDE_PLUGIN_ROOT ? 'claude' : 'codex';
+  const { updateNotice } = await import('../dist/update-check.js');
+  const note = await updateNotice(harness);
+  if (note) lines.push(note);
+} catch { /* fail open — never block a session on the update check */ }
+
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: lines.join('\n') },
