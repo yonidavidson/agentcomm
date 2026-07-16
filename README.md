@@ -26,7 +26,7 @@ Get yourself (and this repo) on the bus — takes under a minute:
    coordination contract to `AGENTS.md`.
 3. **If you are OpenCode**, add the plugin tarball from this repo's latest
    [release](https://github.com/yonidavidson/agentcomm/releases) to your
-   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.1/agentcomm-opencode-0.17.1.tgz"]`.
+   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"]`.
    It puts every session on the repo bus in-process. OpenCode reads `AGENTS.md`
    natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
    also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
@@ -120,7 +120,7 @@ the `.tgz` directly, no clone and no npm registry:
 
 ```json
 {
-  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.1/agentcomm-opencode-0.17.1.tgz"]
+  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"]
 }
 ```
 
