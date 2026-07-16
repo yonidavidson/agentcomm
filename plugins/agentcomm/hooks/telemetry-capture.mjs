@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Deterministic telemetry capture (issue #100). Harness hooks route lifecycle
- * moments here — PostToolUse (Skill / Bash), SessionStart, SessionEnd,
- * TaskCompleted — and if the repo's .agentcomm config has a matching
+ * moments here — PostToolUse (Skill / Task·Agent subagent spawns / Bash),
+ * SessionStart, SessionEnd, TaskCompleted — and if the repo's .agentcomm
+ * config has a matching
  * `telemetry.track` rule, the event is recorded. No model discretion: if
  * it's in the config, it fires; without the config section, this exits
  * silently. Recording is `agentcomm emit`, which only appends to the local
