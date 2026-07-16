@@ -7,6 +7,8 @@ export interface BusSession {
     backend: Awaited<ReturnType<typeof createBackend>>;
     alias: string;
     busUri: string;
+    /** The repo the session runs in — where the .agentcomm (telemetry) config lives. */
+    cwd: string;
     close(): Promise<void>;
 }
 /** Open the bus for `cwd` and resolve this session's alias. Returns null if off-bus or on any error. */

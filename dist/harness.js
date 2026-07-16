@@ -13,6 +13,7 @@ import { createBackend } from './backends/index.js';
 import { detectRepoBus } from './backends/autodetect.js';
 import { loadConventions } from './conventions.js';
 import { deriveIdentity, sessionHash } from './identity.js';
+import { flushEvents, materializeEvent, spoolEvents } from './telemetry.js';
 const MARKER = '<!-- agentcomm -->';
 /** Consent gate: act only where the repo opted in (AGENTCOMM_BACKEND, or a marked CLAUDE.md/AGENTS.md). */
 export async function onTheBus(cwd) {
@@ -64,6 +65,7 @@ export async function openBusSession(cwd) {
             backend,
             alias,
             busUri,
+            cwd,
             close: async () => {
                 await backend.close?.();
             },
@@ -75,11 +77,38 @@ export async function openBusSession(cwd) {
 }
 const active = (a) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
 const isAsk = (s) => /^(blocked|need|help)\b/i.test(s ?? '');
+/** The repo's telemetry track rules — [] means not opted in (issue #100). */
+async function telemetryTrack(s) {
+    try {
+        return (await loadConventions(s.cwd))?.telemetry?.track ?? [];
+    }
+    catch {
+        return [];
+    }
+}
+/** Ship any locally-spooled telemetry with a write that just happened — fail-open. */
+async function rideAlong(s) {
+    try {
+        await flushEvents(s.backend, s.busUri, s.alias);
+    }
+    catch {
+        /* events stay spooled for the next ride */
+    }
+}
 /** Register (heartbeat) + build the session-start briefing the model should see. */
 export async function sessionStartContext(s) {
     try {
         const session = await sessionHash();
+        const track = await telemetryTrack(s);
+        // deterministic capture: if the repo tracks sessions, this fires — the
+        // spool then rides the register we are about to make anyway
+        if (track.some((r) => r.on === 'session')) {
+            await spoolEvents(s.busUri, s.alias, [
+                materializeEvent({ agent: s.alias, session, type: 'session-start' }),
+            ]);
+        }
         await s.bus.register(s.alias, session);
+        await rideAlong(s);
         const roster = await s.bus.agents();
         const pending = await s.bus.peek(s.alias);
         const others = roster.filter((a) => a.name !== s.alias && active(a));
@@ -97,6 +126,19 @@ export async function sessionStartContext(s) {
                 .filter((a) => isAsk(a.status))
                 .map((a) => `call to action — ${a.name} is asking: "${a.status}". If you can answer from what you already know, \`agentcomm send ${a.name} "<answer>" --subject status\`.`),
             'See who is on the bus and what they are doing any time with `agentcomm network`.',
+            // telemetry semantic layer: outcomes only the model can judge are
+            // self-reported — surface the repo's record: instructions
+            ...(() => {
+                const recs = track.filter((r) => r.record);
+                if (!recs.length)
+                    return [];
+                return [
+                    'Telemetry (repo opt-in via .agentcomm config): hooks record tracked events automatically; YOU self-report the outcomes below when they happen, with `agentcomm emit`:',
+                    ...recs
+                        .slice(0, 6)
+                        .map((r) => `  - after ${r.on}${r.match ? ` "${r.match}"` : ''}: record ${r.record} — \`agentcomm emit --type ${r.on}-outcome${r.match ? ` --name ${r.match}` : ''} --ref "$(git branch --show-current)" --attrs '{"…":"…"}'\``),
+                ];
+            })(),
         ].filter(Boolean);
         return lines.join('\n');
     }
@@ -122,6 +164,7 @@ export async function inboxGuardReason(s) {
 export async function midTurnContext(s) {
     try {
         await s.bus.register(s.alias, await sessionHash());
+        await rideAlong(s); // the heartbeat is a ride for any spooled telemetry
         const pending = await s.bus.peek(s.alias);
         const roster = await s.bus.agents();
         const asks = roster.filter((a) => a.name !== s.alias && active(a) && isAsk(a.status));

@@ -21,6 +21,7 @@ const CODEX_HOOKS = [
   'prompt-digest.mjs',
   'session-start.mjs',
   'stop-inbox-guard.mjs',
+  'telemetry-capture.mjs',
 ];
 
 const TARGETS = [

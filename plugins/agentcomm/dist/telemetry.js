@@ -21,12 +21,30 @@ import { createHash, randomUUID } from 'node:crypto';
 export const EVENTS_PREFIX = 'events/';
 // ── spool ───────────────────────────────────────────────────────────────────
 // Capture must be fast, offline, and unable to break the caller: append a
-// JSONL line to a tmpdir file keyed by (bus URI, agent). Draining claims the
-// whole file with an atomic rename, so concurrent flushers never double-ship
-// a batch — the loser of the rename race simply finds nothing to drain.
+// JSONL line to a tmpdir file keyed by (bus URI, agent). The bus key is a
+// separate filename segment so a flush can drain EVERY spool bound for this
+// bus, not just the acting alias's — hook-captured events (derived session
+// alias) still ship when the agent writes as a role alias, and each event
+// carries its own `agent` field so cross-alias batches lose nothing.
+// Draining claims a whole file with an atomic rename, so concurrent flushers
+// never double-ship — the loser of the rename race finds nothing to drain.
+const busKey = (busUri) => createHash('sha1').update(busUri).digest('hex').slice(0, 12);
+const spoolPrefix = (busUri) => `agentcomm-events-${busKey(busUri)}-`;
 export function spoolPath(busUri, agent) {
-    const key = createHash('sha1').update(`${busUri}\0${agent}`).digest('hex').slice(0, 16);
-    return path.join(os.tmpdir(), `agentcomm-events-${key}.jsonl`);
+    const agentKey = createHash('sha1').update(agent).digest('hex').slice(0, 12);
+    return path.join(os.tmpdir(), `${spoolPrefix(busUri)}${agentKey}.jsonl`);
+}
+/** Every spool file currently waiting for this bus (any alias). */
+async function spoolFiles(busUri) {
+    try {
+        const names = await fs.readdir(os.tmpdir());
+        return names
+            .filter((n) => n.startsWith(spoolPrefix(busUri)) && n.endsWith('.jsonl'))
+            .map((n) => path.join(os.tmpdir(), n));
+    }
+    catch {
+        return [];
+    }
 }
 /** Append events to the local spool. Never throws — capture is best-effort. */
 export async function spoolEvents(busUri, agent, events) {
@@ -41,19 +59,22 @@ export async function spoolEvents(busUri, agent, events) {
         return false;
     }
 }
-/** How many events are waiting locally (0 on any error — used as a cheap pre-flush check). */
-export async function spoolDepth(busUri, agent) {
-    try {
-        const raw = await fs.readFile(spoolPath(busUri, agent), 'utf8');
-        return raw.split('\n').filter((l) => l.trim()).length;
+/** How many events are waiting locally for this bus, across all aliases (0 on any error). */
+export async function spoolDepth(busUri) {
+    let n = 0;
+    for (const file of await spoolFiles(busUri)) {
+        try {
+            const raw = await fs.readFile(file, 'utf8');
+            n += raw.split('\n').filter((l) => l.trim()).length;
+        }
+        catch {
+            /* claimed or vanished mid-count */
+        }
     }
-    catch {
-        return 0;
-    }
+    return n;
 }
-/** Atomically claim and parse the spool. Empty array when there is nothing (or on a lost race). */
-async function drainSpool(busUri, agent) {
-    const file = spoolPath(busUri, agent);
+/** Atomically claim and parse one spool file. Empty array when nothing (or on a lost race). */
+async function drainSpoolFile(file) {
     const claimed = `${file}.${process.pid}.${randomUUID().slice(0, 8)}.draining`;
     try {
         await fs.rename(file, claimed); // atomic claim: concurrent drainers get ENOENT
@@ -84,15 +105,18 @@ async function drainSpool(busUri, agent) {
     }
 }
 /**
- * Drain the spool and ship it as ONE batch blob. Returns the number of
- * events shipped (0 = nothing waiting). On a failed put the events go back
- * on the spool — at-most-once overall, but a transient backend error does
- * not eat the batch.
+ * Drain every spool bound for this bus and ship them as ONE batch blob.
+ * Returns the number of events shipped (0 = nothing waiting). On a failed
+ * put the events go back on `respoolAgent`'s spool — at-most-once overall,
+ * but a transient backend error does not eat the batch.
  */
-export async function flushEvents(backend, busUri, agent) {
-    const events = await drainSpool(busUri, agent);
+export async function flushEvents(backend, busUri, respoolAgent) {
+    const events = [];
+    for (const file of await spoolFiles(busUri))
+        events.push(...(await drainSpoolFile(file)));
     if (events.length === 0)
         return 0;
+    events.sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0) || a.id.localeCompare(b.id));
     const batch = { v: 1, events };
     const id = randomUUID().replace(/-/g, '').slice(0, 12);
     try {
@@ -100,7 +124,7 @@ export async function flushEvents(backend, busUri, agent) {
         return events.length;
     }
     catch (err) {
-        await spoolEvents(busUri, agent, events);
+        await spoolEvents(busUri, respoolAgent, events);
         throw err;
     }
 }
