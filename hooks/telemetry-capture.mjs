@@ -45,6 +45,14 @@ function deriveEvent() {
     if (skill && tracked('skill', skill)) return { type: 'skill-ran', name: skill };
     return null;
   }
+  // Subagent spawns (Claude Code's Task/Agent tool). Skills that a repo runs
+  // as dedicated subagents — or that set disable-model-invocation and are
+  // therefore invisible to the Skill tool — are only observable here.
+  if (hook === 'PostToolUse' && (input.tool_name === 'Task' || input.tool_name === 'Agent')) {
+    const subagent = input.tool_input?.subagent_type;
+    if (subagent && tracked('agent', subagent)) return { type: 'agent-ran', name: subagent };
+    return null;
+  }
   if (hook === 'PostToolUse' && input.tool_name === 'Bash') {
     const command = String(input.tool_input?.command ?? '');
     if (/(^|[\s;&|(])git\s+merge\b/.test(command) || /(^|[\s;&|(])gh\s+pr\s+merge\b/.test(command)) {
