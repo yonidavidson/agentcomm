@@ -219,8 +219,11 @@ If the repo's `.agentcomm.json`/`.yaml` has a `telemetry` section, the bus
 also carries an append-only event lane that answers questions like "how many
 runs of skill X found bugs, and how many iterations before merge":
 
-- **Hooks record the deterministic facts** (a tracked skill ran, a merge
-  happened, a session started) — you don't emit those.
+- **Hooks record the deterministic facts** (a tracked skill ran, a tracked
+  subagent was spawned, a merge happened, a session started) — you don't
+  emit those. Skills that run as dedicated subagents (or set
+  `disable-model-invocation`, hiding them from the Skill tool) are tracked
+  with `on: agent` matching the `subagent_type`.
 - **You self-report outcomes** the hooks can't judge. The session-start
   briefing lists exactly what to record; when one of those moments happens,
   run e.g. `agentcomm emit --type skill-outcome --name <skill> --ref

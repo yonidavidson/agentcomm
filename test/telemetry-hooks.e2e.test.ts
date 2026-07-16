@@ -29,6 +29,7 @@ const TELEMETRY = {
   telemetry: {
     track: [
       { on: 'skill', match: 'thermo-*', record: 'whether it uncovered bugs and the findings count' },
+      { on: 'agent', match: 'code-review-*' },
       { on: 'merge' },
       { on: 'session' },
     ],
@@ -119,6 +120,36 @@ describe('telemetry capture hooks (issue #100)', () => {
     );
     cliJson(['register', '--as', 'rider'], dir);
     expect(cliJson<Ev[]>(['events'], dir)).toEqual([]);
+  });
+
+  it('a tracked subagent spawn (Task/Agent tool) is recorded; untracked and typeless ones are not', async () => {
+    const dir = await trackedRepo();
+    // the same subagent skill is unreachable via the Skill tool when it sets
+    // disable-model-invocation — the Task/Agent spawn is the only signal
+    await runHook(
+      'telemetry-capture.mjs',
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Task', tool_input: { subagent_type: 'code-review-nuclear' } },
+      dir,
+    );
+    await runHook(
+      'telemetry-capture.mjs',
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'code-review-nuclear' } },
+      dir,
+    );
+    await runHook(
+      'telemetry-capture.mjs',
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'general-purpose' } },
+      dir,
+    );
+    await runHook(
+      'telemetry-capture.mjs',
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { prompt: 'no subagent_type at all' } },
+      dir,
+    );
+    cliJson(['register', '--as', 'rider'], dir);
+    const events = cliJson<Ev[]>(['events'], dir);
+    expect(events).toHaveLength(2); // both tool spellings fire; untracked/typeless do not
+    for (const e of events) expect(e).toMatchObject({ type: 'agent-ran', name: 'code-review-nuclear', ref: 'feat-x' });
   });
 
   it('a merge command through Bash is recorded when tracked', async () => {

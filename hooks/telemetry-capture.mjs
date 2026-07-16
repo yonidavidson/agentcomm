@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Deterministic telemetry capture (issue #100). Harness hooks route lifecycle
- * moments here — PostToolUse (Skill / Bash), SessionStart, SessionEnd,
- * TaskCompleted — and if the repo's .agentcomm config has a matching
+ * moments here — PostToolUse (Skill / Task·Agent subagent spawns / Bash),
+ * SessionStart, SessionEnd, TaskCompleted — and if the repo's .agentcomm
+ * config has a matching
  * `telemetry.track` rule, the event is recorded. No model discretion: if
  * it's in the config, it fires; without the config section, this exits
  * silently. Recording is `agentcomm emit`, which only appends to the local
@@ -43,6 +44,14 @@ function deriveEvent() {
   if (hook === 'PostToolUse' && input.tool_name === 'Skill') {
     const skill = input.tool_input?.skill ?? input.tool_input?.name;
     if (skill && tracked('skill', skill)) return { type: 'skill-ran', name: skill };
+    return null;
+  }
+  // Subagent spawns (Claude Code's Task/Agent tool). Skills that a repo runs
+  // as dedicated subagents — or that set disable-model-invocation and are
+  // therefore invisible to the Skill tool — are only observable here.
+  if (hook === 'PostToolUse' && (input.tool_name === 'Task' || input.tool_name === 'Agent')) {
+    const subagent = input.tool_input?.subagent_type;
+    if (subagent && tracked('agent', subagent)) return { type: 'agent-ran', name: subagent };
     return null;
   }
   if (hook === 'PostToolUse' && input.tool_name === 'Bash') {

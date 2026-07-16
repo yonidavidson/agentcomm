@@ -413,9 +413,12 @@ telemetry:
 ```
 
 The plugins wire the deterministic layer automatically: Claude Code hooks
-record tracked `skill` runs (PostToolUse on the Skill tool), `merge`
-commands (guarded Bash matcher), and `session` start/end (end also ships
-the spool); Codex and OpenCode record `session` events; and the session
+record tracked `skill` runs (PostToolUse on the Skill tool), `agent`
+subagent spawns (PostToolUse on the Task/Agent tool, matched by
+`subagent_type` — the only signal for skills that run as dedicated
+subagents or set `disable-model-invocation`), `merge` commands (guarded
+Bash matcher), and `session` start/end (end also ships the spool); Codex
+and OpenCode record `session` events; and the session
 briefing injects each rule's `record:` text so the model knows what to
 self-report. The `on`/`match` layer never depends on the model — if it's
 in the config, it fires.
