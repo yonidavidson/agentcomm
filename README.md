@@ -576,6 +576,21 @@ it runs against **this repository itself** using the workflow's token.
 CI (`.github/workflows/ci.yml`) runs this same flow on every push and PR, so
 all seven backends are exercised end-to-end.
 
+### Releasing
+
+One dispatch does the whole train — bump every stamped version (package,
+lockfile, Claude Code + Codex plugin manifests), rebuild the committed
+`dist/` and plugin subtrees, retarget the README's OpenCode tarball URL,
+sanity-test, push the release commit, tag, publish the GitHub Release with
+generated notes, and attach the OpenCode tarball:
+
+```bash
+gh workflow run release-cut.yml -f version=patch   # or minor | major | X.Y.Z
+```
+
+Passing the version `main` already carries skips the bump and releases the
+current tree (useful after a manual bump landed in a PR).
+
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full
 fetch/plumbing/push path needs no services), plus concurrency tests
