@@ -61,6 +61,29 @@ const lines = [
   'To coordinate: `agentcomm send <to> <msg>` / `inbox --json` / `wait`; the agentcomm skill has the conventions.',
 ].filter(Boolean);
 
+// Telemetry semantic layer (issue #100): the deterministic facts (skill ran,
+// merged) are captured by hooks; outcomes only the model can judge ("did the
+// review find bugs?") are self-reported — inject the repo's record:
+// instructions so the agent knows what to `emit` and when. Fails open.
+try {
+  const { loadConventions } = await import('../dist/conventions.js');
+  const track = (await loadConventions(cwd))?.telemetry?.track ?? [];
+  const recs = track.filter((r) => r.record);
+  if (recs.length) {
+    lines.push(
+      'Telemetry (repo opt-in via .agentcomm config): hooks record tracked events automatically; ' +
+        'YOU self-report the outcomes below when they happen, with `agentcomm emit`:',
+    );
+    for (const r of recs.slice(0, 6)) {
+      const name = r.match ? ` --name ${r.match}` : '';
+      lines.push(
+        `  - after ${r.on}${r.match ? ` "${r.match}"` : ''}: record ${r.record} — ` +
+          `\`agentcomm emit --type ${r.on}-outcome${name} --ref "$(git branch --show-current)" --attrs '{"…":"…"}'\``,
+      );
+    }
+  }
+} catch { /* fail open — telemetry must never block a session */ }
+
 // "Update available" nudge — no harness auto-upgrades an installed plugin, so
 // the plugin checks the latest release once a day and, when behind, tells the
 // user how to upgrade. This hook only ever runs under Claude Code or Codex;

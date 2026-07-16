@@ -412,6 +412,14 @@ telemetry:
   # retention: 180d      # opt-in; default keeps everything
 ```
 
+The plugins wire the deterministic layer automatically: Claude Code hooks
+record tracked `skill` runs (PostToolUse on the Skill tool), `merge`
+commands (guarded Bash matcher), and `session` start/end (end also ships
+the spool); Codex and OpenCode record `session` events; and the session
+briefing injects each rule's `record:` text so the model knows what to
+self-report. The `on`/`match` layer never depends on the model — if it's
+in the config, it fires.
+
 Recording is free at capture time: `agentcomm emit --type skill-outcome
 --name my-review-skill --ref "$(git branch --show-current)" --attrs
 '{"found_bugs":true,"findings":3}'` appends to a local spool — no network.

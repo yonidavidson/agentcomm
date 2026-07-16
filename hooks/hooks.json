@@ -8,6 +8,22 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "timeout": 20
           }
         ]
       }
@@ -40,6 +56,26 @@
           {
             "type": "command",
             "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${CLAUDE_PROJECT_DIR:-$PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec node \"$CLAUDE_PLUGIN_ROOT/hooks/midturn-digest.mjs\"'",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'I=$(cat); case \"$I\" in *merge*) printf %s \"$I\" | node \"$CLAUDE_PLUGIN_ROOT/hooks/telemetry-capture.mjs\";; esac'",
             "timeout": 10
           }
         ]

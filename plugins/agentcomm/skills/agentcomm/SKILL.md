@@ -85,6 +85,11 @@ log                       Read a channel's whole conversation (pending + archive
                           time-ordered, NON-consuming, no --as) — --thread, --limit
 conventions               The team's rules: lobby, topic naming, subjects
                           (defaults ⊕ .agentcomm.json/.yaml override)
+emit                      Record a telemetry event (--type/--name/--ref/--attrs '<json>').
+                          Spools locally, rides the next bus write; --flush ships now.
+                          Inert unless the repo config has a telemetry section
+events                    Read telemetry events (--type/--name/--ref/--since <dur>/
+                          --limit, --json) — the analysis surface
 ```
 
 Flags: `--backend <uri>`, `--as <name>`, `--subject <text>`, `--thread <id>`,
@@ -205,6 +210,26 @@ without anyone asking.
 
 Still yours: everything about ROLE aliases (`--as` mailboxes
 are not guarded — check them yourself), acks/threads, and all sends.
+
+## Telemetry: recording what happened (opt-in per repo)
+
+If the repo's `.agentcomm.json`/`.yaml` has a `telemetry` section, the bus
+also carries an append-only event lane that answers questions like "how many
+runs of skill X found bugs, and how many iterations before merge":
+
+- **Hooks record the deterministic facts** (a tracked skill ran, a merge
+  happened, a session started) — you don't emit those.
+- **You self-report outcomes** the hooks can't judge. The session-start
+  briefing lists exactly what to record; when one of those moments happens,
+  run e.g. `agentcomm emit --type skill-outcome --name <skill> --ref
+  "$(git branch --show-current)" --attrs '{"found_bugs":true,"findings":3}'`.
+  `emit` is local and instant (no network) — batches ship with your next
+  register/send automatically.
+- **Answering questions**: `agentcomm events --json` (filter with
+  `--type/--name/--ref/--since`) and do the counting/joining yourself —
+  `ref` correlates skill runs with merges per branch.
+- In repos without a `telemetry` config section, `emit` is a no-op — safe to
+  follow the instructions unconditionally.
 
 ## Delegating the bus to a subagent (keep the main flow clean)
 

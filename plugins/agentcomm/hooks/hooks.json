@@ -9,6 +9,12 @@
             "command": "node \"${PLUGIN_ROOT}/hooks/session-start.mjs\"",
             "timeout": 15,
             "statusMessage": "Joining the agentcomm bus"
+          },
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Recording session telemetry"
           }
         ]
       }

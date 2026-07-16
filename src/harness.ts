@@ -13,6 +13,7 @@ import { createBackend } from './backends/index.js';
 import { detectRepoBus } from './backends/autodetect.js';
 import { loadConventions } from './conventions.js';
 import { deriveIdentity, sessionHash } from './identity.js';
+import { flushEvents, materializeEvent, spoolEvents, type TelemetryTrackRule } from './telemetry.js';
 
 const MARKER = '<!-- agentcomm -->';
 
@@ -49,6 +50,8 @@ export interface BusSession {
   backend: Awaited<ReturnType<typeof createBackend>>;
   alias: string;
   busUri: string;
+  /** The repo the session runs in — where the .agentcomm (telemetry) config lives. */
+  cwd: string;
   close(): Promise<void>;
 }
 
@@ -68,6 +71,7 @@ export async function openBusSession(cwd: string): Promise<BusSession | null> {
       backend,
       alias,
       busUri,
+      cwd,
       close: async () => {
         await backend.close?.();
       },
@@ -80,11 +84,38 @@ export async function openBusSession(cwd: string): Promise<BusSession | null> {
 const active = (a: AgentRecord) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
 const isAsk = (s?: string) => /^(blocked|need|help)\b/i.test(s ?? '');
 
+/** The repo's telemetry track rules — [] means not opted in (issue #100). */
+async function telemetryTrack(s: BusSession): Promise<TelemetryTrackRule[]> {
+  try {
+    return (await loadConventions(s.cwd))?.telemetry?.track ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Ship any locally-spooled telemetry with a write that just happened — fail-open. */
+async function rideAlong(s: BusSession): Promise<void> {
+  try {
+    await flushEvents(s.backend, s.busUri, s.alias);
+  } catch {
+    /* events stay spooled for the next ride */
+  }
+}
+
 /** Register (heartbeat) + build the session-start briefing the model should see. */
 export async function sessionStartContext(s: BusSession): Promise<string | null> {
   try {
     const session = await sessionHash();
+    const track = await telemetryTrack(s);
+    // deterministic capture: if the repo tracks sessions, this fires — the
+    // spool then rides the register we are about to make anyway
+    if (track.some((r) => r.on === 'session')) {
+      await spoolEvents(s.busUri, s.alias, [
+        materializeEvent({ agent: s.alias, session, type: 'session-start' }),
+      ]);
+    }
     await s.bus.register(s.alias, session);
+    await rideAlong(s);
     const roster = await s.bus.agents();
     const pending = await s.bus.peek(s.alias);
     const others = roster.filter((a) => a.name !== s.alias && active(a));
@@ -105,6 +136,21 @@ export async function sessionStartContext(s: BusSession): Promise<string | null>
             `call to action — ${a.name} is asking: "${a.status}". If you can answer from what you already know, \`agentcomm send ${a.name} "<answer>" --subject status\`.`,
         ),
       'See who is on the bus and what they are doing any time with `agentcomm network`.',
+      // telemetry semantic layer: outcomes only the model can judge are
+      // self-reported — surface the repo's record: instructions
+      ...(() => {
+        const recs = track.filter((r) => r.record);
+        if (!recs.length) return [] as string[];
+        return [
+          'Telemetry (repo opt-in via .agentcomm config): hooks record tracked events automatically; YOU self-report the outcomes below when they happen, with `agentcomm emit`:',
+          ...recs
+            .slice(0, 6)
+            .map(
+              (r) =>
+                `  - after ${r.on}${r.match ? ` "${r.match}"` : ''}: record ${r.record} — \`agentcomm emit --type ${r.on}-outcome${r.match ? ` --name ${r.match}` : ''} --ref "$(git branch --show-current)" --attrs '{"…":"…"}'\``,
+            ),
+        ];
+      })(),
     ].filter(Boolean);
     return lines.join('\n');
   } catch {
@@ -131,6 +177,7 @@ export async function inboxGuardReason(s: BusSession): Promise<string | null> {
 export async function midTurnContext(s: BusSession): Promise<string | null> {
   try {
     await s.bus.register(s.alias, await sessionHash());
+    await rideAlong(s); // the heartbeat is a ride for any spooled telemetry
     const pending = await s.bus.peek(s.alias);
     const roster = await s.bus.agents();
     const asks = roster.filter((a) => a.name !== s.alias && active(a) && isAsk(a.status));

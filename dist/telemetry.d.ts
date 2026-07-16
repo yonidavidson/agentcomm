@@ -49,15 +49,15 @@ export interface TelemetryConfig {
 export declare function spoolPath(busUri: string, agent: string): string;
 /** Append events to the local spool. Never throws — capture is best-effort. */
 export declare function spoolEvents(busUri: string, agent: string, events: TelemetryEvent[]): Promise<boolean>;
-/** How many events are waiting locally (0 on any error — used as a cheap pre-flush check). */
-export declare function spoolDepth(busUri: string, agent: string): Promise<number>;
+/** How many events are waiting locally for this bus, across all aliases (0 on any error). */
+export declare function spoolDepth(busUri: string): Promise<number>;
 /**
- * Drain the spool and ship it as ONE batch blob. Returns the number of
- * events shipped (0 = nothing waiting). On a failed put the events go back
- * on the spool — at-most-once overall, but a transient backend error does
- * not eat the batch.
+ * Drain every spool bound for this bus and ship them as ONE batch blob.
+ * Returns the number of events shipped (0 = nothing waiting). On a failed
+ * put the events go back on `respoolAgent`'s spool — at-most-once overall,
+ * but a transient backend error does not eat the batch.
  */
-export declare function flushEvents(backend: Backend, busUri: string, agent: string): Promise<number>;
+export declare function flushEvents(backend: Backend, busUri: string, respoolAgent: string): Promise<number>;
 /** Materialize a capture-time event from caller input. */
 export declare function materializeEvent(input: {
     agent: string;

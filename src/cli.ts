@@ -978,7 +978,7 @@ async function cmdEvents(backend: Backend, cfg: ResolvedConfig, flags: ParsedFla
 async function piggybackFlush(backend: Backend, cfg: ResolvedConfig): Promise<void> {
   try {
     const me = await resolveAgent(cfg);
-    if ((await spoolDepth(cfg.backendUri, me)) === 0) return;
+    if ((await spoolDepth(cfg.backendUri)) === 0) return;
     const shipped = await flushEvents(backend, cfg.backendUri, me);
     if (shipped > 0) process.stderr.write(`agentcomm: shipped ${shipped} spooled telemetry event(s) with this write\n`);
   } catch {

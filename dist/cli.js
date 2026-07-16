@@ -885,7 +885,7 @@ async function cmdEvents(backend, cfg, flags) {
 async function piggybackFlush(backend, cfg) {
     try {
         const me = await resolveAgent(cfg);
-        if ((await spoolDepth(cfg.backendUri, me)) === 0)
+        if ((await spoolDepth(cfg.backendUri)) === 0)
             return;
         const shipped = await flushEvents(backend, cfg.backendUri, me);
         if (shipped > 0)
