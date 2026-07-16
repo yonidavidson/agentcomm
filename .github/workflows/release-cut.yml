@@ -1,36 +1,42 @@
 name: release-cut
 
-# The one-button release train — designed so an agent (or a human) cuts a
-# full release with a single dispatch and CI does everything:
+# The one-dispatch release train — an agent (or a human) cuts a full release
+# and CI does everything that can be done without touching main:
 #
-#   gh workflow run release-cut.yml -f version=<patch|minor|major|X.Y.Z>
+#   gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 #
-# Steps, in order: bump the version everywhere it is stamped (package.json,
-# lockfile, .claude-plugin/plugin.json; plugin:sync stamps the Codex subtree),
-# rebuild the committed dist/ + plugin subtrees, point the README's OpenCode
-# install URL at the upcoming tarball, sanity-test, push one release commit
-# to main, tag it, publish the GitHub Release with generated notes, and
-# dispatch the tarball-attach workflow (release.yml).
+# main is branch-protected (required check: test), so this workflow is
+# deliberately COMMIT-FREE on main: version bumps land in normal PRs first
+# (npm version + .claude-plugin/plugin.json + `npm run plugin:sync`, all
+# committed — the repo's existing convention), and release-cut releases the
+# tree main already carries:
 #
-# Two deliberate details:
-# - Passing the version main ALREADY carries skips the bump and just tags +
-#   releases the current tree — for cutting a release after a manual bump.
-# - The tarball attach is an explicit `gh workflow run`, not a `release:
-#   published` trigger: events created with the built-in GITHUB_TOKEN never
-#   start other workflows, so relying on the event would silently skip the
-#   tarball. workflow_dispatch is exempt from that guard.
+#   1. preflight — all three version stamps agree, the tag doesn't exist yet
+#   2. sanity    — typecheck + tests (docker-backed suites self-skip here;
+#                  the required `test` check already ran on every merge)
+#   3. tag + GitHub Release with generated notes
+#   4. dispatch release.yml to attach the OpenCode tarball (explicit
+#      dispatch: events created with the built-in GITHUB_TOKEN never start
+#      `release: published` workflows on their own)
+#   5. open the docs PR bumping the OpenCode tarball URL in README + site
+#      (versioned URLs are load-bearing: OpenCode caches by URL, so the
+#      version in the URL is the upgrade trigger). CI does not run on
+#      bot-created PRs — merge it with `gh pr merge --admin`. Best-effort:
+#      if PR creation is disallowed, the release still stands and the log
+#      says what to bump by hand.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'patch | minor | major | explicit X.Y.Z'
+        description: 'Guard: the X.Y.Z main should carry, or "current" to release package.json as-is'
         required: true
-        default: 'patch'
+        default: 'current'
 
 permissions:
   contents: write
   actions: write # dispatches release.yml for the tarball attach
+  pull-requests: write # opens the docs URL-bump PR
 
 concurrency: release-cut
 
@@ -41,6 +47,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0 # tags, for the preflight collision check
 
       - uses: actions/setup-node@v4
         with:
@@ -49,66 +56,65 @@ jobs:
 
       - run: npm ci
 
-      - name: Resolve the target version (bump unless main already carries it)
+      - name: Preflight — stamps agree, tag is free
         id: version
+        env:
+          GUARD: ${{ inputs.version }}
         run: |
-          CURRENT=$(node -p "require('./package.json').version")
-          TARGET="${{ inputs.version }}"
-          if [ "$TARGET" = "$CURRENT" ]; then
-            VERSION="$CURRENT"
-            echo "::notice::main already at $CURRENT — tagging + releasing the current tree, no bump"
-          else
-            VERSION=$(npm version "$TARGET" --no-git-tag-version | tr -d 'v[:space:]')
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GUARD" != "current" ] && [ "$GUARD" != "$VERSION" ]; then
+            echo "::error::main carries $VERSION but the dispatch asked for $GUARD — land the bump PR first (release-cut never commits to main)."
+            exit 1
+          fi
+          CLAUDE=$(node -p "require('./.claude-plugin/plugin.json').version")
+          CODEX=$(node -p "require('./plugins/agentcomm/.codex-plugin/plugin.json').version")
+          if [ "$CLAUDE" != "$VERSION" ] || [ "$CODEX" != "$VERSION" ]; then
+            echo "::error::version stamps disagree — package $VERSION, claude plugin $CLAUDE, codex plugin $CODEX. Fix with a bump PR (npm version + stamp .claude-plugin/plugin.json + npm run plugin:sync)."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::error::tag v${VERSION} already exists — bump the version before releasing."
+            exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Stamp manifests + rebuild the committed artifacts
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          node -e '
-            const fs = require("fs");
-            const f = ".claude-plugin/plugin.json";
-            const j = JSON.parse(fs.readFileSync(f, "utf8"));
-            j.version = process.env.VERSION;
-            fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
-          '
-          # builds dist/ and regenerates the Codex plugin subtree (version from package.json)
-          npm run plugin:sync
-
-      - name: Point the README at the upcoming OpenCode tarball
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-opencode-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-opencode-${VERSION}.tgz|g" README.md
-
-      - name: Sanity (typecheck + tests; docker-backed suites self-skip here)
+      - name: Sanity (typecheck + tests)
         run: |
           npm run typecheck
           npm test
 
-      - name: Commit, tag, push
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "release: v${VERSION}" || echo "tree already at v${VERSION} — tagging as-is"
-          git tag "v${VERSION}"
-          git push origin main "refs/tags/v${VERSION}"
-
-      - name: Publish the GitHub Release
+      - name: Tag + publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${VERSION}"
+          git push origin "refs/tags/v${VERSION}"
           gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --verify-tag
 
       - name: Attach the OpenCode tarball (explicit dispatch — see header)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+        run: gh workflow run release.yml -f tag="v${VERSION}"
+
+      - name: Open the docs PR (OpenCode tarball URL bump)
+        continue-on-error: true # the release stands even if PR creation is disallowed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh workflow run release.yml -f tag="v${VERSION}"
-          echo "::notice::v${VERSION} published — release.yml dispatched to attach agentcomm-opencode-${VERSION}.tgz"
+          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-opencode-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-opencode-${VERSION}.tgz|g" README.md docs/index.html
+          if git diff --quiet; then
+            echo "::notice::docs already point at v${VERSION} — no PR needed"
+            exit 0
+          fi
+          BRANCH="release-docs-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git commit -am "docs: point the OpenCode install URL at v${VERSION}"
+          git push origin "$BRANCH"
+          gh pr create --title "docs: OpenCode tarball URL → v${VERSION}" \
+            --body "Follow-up from the v${VERSION} release-cut. CI does not run on bot-created PRs — merge with \`gh pr merge --admin --squash\`." \
+            || echo "::warning::could not open the docs PR — bump the tarball URL to v${VERSION} in README.md and docs/index.html manually"

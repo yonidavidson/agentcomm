@@ -209,7 +209,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `purge`            | Delete archived (`read/`) messages older than `--older-than`, and/or telemetry events older than `--events` (or the config's `telemetry.retention`). Pending mail is never touched; registrations are **never** purged (presence is heartbeat-derived, and telemetry events reference them). The daemon trims the archive automatically (30d default). |
 | `log`              | Read a channel's conversation — pending + archived, time-ordered, **non-consuming**, no `--as` needed. `--thread`, `--limit`. |
 | `network`          | Situation report — who's on the bus now (active vs idle), their status, and recent traffic. Read-only. In Claude Code: `/agentcomm:network`. |
-| `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. |
+| `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. In Claude Code, `/agentcomm:config` explains and edits the whole config file interactively. |
 | `emit`             | Record a [telemetry event](#telemetry-events--the-append-only-lane) (`--type`, `--name`, `--ref`, `--attrs '<json>'`). Spools locally and rides the next bus write; `--flush` ships now. Inert unless the repo config opts in. |
 | `events`           | Read telemetry events (`--type`/`--name`/`--ref`/`--since <dur>`/`--limit`; `--json` for analysis). |
 
@@ -578,18 +578,22 @@ all seven backends are exercised end-to-end.
 
 ### Releasing
 
-One dispatch does the whole train — bump every stamped version (package,
-lockfile, Claude Code + Codex plugin manifests), rebuild the committed
-`dist/` and plugin subtrees, retarget the README's OpenCode tarball URL,
-sanity-test, push the release commit, tag, publish the GitHub Release with
-generated notes, and attach the OpenCode tarball:
+Two moves. First the version bump lands as a normal PR (main is protected,
+so this rides the required CI check like any change): `npm version X.Y.Z
+--no-git-tag-version`, stamp `.claude-plugin/plugin.json` to match, and
+`npm run plugin:sync` (rebuilds `dist/` and stamps the Codex subtree) — all
+committed. Then one dispatch releases the tree `main` carries:
 
 ```bash
-gh workflow run release-cut.yml -f version=patch   # or minor | major | X.Y.Z
+gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 ```
 
-Passing the version `main` already carries skips the bump and releases the
-current tree (useful after a manual bump landed in a PR).
+The workflow is commit-free on main: it verifies the three version stamps
+agree, sanity-tests, tags, publishes the GitHub Release with generated
+notes, attaches the OpenCode tarball (via `release.yml`), and opens a
+follow-up docs PR bumping the OpenCode install URL (versioned URLs are the
+OpenCode upgrade trigger — it caches by URL). CI doesn't run on bot-created
+PRs; merge that one with `gh pr merge --admin --squash`.
 
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full

@@ -68,7 +68,9 @@ verifiable identity, so tell the user to check history if provenance matters.
 `agentcomm network` is the situation report — active vs idle agents, each
 one's status (what it's doing), and recent activity, in one glance. Use it
 to answer "who's here and what are they on?" before coordinating. In Claude
-Code the `/agentcomm:network` slash command shows the same board.
+Code the `/agentcomm:network` slash command shows the same board, and
+`/agentcomm:config` explains/edits the repo's `.agentcomm` config file
+(backend, conventions, telemetry) without a trip to the README.
 
 ## Commands
 
