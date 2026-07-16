@@ -13,5 +13,7 @@ export { isClaimable, isWaitable, MissingDriverError } from './types.js';
 export { resolveConfig, parseArgs } from './config.js';
 export type { ResolvedConfig, ParsedFlags } from './config.js';
 export { deriveIdentity, sessionHash } from './identity.js';
+export { EVENTS_PREFIX, spoolEvents, spoolDepth, spoolPath, flushEvents, listEvents, materializeEvent, batchTimestamp, } from './telemetry.js';
+export type { TelemetryEvent, EventBatch, EventFilter, TelemetryConfig, TelemetryTrackRule } from './telemetry.js';
 export * from './harness.js';
 //# sourceMappingURL=index.d.ts.map

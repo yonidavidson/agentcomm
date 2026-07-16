@@ -43,7 +43,33 @@ export async function loadConventions(cwd = process.cwd(), env = process.env) {
                 : DEFAULT_CONVENTIONS.subjects,
         },
         backend: typeof parsed.backend === 'string' ? parsed.backend : undefined,
+        telemetry: parseTelemetry(parsed.telemetry),
         source: file,
+    };
+}
+/** Deterministic-by-construction: only well-formed rules survive parsing. */
+function parseTelemetry(raw) {
+    if (typeof raw !== 'object' || raw === null)
+        return undefined;
+    const t = raw;
+    const track = [];
+    if (Array.isArray(t.track)) {
+        for (const r of t.track) {
+            if (typeof r !== 'object' || r === null)
+                continue;
+            const rule = r;
+            if (typeof rule.on !== 'string' || !rule.on)
+                continue;
+            track.push({
+                on: rule.on,
+                ...(typeof rule.match === 'string' ? { match: rule.match } : {}),
+                ...(typeof rule.record === 'string' ? { record: rule.record } : {}),
+            });
+        }
+    }
+    return {
+        track,
+        ...(typeof t.retention === 'string' ? { retention: t.retention } : {}),
     };
 }
 async function parseConfig(file, raw) {

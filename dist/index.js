@@ -7,5 +7,6 @@ export { loadConventions, DEFAULT_CONVENTIONS } from './conventions.js';
 export { isClaimable, isWaitable, MissingDriverError } from './types.js';
 export { resolveConfig, parseArgs } from './config.js';
 export { deriveIdentity, sessionHash } from './identity.js';
+export { EVENTS_PREFIX, spoolEvents, spoolDepth, spoolPath, flushEvents, listEvents, materializeEvent, batchTimestamp, } from './telemetry.js';
 export * from './harness.js';
 //# sourceMappingURL=index.js.map

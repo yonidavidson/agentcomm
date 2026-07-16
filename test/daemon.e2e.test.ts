@@ -164,54 +164,60 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect(after.pid).toBe(before.pid); // the incumbent survived untouched
   });
 
-  it('daemon housekeeping drops stale registrations on its own clock', async () => {
+  it('daemon housekeeping trims the archive but NEVER registrations (issue #100)', async () => {
     const dir = await mkTmp();
     await run(['register', '--as', 'fresh-agent', '--daemon'], dir);
     await run(['register', '--as', 'ancient-agent', '--direct'], dir);
+    // over a year idle — presence is heartbeat-derived, so this agent is
+    // already "not on the bus"; its record must still survive (telemetry
+    // events reference registrations by agent/session)
     const rec = path.join(dir, '.bus', 'agents', 'ancient-agent.json');
     const parsed = JSON.parse(await fs.readFile(rec, 'utf8')) as { lastSeen: string };
-    parsed.lastSeen = new Date(Date.now() - 8 * 86400_000).toISOString();
+    parsed.lastSeen = new Date(Date.now() - 400 * 86400_000).toISOString();
     await fs.writeFile(rec, JSON.stringify(parsed));
 
-    // a session-derived alias (suffix = its session hash) ages on the FAST
-    // clock: 13h stale kills it while a 13h-stale ROLE would survive (7d)
-    const sessRec = path.join(dir, '.bus', 'agents', 'ghost-ab12.json');
-    await fs.writeFile(sessRec, JSON.stringify({
-      name: 'ghost-ab12',
-      registeredAt: new Date(Date.now() - 86400_000).toISOString(),
-      lastSeen: new Date(Date.now() - 13 * 3600_000).toISOString(),
-      session: 'ab12ffffffff',
-    }));
-    const roleRec = path.join(dir, '.bus', 'agents', 'night-reviewer.json');
-    await fs.writeFile(roleRec, JSON.stringify({
-      name: 'night-reviewer',
-      registeredAt: new Date(Date.now() - 86400_000).toISOString(),
-      lastSeen: new Date(Date.now() - 13 * 3600_000).toISOString(),
-      session: 'cccc00000000', // has a session but name lacks the suffix → role
-    }));
+    // an archived (consumed) message — the ONE thing housekeeping may trim
+    await run(['send', 'fresh-agent', 'old news', '--as', 'ancient-agent', '--direct'], dir);
+    await run(['inbox', '--as', 'fresh-agent', '--direct', '--json'], dir);
 
-    // restart the daemon with a fast housekeeping clock
+    // restart the daemon with a fast housekeeping clock and an instant archive
+    // TTL — waiting for the incumbent to fully exit first (stop acks before
+    // the daemon dies; a too-early rival probes its still-live socket and bows out)
     await run(['daemon', 'stop'], dir);
+    for (let i = 0; i < 50; i++) {
+      let alive = false;
+      try {
+        alive = (await fs.readdir(path.join(dir, 'dsock'))).some((f) => f.endsWith('.pid'));
+      } catch {
+        break;
+      }
+      if (!alive) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
     const child = spawn(process.execPath, [CLI, 'daemon', 'run'], {
       stdio: 'ignore',
       detached: true,
       cwd: dir,
-      env: { ...env(dir), AGENTCOMM_HOUSEKEEP_MS: '10000' },
+      env: { ...env(dir), AGENTCOMM_HOUSEKEEP_MS: '10000', AGENTCOMM_PURGE_AFTER_MS: '1' },
     });
     child.unref();
 
     // first sweep runs ~15s after start
-    let names: string[] = [];
+    let archived: string[] = ['seed'];
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      const roster = await run(['agents', '--daemon', '--json'], dir);
-      names = (JSON.parse(roster.stdout) as { name: string }[]).map((a) => a.name);
-      if (!names.some((n) => n === 'ancient-agent')) break;
+      try {
+        archived = await fs.readdir(path.join(dir, '.bus', 'read', 'fresh-agent'));
+      } catch {
+        archived = [];
+      }
+      if (archived.length === 0) break;
     }
+    expect(archived).toEqual([]); // archive trimmed…
+    const roster = await run(['agents', '--direct', '--json'], dir);
+    const names = (JSON.parse(roster.stdout) as { name: string }[]).map((a) => a.name);
     expect(names).toContain('fresh-agent');
-    expect(names).not.toContain('ancient-agent');
-    expect(names).not.toContain('ghost-ab12'); // session alias, fast clock
-    expect(names).toContain('night-reviewer'); // role alias, slow clock
+    expect(names).toContain('ancient-agent'); // …registrations are append-forever
   }, 40_000);
 
   it('async sends: instant local visibility, remote after drain; --sync goes straight through', async () => {

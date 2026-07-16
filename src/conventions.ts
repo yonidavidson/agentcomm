@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { loadDriver } from './backends/lazy.js';
+import type { TelemetryConfig, TelemetryTrackRule } from './telemetry.js';
 
 /**
  * Team conventions — the social contract on top of channels, so "work on x"
@@ -37,6 +38,12 @@ export interface LoadedConfig {
   conventions: Conventions;
   /** Optional default backend URI a project can pin in its config file. */
   backend?: string;
+  /**
+   * Telemetry capture config (issue #100). PRESENCE is the opt-in — when the
+   * config file has no `telemetry` section this stays undefined and every
+   * telemetry code path (emit, hook capture) is inert.
+   */
+  telemetry?: TelemetryConfig;
   /** Absolute path of the override file, or null when running on defaults. */
   source: string | null;
 }
@@ -78,13 +85,38 @@ export async function loadConventions(
         : DEFAULT_CONVENTIONS.subjects,
     },
     backend: typeof parsed.backend === 'string' ? parsed.backend : undefined,
+    telemetry: parseTelemetry(parsed.telemetry),
     source: file,
+  };
+}
+
+/** Deterministic-by-construction: only well-formed rules survive parsing. */
+function parseTelemetry(raw: unknown): TelemetryConfig | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const t = raw as { track?: unknown; retention?: unknown };
+  const track: TelemetryTrackRule[] = [];
+  if (Array.isArray(t.track)) {
+    for (const r of t.track) {
+      if (typeof r !== 'object' || r === null) continue;
+      const rule = r as { on?: unknown; match?: unknown; record?: unknown };
+      if (typeof rule.on !== 'string' || !rule.on) continue;
+      track.push({
+        on: rule.on,
+        ...(typeof rule.match === 'string' ? { match: rule.match } : {}),
+        ...(typeof rule.record === 'string' ? { record: rule.record } : {}),
+      });
+    }
+  }
+  return {
+    track,
+    ...(typeof t.retention === 'string' ? { retention: t.retention } : {}),
   };
 }
 
 interface RawConfig {
   conventions?: unknown;
   backend?: unknown;
+  telemetry?: unknown;
 }
 
 async function parseConfig(file: string, raw: string): Promise<RawConfig> {

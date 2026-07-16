@@ -302,34 +302,17 @@ export async function runDaemon(uri: string): Promise<void> {
   flushTimer.unref?.();
   void flush(); // deliver anything a previous daemon left behind
 
-  // Housekeeping: heartbeats and archives must not accrete forever. The
-  // daemon is the bus's long-lived janitor: periodically trim the read/
-  // archive and drop agent records whose lastSeen went stale.
+  // Housekeeping: the daemon is the bus's long-lived janitor for the read/
+  // archive ONLY. Registrations are append-forever (issue #100): presence is
+  // heartbeat-derived (idle = not on the bus), and telemetry events reference
+  // registrations by agent/session — deleting them would orphan history.
+  // Telemetry events/ are likewise never touched here: their retention is an
+  // explicit repo-config opt-in (`agentcomm purge --events` honors it), and
+  // the daemon has no repo context to read that consent from.
   const housekeepMs = Math.max(10_000, Number(process.env.AGENTCOMM_HOUSEKEEP_MS ?? 6 * 3600_000));
   const archiveTtl = Number(process.env.AGENTCOMM_PURGE_AFTER_MS ?? 30 * 24 * 3600_000);
-  const agentTtl = Number(process.env.AGENTCOMM_AGENT_TTL_MS ?? 7 * 24 * 3600_000);
-  // session-derived aliases (name carries the session-hash suffix) are
-  // ephemeral by construction — one per session, dead when it ends. They
-  // age out much faster than durable role aliases.
-  const sessionAgentTtl = Number(process.env.AGENTCOMM_SESSION_AGENT_TTL_MS ?? 12 * 3600_000);
   async function housekeep(): Promise<void> {
     const now = Date.now();
-    if (agentTtl > 0 || sessionAgentTtl > 0) {
-      for (const k of await backend.list('agents/')) {
-        try {
-          const rec = JSON.parse((await backend.get(k)).toString('utf8')) as {
-            name?: string;
-            lastSeen?: string;
-            session?: string;
-          };
-          if (!rec.lastSeen) continue;
-          const isSessionAlias =
-            !!rec.session && !!rec.name && rec.name.endsWith('-' + rec.session.slice(0, 4));
-          const ttl = isSessionAlias ? sessionAgentTtl : agentTtl;
-          if (ttl > 0 && now - Date.parse(rec.lastSeen) > ttl) await backend.delete(k);
-        } catch { /* unreadable record: leave it */ }
-      }
-    }
     if (archiveTtl > 0) {
       for (const k of await backend.list('read/')) {
         // key layout: read/<recipient>/<zero-padded-ms-seq>-<id>.json

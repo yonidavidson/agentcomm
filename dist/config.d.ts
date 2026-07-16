@@ -28,6 +28,13 @@ export interface ParsedFlags {
     statusAuto?: boolean;
     limit?: number;
     harness?: string;
+    type?: string;
+    name?: string;
+    ref?: string;
+    attrs?: string;
+    flush: boolean;
+    events?: string;
+    since?: string;
     _: string[];
 }
 /**
