@@ -38,8 +38,11 @@ conventions:
 # capture hooks are inert). Deterministic: if a rule is listed, it fires.
 telemetry:
   track:
-    - on: skill                     # skill | merge | session | task
+    - on: skill                     # skill | agent | merge | session | task
       match: code-review            # optional name filter; * globs work
+    - on: agent                     # subagent spawns — matches subagent_type;
+      match: code-review-*          # the ONLY signal for skills that run as
+                                    # dedicated subagents (disable-model-invocation)
       record: >                     # optional FREE TEXT — injected at session
         whether it uncovered bugs,  # start so the agent self-reports this
         findings count, iteration   # outcome via `agentcomm emit`
