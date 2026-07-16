@@ -37,6 +37,13 @@ export interface ParsedFlags {
   statusAuto?: boolean;
   limit?: number;
   harness?: string;
+  type?: string;
+  name?: string;
+  ref?: string;
+  attrs?: string;
+  flush: boolean;
+  events?: string;
+  since?: string;
   _: string[]; // positional args
 }
 
@@ -46,7 +53,7 @@ export interface ParsedFlags {
  * is a positional in `_`.
  */
 export function parseArgs(argv: string[]): ParsedFlags {
-  const flags: ParsedFlags = { json: false, dryRun: false, _: [] };
+  const flags: ParsedFlags = { json: false, dryRun: false, flush: false, _: [] };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i]!;
     if (!tok.startsWith('--')) {
@@ -114,6 +121,27 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'harness':
         flags.harness = takeVal();
+        break;
+      case 'type':
+        flags.type = takeVal();
+        break;
+      case 'name':
+        flags.name = takeVal();
+        break;
+      case 'ref':
+        flags.ref = takeVal();
+        break;
+      case 'attrs':
+        flags.attrs = takeVal();
+        break;
+      case 'flush':
+        flags.flush = true;
+        break;
+      case 'events':
+        flags.events = takeVal();
+        break;
+      case 'since':
+        flags.since = takeVal();
         break;
       case 'help':
         flags._.push('--help');

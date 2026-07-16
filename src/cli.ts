@@ -4,10 +4,19 @@ import { detectRepoBus } from './backends/autodetect.js';
 import { discoverChannels } from './channels.js';
 import { loadConventions } from './conventions.js';
 import { Bus } from './bus.js';
-import { parseArgs, resolveConfig, type ResolvedConfig } from './config.js';
+import { parseArgs, resolveConfig, type ParsedFlags, type ResolvedConfig } from './config.js';
 import type { Backend, Message } from './types.js';
 import { fileURLToPath } from 'node:url';
 import { deriveIdentity, sessionHash } from './identity.js';
+import {
+  EVENTS_PREFIX,
+  batchTimestamp,
+  flushEvents,
+  listEvents,
+  materializeEvent,
+  spoolDepth,
+  spoolEvents,
+} from './telemetry.js';
 
 const USAGE = `agentcomm — a tiny mailbox/message bus for AI agents
 
@@ -29,14 +38,24 @@ Commands:
   peek                     Show undelivered messages without consuming
   wait                     Block until a message arrives (exit 0) or timeout (exit 2)
   claim                    Atomically dequeue one message from --queue (SQL backends only)
+  emit                     Record a telemetry event (--type, --name, --ref,
+                           --attrs '<json>'). Spools locally — batches ride
+                           the next bus write (register/send/broadcast), or
+                           --flush ships now. Inert unless the repo config
+                           has a telemetry section (opt-in)
+  events                   Read telemetry events (--type/--name/--ref/--since
+                           <dur>/--limit filters, --json for analysis)
   describe                 Explain the --backend scheme: how to carve channels,
                            and its capabilities — static, never connects
   channels                 List the channels that already exist on the --backend
                            store (scans for the agentcomm key layout)
   purge                    Delete archived (read/) messages older than
-                           --older-than and/or registrations idle past
-                           --agents-older-than; --dry-run to preview. The
-                           daemon runs both automatically (30d/7d defaults)
+                           --older-than, and/or telemetry events older than
+                           --events <dur> (or the config's telemetry.retention);
+                           --dry-run to preview. Registrations are NEVER purged
+                           (presence is heartbeat-derived; events reference
+                           them). The daemon trims the archive automatically
+                           (30d default)
   log                      Read a channel's conversation (pending + archived,
                            time-ordered, non-consuming); --thread, --limit
   conventions              Print the effective team conventions (built-in
@@ -66,6 +85,13 @@ Flags:
   --status-auto <text>     register: set an automatic status (task list) that
                            yields to any explicit --status declaration
   --harness <name>         init: claude (CLAUDE.md); codex|opencode|agents (AGENTS.md)
+  --type <text>            emit/events: the event type (skill-ran, skill-outcome, …)
+  --name <text>            emit/events: what the event is about (a skill/tool name)
+  --ref <text>             emit/events: correlation handle (branch, PR#, run id)
+  --attrs <json>           emit: free-form JSON payload for the event
+  --flush                  emit: ship the spool now instead of riding the next write
+  --since <dur>            events: only events newer than e.g. 30d, 12h
+  --events <dur>           purge: age out telemetry events older than this
   --json                   Machine-readable JSON output
   --help                   Show this help
 
@@ -125,22 +151,35 @@ async function main(argv: string[]): Promise<number> {
 
   if (command === 'daemon') return await cmdDaemon(cfg, positional[1]);
 
+  // emit is capture, not transport: it appends to the local spool and
+  // returns — no backend connection, no network, unless --flush ships now.
+  if (command === 'emit') return await cmdEmit(cfg, flags);
+
   const backend = await resolveTransport(cfg, flags);
   const bus = new Bus(backend);
   try {
     switch (command) {
-      case 'register':
-        return await cmdRegister(bus, cfg, flags.status, flags.statusAuto);
+      case 'register': {
+        const code = await cmdRegister(bus, cfg, flags.status, flags.statusAuto);
+        await piggybackFlush(backend, cfg);
+        return code;
+      }
       case 'init':
         return await cmdInit(bus, cfg, flags.harness);
       case 'agents':
         return await cmdAgents(bus, cfg);
       case 'network':
         return await cmdNetwork(bus, backend, cfg);
-      case 'send':
-        return await cmdSend(bus, cfg, flags.subject, flags.thread, positional.slice(1));
-      case 'broadcast':
-        return await cmdBroadcast(bus, cfg, flags.subject, flags.thread, positional.slice(1));
+      case 'send': {
+        const code = await cmdSend(bus, cfg, flags.subject, flags.thread, positional.slice(1));
+        await piggybackFlush(backend, cfg);
+        return code;
+      }
+      case 'broadcast': {
+        const code = await cmdBroadcast(bus, cfg, flags.subject, flags.thread, positional.slice(1));
+        await piggybackFlush(backend, cfg);
+        return code;
+      }
       case 'inbox':
         return await cmdInbox(bus, cfg);
       case 'peek':
@@ -152,7 +191,9 @@ async function main(argv: string[]): Promise<number> {
       case 'channels':
         return await cmdChannels(backend, cfg);
       case 'purge':
-        return await cmdPurge(backend, cfg, flags.olderThan, flags.agentsOlderThan, flags.dryRun);
+        return await cmdPurge(backend, cfg, flags.olderThan, flags.agentsOlderThan, flags.events, flags.dryRun);
+      case 'events':
+        return await cmdEvents(backend, cfg, flags);
       case 'log':
         return await cmdLog(backend, cfg, flags.thread, flags.limit);
       default:
@@ -319,18 +360,42 @@ async function cmdPurge(
   cfg: ResolvedConfig,
   olderThan: string | undefined,
   agentsOlderThan: string | undefined,
+  eventsOlderThan: string | undefined,
   dryRun: boolean,
 ): Promise<number> {
-  if (!olderThan && !agentsOlderThan) {
+  // Registrations are append-forever (issue #100): presence is heartbeat-
+  // derived, so an idle agent is already "not on the bus" without deleting
+  // anything — and telemetry events reference registrations by agent/session,
+  // so deleting them orphans history. Nothing internal can know which
+  // records are still needed; registration lifecycle is not agentcomm's job.
+  if (agentsOlderThan) {
     fail(
-      'purge requires --older-than <duration> (archive) and/or --agents-older-than <duration> (stale registrations), e.g. --older-than 30d (units: s, m, h, d)',
+      'registrations are never purged: presence is heartbeat-derived (idle = not on the bus), and telemetry events reference registrations. --agents-older-than was removed.',
+    );
+  }
+
+  // Telemetry retention is opt-in: an explicit --events wins; otherwise the
+  // repo config's telemetry.retention (when set to a duration) applies.
+  let effectiveEvents = eventsOlderThan;
+  if (!effectiveEvents) {
+    const retention = (await loadConventions().catch(() => null))?.telemetry?.retention;
+    if (retention && retention !== 'none') {
+      effectiveEvents = retention;
+      process.stderr.write(`agentcomm: applying telemetry.retention ${retention} from the config file\n`);
+    }
+  }
+
+  if (!olderThan && !effectiveEvents) {
+    fail(
+      'purge requires --older-than <duration> (mail archive) and/or --events <duration> (telemetry events; telemetry.retention in the config also applies), e.g. --older-than 30d (units: s, m, h, d)',
     );
     return 1;
   }
 
   // Pending inbox/ messages are undelivered mail — never purged. The archive
-  // ages by the key's monotonic ms-timestamp prefix (no content reads);
-  // registrations age by their lastSeen heartbeat.
+  // and event batches age by their keys' monotonic ms-timestamp prefix (no
+  // content reads). A batch's key time is its flush time, ≥ every capture
+  // time inside it, so aging whole batches is conservative.
   const victims: string[] = [];
   if (olderThan) {
     const maxAgeMs = parseDuration(olderThan);
@@ -346,44 +411,52 @@ async function cmdPurge(
       }),
     );
   }
-  const staleAgents: string[] = [];
-  if (agentsOlderThan) {
-    const maxAgeMs = parseDuration(agentsOlderThan);
+  const eventVictims: string[] = [];
+  if (effectiveEvents) {
+    const maxAgeMs = parseDuration(effectiveEvents);
     if (maxAgeMs === null) {
-      fail(`invalid --agents-older-than "${agentsOlderThan}" — use <number><unit> with unit s, m, h or d`);
+      fail(`invalid events retention "${effectiveEvents}" — use <number><unit> with unit s, m, h or d`);
       return 1;
     }
     const cutoff = Date.now() - maxAgeMs;
-    for (const key of await backend.list('agents/')) {
-      try {
-        const rec = JSON.parse((await backend.get(key)).toString('utf8')) as { lastSeen?: string };
-        if (rec.lastSeen && Date.parse(rec.lastSeen) < cutoff) staleAgents.push(key);
-      } catch {
-        /* unreadable record: leave it */
-      }
-    }
+    eventVictims.push(
+      ...(await backend.list(EVENTS_PREFIX)).filter((key) => {
+        const ts = batchTimestamp(key);
+        return ts !== null && ts < cutoff;
+      }),
+    );
   }
 
   if (!dryRun) {
-    for (const key of [...victims, ...staleAgents]) await backend.delete(key);
+    for (const key of [...victims, ...eventVictims]) await backend.delete(key);
   }
+
+  // Growth stays visible even when nothing ages out: report what is kept.
+  const keptEventBatches = (await backend.list(EVENTS_PREFIX)).filter((k) => k.endsWith('.json')).length;
+  const keptRegistrations = (await backend.list('agents/')).filter((k) => k.endsWith('.json')).length;
+
   if (cfg.json) {
     emit({
       purged: !dryRun,
       dryRun,
       olderThan: olderThan ?? null,
-      agentsOlderThan: agentsOlderThan ?? null,
+      eventsOlderThan: effectiveEvents ?? null,
       count: victims.length,
-      agentCount: staleAgents.length,
       keys: victims,
-      agentKeys: staleAgents,
+      eventCount: eventVictims.length,
+      eventKeys: eventVictims,
+      kept: { eventBatches: keptEventBatches, registrations: keptRegistrations },
     });
   } else {
     const verb = dryRun ? 'would purge' : 'purged';
     const parts = [];
     if (olderThan) parts.push(`${victims.length} archived message${victims.length === 1 ? '' : 's'} older than ${olderThan}`);
-    if (agentsOlderThan) parts.push(`${staleAgents.length} stale registration${staleAgents.length === 1 ? '' : 's'} older than ${agentsOlderThan}`);
+    if (effectiveEvents)
+      parts.push(`${eventVictims.length} telemetry event batch${eventVictims.length === 1 ? '' : 'es'} older than ${effectiveEvents}`);
     process.stdout.write(`${verb} ${parts.join(' and ')}\n`);
+    process.stdout.write(
+      `kept: ${keptEventBatches} event batch${keptEventBatches === 1 ? '' : 'es'}, ${keptRegistrations} registration${keptRegistrations === 1 ? '' : 's'} (registrations are never purged)\n`,
+    );
   }
   return 0;
 }
@@ -795,6 +868,122 @@ async function cmdClaim(bus: Bus, cfg: ResolvedConfig, queue: string | undefined
     process.stdout.write(`claimed ${msg.id} from ${msg.from}${subj}\n  ${msg.body}\n`);
   }
   return 0;
+}
+
+// ── telemetry (issue #100) ─────────────────────────────────────────────────
+
+/**
+ * Record a telemetry event. Capture is LOCAL — append to the tmpdir spool
+ * and return; the batch rides the next bus write (see piggybackFlush), or
+ * --flush ships it immediately. Gated on the repo config's `telemetry`
+ * section: without that opt-in the command is an announced no-op, so agents
+ * can be instructed to emit unconditionally and only opted-in repos collect.
+ */
+async function cmdEmit(cfg: ResolvedConfig, flags: ParsedFlags): Promise<number> {
+  const { telemetry } = await loadConventions().catch(() => ({ telemetry: undefined }));
+  if (!telemetry) {
+    if (cfg.json) emit({ spooled: false, reason: 'telemetry-not-enabled' });
+    else
+      process.stderr.write(
+        'agentcomm: telemetry is not enabled for this repo — event dropped. Opt in with a "telemetry" section in .agentcomm.json/.yaml.\n',
+      );
+    return 0;
+  }
+  if (!flags.type) {
+    fail('emit requires --type <event-type>, e.g. emit --type skill-outcome --name my-skill --attrs \'{"found_bugs":true}\'');
+  }
+  let attrs: Record<string, unknown> | undefined;
+  if (flags.attrs !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(flags.attrs);
+    } catch (err) {
+      fail(`invalid --attrs JSON: ${(err as Error).message}`);
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      fail('--attrs must be a JSON object, e.g. --attrs \'{"found_bugs":true,"findings":3}\'');
+    }
+    attrs = parsed as Record<string, unknown>;
+  }
+  const me = await resolveAgent(cfg);
+  const event = materializeEvent({
+    agent: me,
+    session: await sessionHash(),
+    type: flags.type!,
+    name: flags.name,
+    ref: flags.ref,
+    attrs,
+  });
+  if (!(await spoolEvents(cfg.backendUri, me, [event]))) {
+    fail('could not write the local event spool');
+  }
+  if (flags.flush) {
+    const backend = await resolveTransport(cfg, flags);
+    try {
+      const shipped = await flushEvents(backend, cfg.backendUri, me);
+      if (cfg.json) emit({ spooled: true, flushed: shipped, event });
+      else process.stdout.write(`emitted ${event.type} — shipped ${shipped} event(s)\n`);
+    } finally {
+      await backend.close?.();
+    }
+    return 0;
+  }
+  if (cfg.json) emit({ spooled: true, flushed: 0, event });
+  else process.stdout.write(`spooled ${event.type} — ships with the next bus write (or \`emit --flush\`)\n`);
+  return 0;
+}
+
+/** Read telemetry events — the analysis surface is `events --json` piped into whoever asks the question. */
+async function cmdEvents(backend: Backend, cfg: ResolvedConfig, flags: ParsedFlags): Promise<number> {
+  let sinceMs: number | undefined;
+  if (flags.since) {
+    const d = parseDuration(flags.since);
+    if (d === null) {
+      fail(`invalid --since "${flags.since}" — use <number><unit> with unit s, m, h or d (e.g. 30d, 12h)`);
+    }
+    sinceMs = Date.now() - d!;
+  }
+  const all = await listEvents(backend, { type: flags.type, name: flags.name, ref: flags.ref, sinceMs });
+  const limit = flags.limit ?? 200;
+  const shown = all.slice(-Math.max(0, limit));
+  if (cfg.json) {
+    emit(shown);
+    return 0;
+  }
+  if (shown.length === 0) {
+    process.stdout.write('(no events)\n');
+    return 0;
+  }
+  for (const e of shown) {
+    const bits = [
+      e.type + (e.name ? `(${e.name})` : ''),
+      e.ref ? `ref=${e.ref}` : null,
+      `by ${e.agent}`,
+      e.attrs ? JSON.stringify(e.attrs) : null,
+    ].filter(Boolean);
+    process.stdout.write(`${e.ts}  ${bits.join('  ')}\n`);
+  }
+  process.stdout.write(
+    `— ${shown.length} event(s)${all.length > shown.length ? ` (of ${all.length}; raise --limit for more)` : ''}\n`,
+  );
+  return 0;
+}
+
+/**
+ * Telemetry batches ride bus writes the CLI already makes (register, send,
+ * broadcast) — same write cadence as before, just fatter payloads. Strictly
+ * fail-open: a telemetry hiccup must never fail the primary write, and on a
+ * failed put the events go back on the spool for the next ride.
+ */
+async function piggybackFlush(backend: Backend, cfg: ResolvedConfig): Promise<void> {
+  try {
+    const me = await resolveAgent(cfg);
+    if ((await spoolDepth(cfg.backendUri, me)) === 0) return;
+    const shipped = await flushEvents(backend, cfg.backendUri, me);
+    if (shipped > 0) process.stderr.write(`agentcomm: shipped ${shipped} spooled telemetry event(s) with this write\n`);
+  } catch {
+    /* fail open — events stay spooled */
+  }
 }
 
 /**

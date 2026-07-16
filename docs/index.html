@@ -286,8 +286,8 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
       </div>
       <p class="section-sub reveal" style="margin-top:18px; max-width:640px;">
         Runtime knobs are env vars, all documented: <code>AGENTCOMM_POLL_MS</code>
-        (daemon remote poll, 10s; 30s on github://), <code>AGENTCOMM_SESSION_AGENT_TTL_MS</code> /
-        <code>AGENTCOMM_AGENT_TTL_MS</code> (roster housekeeping, 12h / 7d),
+        (daemon remote poll, 10s; 30s on github://), <code>AGENTCOMM_PURGE_AFTER_MS</code>
+        (archive housekeeping, 30d; registrations are never purged),
         <code>AGENTCOMM_DAEMON=0</code> (bypass the daemon), <code>AGENTCOMM_SYNC=1</code>
         (wait for remote durability on sends).
       </p>

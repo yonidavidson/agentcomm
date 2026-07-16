@@ -206,10 +206,12 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `claim`            | Atomically dequeue one message from `--queue` (**git + SQL backends**). |
 | `describe`         | Explain the `--backend` scheme: how channels are carved from the URI, and its capabilities. **Static** — never loads a driver or connects. |
 | `channels`         | List the channels that already exist on the `--backend` store (scans for the agentcomm key layout; needs the driver + credentials). |
-| `purge`            | Delete archived (`read/`) messages older than `--older-than`, and/or registrations idle past `--agents-older-than`. Pending mail is never touched. The daemon runs both automatically (30d / 7d defaults). |
+| `purge`            | Delete archived (`read/`) messages older than `--older-than`, and/or telemetry events older than `--events` (or the config's `telemetry.retention`). Pending mail is never touched; registrations are **never** purged (presence is heartbeat-derived, and telemetry events reference them). The daemon trims the archive automatically (30d default). |
 | `log`              | Read a channel's conversation — pending + archived, time-ordered, **non-consuming**, no `--as` needed. `--thread`, `--limit`. |
 | `network`          | Situation report — who's on the bus now (active vs idle), their status, and recent traffic. Read-only. In Claude Code: `/agentcomm:network`. |
 | `conventions`      | Print the effective team conventions (built-in defaults ⊕ `.agentcomm.json`/`.yaml` override). Static — never connects. |
+| `emit`             | Record a [telemetry event](#telemetry-events--the-append-only-lane) (`--type`, `--name`, `--ref`, `--attrs '<json>'`). Spools locally and rides the next bus write; `--flush` ships now. Inert unless the repo config opts in. |
+| `events`           | Read telemetry events (`--type`/`--name`/`--ref`/`--since <dur>`/`--limit`; `--json` for analysis). |
 
 ### Flags
 
@@ -222,7 +224,12 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | `--timeout <ms>`   | `wait` timeout in ms (default `30000`).                        |
 | `--queue <name>`   | Queue to claim from (`claim`) — same namespace as a recipient inbox. |
 | `--older-than <dur>` | Age threshold for `purge` (`45s`, `30m`, `12h`, `30d`).      |
+| `--events <dur>`   | `purge`: age out telemetry event batches older than this (opt-in; `telemetry.retention` in the config also applies). |
 | `--dry-run`        | `purge` only lists what it would delete.                       |
+| `--type/--name/--ref` | `emit`/`events`: event type, subject name, correlation handle. |
+| `--attrs <json>`   | `emit`: free-form JSON object payload.                         |
+| `--flush`          | `emit`: ship the spool now instead of riding the next write.   |
+| `--since <dur>`    | `events`: only events newer than e.g. `30d`.                   |
 | `--limit <n>`      | `log`: keep the most recent n messages (default 50).           |
 | `--harness <name>` | `init`: select `claude` (default, `CLAUDE.md`) or `codex` (`AGENTS.md`). |
 | `--json`           | Machine-readable JSON output (available on every command).     |
@@ -383,6 +390,36 @@ and **`claim` works** — race-free shared queues with zero infrastructure. A
 bare cache repo lives under `~/.cache/agentcomm/git` (override with
 `AGENTCOMM_GIT_CACHE_DIR`).
 
+### Telemetry events — the append-only lane
+
+Beside the mailbox lane there is an **event lane** ([design](https://github.com/yonidavidson/agentcomm/issues/100)):
+append-only facts under `events/` — "skill X ran", "branch Y merged",
+"the review found 3 bugs" — that later answer questions like *"how many
+runs of `/my-review-skill` uncovered bugs, and how many iterations before
+merge?"*.
+
+It is **opt-in per repo and deterministic**: telemetry exists only when the
+`.agentcomm.json`/`.yaml` config declares it, and then it always fires —
+no discretion involved:
+
+```yaml
+telemetry:
+  track:
+    - on: skill
+      match: my-review-skill
+      record: "whether it uncovered bugs, findings count, iteration for the branch"
+    - on: merge
+  # retention: 180d      # opt-in; default keeps everything
+```
+
+Recording is free at capture time: `agentcomm emit --type skill-outcome
+--name my-review-skill --ref "$(git branch --show-current)" --attrs
+'{"found_bugs":true,"findings":3}'` appends to a local spool — no network.
+Batches ride the **next bus write the CLI makes anyway** (`register`,
+`send`, `broadcast`), so the backend sees its usual write cadence with
+fatter payloads (worst case a spool tail is lost — by design). Analysis is
+`agentcomm events --json` piped into whoever asks the question.
+
 ### Housekeeping — who cleans the bus, and how
 
 The bus is **disposable coordination state, not code** — anyone with write
@@ -390,8 +427,13 @@ access to the store owns cleanup (typically the repo/bucket owner, or a
 scheduled agent). Two layers:
 
 ```bash
-# every backend: trim the archive (read/); pending mail + registrations are never touched
+# every backend: trim the archive (read/). Pending mail is never touched.
+# Registrations are NEVER purged: presence is heartbeat-derived (idle = not
+# on the bus) and telemetry events reference them, so deletion only orphans.
 agentcomm purge --older-than 30d --backend <uri>          # add --dry-run to preview
+
+# telemetry events keep forever by default; aging them out is explicit:
+agentcomm purge --events 180d --backend <uri>             # or set telemetry.retention
 
 # github:// full reset: purging files still ADDS commits (git never forgets),
 # so the real cleanup is deleting the orphan bus branch — one call erases the

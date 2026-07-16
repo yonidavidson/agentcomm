@@ -332,9 +332,11 @@ session alias automatically.
   harness's guidance file (`CLAUDE.md` or `AGENTS.md`), registers them, and
   shows the roster; remind them to commit that file.
 - Housekeeping: mostly automatic — the bus daemon periodically trims the
-  archive (30d) and stale registrations (7d). Manual: `purge --older-than
-  <dur>` (archive) and/or `purge --agents-older-than <dur>` (idle
-  registrations; pending mail never touched); add `--dry-run` first. On
+  archive (30d). Manual: `purge --older-than <dur>` (archive) and/or
+  `purge --events <dur>` (telemetry events; also honors the config's
+  `telemetry.retention`). Pending mail is never touched, and registrations
+  are NEVER purged — presence is heartbeat-derived (idle = not on the bus),
+  and telemetry events reference registrations. Add `--dry-run` first. On
   `github://` a full reset is deleting the orphan bus branch
   (`gh api -X DELETE repos/<o>/<r>/git/refs/heads/agentcomm`) — it's
   recreated on the next write; confirm with the user before deleting.

@@ -1,3 +1,4 @@
+import type { TelemetryConfig } from './telemetry.js';
 /**
  * Team conventions — the social contract on top of channels, so "work on x"
  * maps to the same channel URI for every agent without out-of-band knowledge.
@@ -24,6 +25,12 @@ export interface LoadedConfig {
     conventions: Conventions;
     /** Optional default backend URI a project can pin in its config file. */
     backend?: string;
+    /**
+     * Telemetry capture config (issue #100). PRESENCE is the opt-in — when the
+     * config file has no `telemetry` section this stays undefined and every
+     * telemetry code path (emit, hook capture) is inert.
+     */
+    telemetry?: TelemetryConfig;
     /** Absolute path of the override file, or null when running on defaults. */
     source: string | null;
 }
