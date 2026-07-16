@@ -1,0 +1,114 @@
+name: release-cut
+
+# The one-button release train — designed so an agent (or a human) cuts a
+# full release with a single dispatch and CI does everything:
+#
+#   gh workflow run release-cut.yml -f version=<patch|minor|major|X.Y.Z>
+#
+# Steps, in order: bump the version everywhere it is stamped (package.json,
+# lockfile, .claude-plugin/plugin.json; plugin:sync stamps the Codex subtree),
+# rebuild the committed dist/ + plugin subtrees, point the README's OpenCode
+# install URL at the upcoming tarball, sanity-test, push one release commit
+# to main, tag it, publish the GitHub Release with generated notes, and
+# dispatch the tarball-attach workflow (release.yml).
+#
+# Two deliberate details:
+# - Passing the version main ALREADY carries skips the bump and just tags +
+#   releases the current tree — for cutting a release after a manual bump.
+# - The tarball attach is an explicit `gh workflow run`, not a `release:
+#   published` trigger: events created with the built-in GITHUB_TOKEN never
+#   start other workflows, so relying on the event would silently skip the
+#   tarball. workflow_dispatch is exempt from that guard.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'patch | minor | major | explicit X.Y.Z'
+        required: true
+        default: 'patch'
+
+permissions:
+  contents: write
+  actions: write # dispatches release.yml for the tarball attach
+
+concurrency: release-cut
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve the target version (bump unless main already carries it)
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          TARGET="${{ inputs.version }}"
+          if [ "$TARGET" = "$CURRENT" ]; then
+            VERSION="$CURRENT"
+            echo "::notice::main already at $CURRENT — tagging + releasing the current tree, no bump"
+          else
+            VERSION=$(npm version "$TARGET" --no-git-tag-version | tr -d 'v[:space:]')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp manifests + rebuild the committed artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const f = ".claude-plugin/plugin.json";
+            const j = JSON.parse(fs.readFileSync(f, "utf8"));
+            j.version = process.env.VERSION;
+            fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
+          '
+          # builds dist/ and regenerates the Codex plugin subtree (version from package.json)
+          npm run plugin:sync
+
+      - name: Point the README at the upcoming OpenCode tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-opencode-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-opencode-${VERSION}.tgz|g" README.md
+
+      - name: Sanity (typecheck + tests; docker-backed suites self-skip here)
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Commit, tag, push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "release: v${VERSION}" || echo "tree already at v${VERSION} — tagging as-is"
+          git tag "v${VERSION}"
+          git push origin main "refs/tags/v${VERSION}"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --verify-tag
+
+      - name: Attach the OpenCode tarball (explicit dispatch — see header)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh workflow run release.yml -f tag="v${VERSION}"
+          echo "::notice::v${VERSION} published — release.yml dispatched to attach agentcomm-opencode-${VERSION}.tgz"
