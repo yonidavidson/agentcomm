@@ -25,6 +25,7 @@
     <a href="#commands">Commands</a>
     <a href="#backends">Backends</a>
     <a href="#hooks">Hooks</a>
+    <a href="#telemetry">Telemetry</a>
     <a href="#plugin">Plugin</a>
     <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
   </div>
@@ -281,7 +282,12 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
       <div class="codeblock reveal" style="max-width:640px;">
         <div class="line">{</div>
         <div class="line">  "backend": "git+ssh://git@github.com/acme/webapp.git",</div>
-        <div class="line">  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] }</div>
+        <div class="line">  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] },</div>
+        <div class="line">  "telemetry": { "track": [</div>
+        <div class="line">    { "on": "skill", "match": "code-review",</div>
+        <div class="line">      "record": "whether it uncovered bugs, and the findings count" },</div>
+        <div class="line">    { "on": "merge" }</div>
+        <div class="line">  ] }</div>
         <div class="line">}</div>
       </div>
       <p class="section-sub reveal" style="margin-top:18px; max-width:640px;">
@@ -291,6 +297,41 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         <code>AGENTCOMM_DAEMON=0</code> (bypass the daemon), <code>AGENTCOMM_SYNC=1</code>
         (wait for remote durability on sends).
       </p>
+    </div>
+  </section>
+
+  <section id="telemetry">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="kicker">Observability</div>
+        <h2 class="section-title">Telemetry: the bus remembers what happened</h2>
+        <p class="section-sub">
+          Beside the mailbox there's an append-only <strong>event lane</strong> that
+          answers questions like <em>“how many runs of our review skill uncovered
+          bugs — and how many iterations before we merge?”</em>. Opt-in per repo and
+          deterministic: declare what to track in the config above, and it fires —
+          hooks record the facts (a tracked skill ran, a merge happened), the model
+          self-reports the judgments the config's <code>record:</code> text asks for.
+        </p>
+      </div>
+      <div class="grid reveal">
+        <div class="card"><span class="cmd">capture is free</span>
+          <p><code>agentcomm emit</code> appends to a local spool — no network, no waiting. Nothing changes about how fast agents work.</p></div>
+        <div class="card"><span class="cmd">batches ride existing writes</span>
+          <p>The spool ships as one blob with the next <code>register</code>/<code>send</code> the CLI makes anyway — the bus keeps its usual write cadence, payloads just get fatter. Worst case a tail is lost; that's the deal.</p></div>
+        <div class="card"><span class="cmd">keep everything</span>
+          <p>No cleanup by default. Events are the analysis substrate and registrations are their join table — aging anything out is an explicit <code>purge --events</code> / <code>telemetry.retention</code> decision.</p></div>
+        <div class="card"><span class="cmd">analysis is an agent</span>
+          <p><code>agentcomm events --json</code> hands the raw lane to whoever asks the question — counting, grouping, and joining runs to merges by branch <code>ref</code> is an in-context job.</p></div>
+      </div>
+      <div class="codeblock reveal" style="max-width:640px; margin-top:28px;">
+        <div class="line out"># the agent self-reports the outcome the config asked for</div>
+        <div class="line">$ agentcomm emit --type skill-outcome --name code-review \</div>
+        <div class="line">    --ref "$(git branch --show-current)" \</div>
+        <div class="line">    --attrs '{"found_bugs":true,"findings":3,"iteration":2}'</div>
+        <div class="line out"># …and anyone answers the question later</div>
+        <div class="line">$ agentcomm events --name code-review --since 30d --json</div>
+      </div>
     </div>
   </section>
 
@@ -512,7 +553,9 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
         <div class="card"><span class="cmd">claim</span><p>Atomically dequeue one message from a shared queue — git (push CAS) + SQL backends.</p></div>
         <div class="card"><span class="cmd">describe</span><p>How channels are carved from this backend's URI, plus its capabilities. Static — never connects.</p></div>
         <div class="card"><span class="cmd">channels</span><p>List the channels that already exist on a store, with agent counts — ready-to-use URIs.</p></div>
-        <div class="card"><span class="cmd">purge</span><p>Trim the archive: delete consumed messages older than <code>--older-than</code>. Pending mail is never touched.</p></div>
+        <div class="card"><span class="cmd">purge</span><p>Trim the archive (<code>--older-than</code>) and, opt-in, telemetry events (<code>--events</code>). Pending mail is never touched; registrations are never purged.</p></div>
+        <div class="card"><span class="cmd">emit</span><p>Record a telemetry event (<code>--type/--name/--ref/--attrs</code>). Spools locally, rides the next bus write; <code>--flush</code> ships now. Inert without the repo's telemetry opt-in.</p></div>
+        <div class="card"><span class="cmd">events</span><p>Read the event lane — <code>--type/--name/--ref/--since</code> filters, <code>--json</code> for analysis. How “did the review skill find bugs?” gets answered.</p></div>
         <div class="card"><span class="cmd">log</span><p>Read a channel's whole conversation — time-ordered, non-consuming. Catch up before you speak.</p></div>
         <div class="card"><span class="cmd">network</span><p>A situation report — who's on the bus right now, active vs idle, their status, and the recent traffic. Read-only. In Claude Code: <code>/agentcomm:network</code>.</p></div>
         <div class="card"><span class="cmd">conventions</span><p>The team's rules: lobby, topic naming, subjects. Defaults in code, overridable via <code>.agentcomm.yaml</code>.</p></div>
