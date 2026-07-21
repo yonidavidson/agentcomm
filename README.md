@@ -24,12 +24,15 @@ Get yourself (and this repo) on the bus — takes under a minute:
    with `/hooks` after installation. Then ask Codex to use agentcomm to
    initialize the repo; the skill runs `init --harness codex` and adds the
    coordination contract to `AGENTS.md`.
-3. **If you are OpenCode**, add the plugin tarball from this repo's latest
-   [release](https://github.com/yonidavidson/agentcomm/releases) to your
-   `opencode.json` — `"plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"]`.
-   It puts every session on the repo bus in-process. OpenCode reads `AGENTS.md`
-   natively, so `agentcomm init --harness opencode` (which writes `AGENTS.md`)
-   also onboards it — see [As an OpenCode plugin](#as-an-opencode-plugin).
+3. **If you are OpenCode — or any other harness**, ask your user to install
+   the CLI globally from the artifact on this repo's latest
+   [release](https://github.com/yonidavidson/agentcomm/releases):
+   `npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz`.
+   Then `agentcomm hooks --harness opencode` generates the lifecycle hooks
+   (`.opencode/plugin/agentcomm.ts`) and `agentcomm init --harness opencode`
+   writes `AGENTS.md`, which OpenCode reads natively — see
+   [As an OpenCode plugin](#as-an-opencode-plugin), including the richer
+   in-process plugin alternative.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -49,9 +52,22 @@ Get yourself (and this repo) on the bus — takes under a minute:
 
 ## Install
 
-Not on the npm registry (yet) — install straight from GitHub. `dist/` is
-committed to the repo, so this needs no build step, and the install is
-**genuinely zero-dependency**: you get `dist/` and nothing else.
+Not on the npm registry (yet) — the `.tgz` artifact attached to every
+[GitHub release](https://github.com/yonidavidson/agentcomm/releases) is the
+distribution. **Unless you are Claude Code** (whose
+[plugin](#as-a-claude-code-plugin) ships the CLI), install it globally:
+
+```bash
+npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+```
+
+That is the whole CLI: ~100 kB, `dist/` only, zero runtime dependencies for
+the file/git backends. Then wire your harness's lifecycle to it —
+`agentcomm hooks --harness <name>` generates the hook wiring for you (see the
+[OpenCode section](#as-an-opencode-plugin) for the worked example).
+
+To embed the library as a **dependency** instead, install straight from
+GitHub — `dist/` is committed to the repo, so this needs no build step either:
 
 ```bash
 npm install github:yonidavidson/agentcomm
@@ -107,10 +123,50 @@ Use agentcomm to initialize this Codex repo for the team.
 ### As an OpenCode plugin
 
 [OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
-its agents already onboard from this repo's `AGENTS.md`. The plugin adds the
-lifecycle — it registers each session on the bus, briefs it, surfaces unread
-mail before the session goes idle, and keeps long turns reachable — by
-importing the agentcomm library in-process (no subprocess). Because OpenCode's
+its agents already onboard from this repo's `AGENTS.md`. What's left is the
+lifecycle — register each session on the bus, surface unread mail before the
+session goes idle. Two ways to get it:
+
+**The simple path: global CLI + generated hooks.** Install the CLI artifact,
+then let it write the hooks:
+
+```bash
+npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+agentcomm hooks --harness opencode     # writes .opencode/plugin/agentcomm.ts
+```
+
+The generated file is a plain OpenCode plugin that shells out to the global
+CLI — commit it and every OpenCode session in this repo joins the bus. It is
+small enough to read in full, and yours to edit:
+
+```ts
+// .opencode/plugin/agentcomm.ts (generated — abridged)
+import type { Plugin } from '@opencode-ai/plugin';
+
+export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
+  const sh = $.cwd(directory).nothrow();
+
+  // Session start: join the repo bus under a session-unique alias.
+  await sh`agentcomm register --status "opencode session"`.quiet();
+
+  return {
+    // session.idle can't block, so unread mail re-prompts the session.
+    async event({ event }) {
+      if (event.type !== 'session.idle') return;
+      const peek = await sh`agentcomm peek --json`.quiet();
+      // …parses the inbox and re-prompts the session when mail is waiting…
+    },
+  };
+};
+```
+
+That same shape is how you'd wire any other hook to the bus — e.g. a
+`tool.execute.after` handler that runs `agentcomm emit` to record telemetry,
+or a handler that `agentcomm send`s a teammate when a long task finishes.
+
+**The in-process plugin** is the richer alternative — same lifecycle plus
+system-prompt briefings, mid-turn digests, and update notices, by importing
+the agentcomm library in-process (no subprocess). Because OpenCode's
 `session.idle` is observe-only, the inbox guard re-prompts the session rather
 than blocking it.
 
@@ -120,7 +176,7 @@ the `.tgz` directly, no clone and no npm registry:
 
 ```json
 {
-  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"]
+  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-opencode-0.17.3.tgz"]
 }
 ```
 
@@ -186,6 +242,10 @@ echo "from a pipe" | agentcomm send bob --as alice
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
 - **Claude Code, Codex, and OpenCode pairing on one machine** — each native plugin uses
   its own guidance file while both communicate over the same repo bus.
+- **A dashboard watching the bus** —
+  [agentcomm-arcade](https://github.com/yonidavidson/agentcomm-arcade) renders
+  the roster, feed, and telemetry as a pixel/CRT guild hall by shelling out to
+  the same CLI; the worked example for putting your own UI on the bus.
 
 All illustrated with runnable commands on the
 [use-cases page](https://yonidavidson.github.io/agentcomm/#use-cases) — plus

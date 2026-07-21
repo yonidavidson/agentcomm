@@ -15,10 +15,11 @@ name: release-cut
 #   2. sanity    — typecheck + tests (docker-backed suites self-skip here;
 #                  the required `test` check already ran on every merge)
 #   3. tag + GitHub Release with generated notes
-#   4. dispatch release.yml to attach the OpenCode tarball (explicit
+#   4. dispatch release.yml to attach the install tarballs — the plain CLI
+#      artifact (npm install -g) and the OpenCode plugin tarball (explicit
 #      dispatch: events created with the built-in GITHUB_TOKEN never start
 #      `release: published` workflows on their own)
-#   5. open the docs PR bumping the OpenCode tarball URL in README + site
+#   5. open the docs PR bumping the install artifact URLs in README + site
 #      (versioned URLs are load-bearing: OpenCode caches by URL, so the
 #      version in the URL is the upgrade trigger). CI does not run on
 #      bot-created PRs — merge it with `gh pr merge --admin`. Best-effort:
@@ -94,27 +95,31 @@ jobs:
           git push origin "refs/tags/v${VERSION}"
           gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --verify-tag
 
-      - name: Attach the OpenCode tarball (explicit dispatch — see header)
+      - name: Attach the install tarballs (explicit dispatch — see header)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: gh workflow run release.yml -f tag="v${VERSION}"
 
-      - name: Open the docs PR (OpenCode tarball URL bump)
+      - name: Open the docs PR (install artifact URL bump)
         continue-on-error: true # the release stands even if PR creation is disallowed
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # Two disjoint URL patterns: the OpenCode plugin tarball and the plain
+          # CLI artifact (`agentcomm-` followed by a digit never matches the
+          # `agentcomm-opencode-` name).
           sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-opencode-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-opencode-${VERSION}.tgz|g" README.md docs/index.html
+          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-${VERSION}.tgz|g" README.md docs/index.html
           if git diff --quiet; then
             echo "::notice::docs already point at v${VERSION} — no PR needed"
             exit 0
           fi
           BRANCH="release-docs-v${VERSION}"
           git checkout -b "$BRANCH"
-          git commit -am "docs: point the OpenCode install URL at v${VERSION}"
+          git commit -am "docs: point the install artifact URLs at v${VERSION}"
           git push origin "$BRANCH"
-          gh pr create --title "docs: OpenCode tarball URL → v${VERSION}" \
+          gh pr create --title "docs: install artifact URLs → v${VERSION}" \
             --body "Follow-up from the v${VERSION} release-cut. CI does not run on bot-created PRs — merge with \`gh pr merge --admin --squash\`." \
-            || echo "::warning::could not open the docs PR — bump the tarball URL to v${VERSION} in README.md and docs/index.html manually"
+            || echo "::warning::could not open the docs PR — bump the artifact URLs to v${VERSION} in README.md and docs/index.html manually"

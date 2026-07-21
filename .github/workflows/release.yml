@@ -1,19 +1,23 @@
 name: release
 
-# Attaches the OpenCode plugin tarball to each GitHub Release so OpenCode can
-# install it from a small artifact instead of cloning the whole repo.
+# Attaches the install artifacts to each GitHub Release:
 #
-# Why a tarball and not a `github:` plugin spec: OpenCode installs a remote
-# plugin by git-cloning the entire repo, and this monorepo (full CLI + committed
-# dist/ across its history) is a large, slow clone its installer chokes on. A
-# `npm pack` tarball is ~100 kB (dist only, no history) and OpenCode/arborist
-# installs it straight from a URL — verified against the real binary.
+#   agentcomm-X.Y.Z.tgz          — the universal CLI artifact. Every harness
+#                                  that is not Claude Code installs with
+#                                  `npm install -g <this URL>` (package.json's
+#                                  `bin` provides the global `agentcomm`), then
+#                                  wires hooks via `agentcomm hooks --harness …`.
+#   agentcomm-opencode-X.Y.Z.tgz — the same tarball under the name OpenCode's
+#                                  opencode.json plugin entry has always used
+#                                  (kept so existing pinned URLs keep working).
 #
-# Install spec for users (see README):
-#   "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/vX.Y.Z/agentcomm-opencode-X.Y.Z.tgz"]
+# Why a tarball and not a `github:` spec: installers that git-clone the whole
+# repo (OpenCode's plugin fetch, slow npm git installs) choke on this monorepo
+# (full CLI + committed dist/ across its history). An `npm pack` tarball is
+# ~100 kB (dist only, no history) and installs in seconds from a URL.
 #
 # No secrets: uploads use the built-in GITHUB_TOKEN. The npm registry is not
-# involved — the root `agentcomm` package stays install-from-GitHub by design.
+# involved — the GitHub release artifact IS the distribution.
 
 on:
   release:
@@ -21,14 +25,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to attach the tarball to (e.g. v0.16.9)'
+        description: 'Existing release tag to attach the tarballs to (e.g. v0.16.9)'
         required: true
 
 permissions:
   contents: write
 
 jobs:
-  attach-opencode-tarball:
+  attach-install-tarballs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,22 +45,23 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Pack the plugin tarball
+      - name: Pack the install tarballs
         id: pack
         run: |
           VERSION=$(node -p "require('./package.json').version")
           # `npm pack` emits agentcomm-<version>.tgz (dist-only, per package.json "files").
           npm pack
-          SRC="agentcomm-${VERSION}.tgz"
-          ASSET="agentcomm-opencode-${VERSION}.tgz"
-          mv "$SRC" "$ASSET"
-          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
-          echo "Packed $ASSET ($(du -h "$ASSET" | cut -f1))"
+          CLI="agentcomm-${VERSION}.tgz"
+          OPENCODE="agentcomm-opencode-${VERSION}.tgz"
+          cp "$CLI" "$OPENCODE"
+          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
+          echo "opencode=$OPENCODE" >> "$GITHUB_OUTPUT"
+          echo "Packed $CLI + $OPENCODE ($(du -h "$CLI" | cut -f1) each)"
 
-      - name: Upload tarball to the release
+      - name: Upload tarballs to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          gh release upload "$TAG" "${{ steps.pack.outputs.asset }}" --clobber --repo "$GITHUB_REPOSITORY"
-          echo "::notice::Attached ${{ steps.pack.outputs.asset }} to $TAG"
+          gh release upload "$TAG" "${{ steps.pack.outputs.cli }}" "${{ steps.pack.outputs.opencode }}" --clobber --repo "$GITHUB_REPOSITORY"
+          echo "::notice::Attached ${{ steps.pack.outputs.cli }} and ${{ steps.pack.outputs.opencode }} to $TAG"
