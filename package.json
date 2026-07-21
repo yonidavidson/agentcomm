@@ -26,8 +26,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./server": "./dist/opencode-plugin.js"
+    }
   },
   "files": [
     "dist",
