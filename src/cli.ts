@@ -113,6 +113,11 @@ Flags:
 
 Env:
   AGENTCOMM_REPO             Repo pointer — same as --repo
+  AGENTCOMM_NO_AUTO_HOOKS=1  Don't auto-write missing harness hooks on connect
+                             (by default, connecting inside an opted-in repo
+                             that uses OpenCode but lacks the agentcomm hooks
+                             provisions .opencode/plugin/agentcomm.ts and
+                             notifies on stderr)
   AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
   AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
@@ -207,6 +212,14 @@ async function main(argv: string[]): Promise<number> {
   // emit is capture, not transport: it appends to the local spool and
   // returns — no backend connection, no network, unless --flush ships now.
   if (command === 'emit') return await cmdEmit(cfg, flags);
+
+  // Auto-provision missing harness hooks before connecting (issue #122): an
+  // agent that registers but never runs `agentcomm hooks` starts its NEXT
+  // session deaf — no auto-register, no inbox nudge. Consent-gated, one stat
+  // in the common case, stderr-only, and fails open (never blocks a connect).
+  if (process.env.AGENTCOMM_NO_AUTO_HOOKS !== '1') {
+    await autoProvisionHooks().catch(() => {});
+  }
 
   const backend = await resolveTransport(cfg, flags);
   const bus = new Bus(backend);
@@ -807,6 +820,64 @@ export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
 export default AgentcommHooks;
 `;
 
+/** Write the OpenCode hooks file unless one exists (the user may have edited it — never clobber). */
+async function provisionOpencodeHooks(): Promise<'created' | 'already-present'> {
+  const { promises: fsp } = await import('node:fs');
+  const path = await import('node:path');
+  try {
+    await fsp.access(OPENCODE_HOOKS_FILE);
+    return 'already-present';
+  } catch {
+    await fsp.mkdir(path.dirname(OPENCODE_HOOKS_FILE), { recursive: true });
+    await fsp.writeFile(OPENCODE_HOOKS_FILE, OPENCODE_HOOKS_TEMPLATE);
+    return 'created';
+  }
+}
+
+/**
+ * Connect-time hook provisioning (issue #122). Acts only when EVERY signal
+ * agrees: the repo opted into the bus (marker/config/explicit backend), the
+ * project visibly uses a harness (`.opencode/` here), and the wiring is
+ * missing — including no in-process agentcomm plugin in opencode.json, which
+ * counts as wired. Then it writes exactly what `hooks --harness opencode`
+ * writes, and says so on stderr (stdout stays clean for --json consumers).
+ */
+async function autoProvisionHooks(): Promise<void> {
+  const { promises: fsp } = await import('node:fs');
+  const cwd = process.cwd();
+
+  // Harness signal first — a single stat for every repo that doesn't use OpenCode.
+  const usesOpencode = await fsp
+    .stat('.opencode')
+    .then((s) => s.isDirectory())
+    .catch(() => false);
+  if (!usesOpencode) return;
+  const wired = await fsp
+    .access(OPENCODE_HOOKS_FILE)
+    .then(() => true)
+    .catch(() => false);
+  if (wired) return;
+
+  // opencode.json already loading the in-process agentcomm plugin? Then the
+  // lifecycle exists — generating shell-out hooks on top would double it.
+  const viaPlugin = await fsp
+    .readFile('opencode.json', 'utf8')
+    .then((raw) => raw.includes('agentcomm'))
+    .catch(() => false);
+  if (viaPlugin) return;
+
+  // Consent: the repo is on the bus (guidance-file marker / explicit backend,
+  // same gate the harness plugins use) or carries an .agentcomm config.
+  const { onTheBus } = await import('./harness.js');
+  const consented = (await onTheBus(cwd)) || (await loadConventions().catch(() => null))?.source != null;
+  if (!consented) return;
+
+  await provisionOpencodeHooks();
+  process.stderr.write(
+    `agentcomm: OpenCode hooks were missing — wrote ${OPENCODE_HOOKS_FILE}; commit it so every session joins this bus (AGENTCOMM_NO_AUTO_HOOKS=1 disables this).\n`,
+  );
+}
+
 /**
  * hooks — generate the wiring that connects a harness's lifecycle to the
  * globally installed CLI. Claude Code and Codex ship full marketplace plugins,
@@ -840,16 +911,7 @@ async function cmdHooks(cfg: ResolvedConfig, requestedHarness?: string): Promise
     fail(`hooks: --harness must be one of claude, codex, opencode (received ${harness})`);
   }
 
-  const { promises: fsp } = await import('node:fs');
-  const path = await import('node:path');
-  let state: 'created' | 'already-present' = 'created';
-  try {
-    await fsp.access(OPENCODE_HOOKS_FILE);
-    state = 'already-present'; // the user may have edited it — never clobber
-  } catch {
-    await fsp.mkdir(path.dirname(OPENCODE_HOOKS_FILE), { recursive: true });
-    await fsp.writeFile(OPENCODE_HOOKS_FILE, OPENCODE_HOOKS_TEMPLATE);
-  }
+  const state = await provisionOpencodeHooks();
   if (cfg.json) {
     emit({ harness, file: OPENCODE_HOOKS_FILE, hooks: state });
     return 0;
