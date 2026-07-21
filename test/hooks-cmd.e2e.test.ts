@@ -71,18 +71,53 @@ describe('CLI hooks (harness hook generation)', () => {
     expect(await fs.readFile(target, 'utf8')).toBe('// my edited hooks\n');
   });
 
-  it('points Claude Code and Codex at their marketplace plugins instead of writing files', async () => {
+  it('--harness claude writes project settings hooks that drive the CLI', async () => {
     const dir = await mkTmp();
-    for (const [harness, expected] of [
-      ['claude', '/plugin install agentcomm@yonidavidson-plugins'],
-      ['codex', 'codex plugin add agentcomm@yonidavidson-plugins'],
-    ] as const) {
-      const r = await run(['hooks', '--harness', harness], dir);
-      expect(r.code).toBe(0);
-      expect(r.stdout).toContain(expected);
+    const r = await run(['hooks', '--harness', 'claude', '--json'], dir);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ harness: 'claude', file: '.claude/settings.json', hooks: 'created' });
+
+    const settings = JSON.parse(await fs.readFile(path.join(dir, '.claude', 'settings.json'), 'utf8')) as {
+      hooks: Record<string, unknown[]>;
+    };
+    // The whole lifecycle, every command the global CLI:
+    for (const event of ['SessionStart', 'SessionEnd', 'Stop', 'UserPromptSubmit', 'PostToolUse', 'TaskCreated', 'TaskCompleted']) {
+      expect(settings.hooks[event], event).toBeDefined();
     }
-    // No files appear for marketplace harnesses.
-    await expect(fs.access(path.join(dir, '.opencode'))).rejects.toThrow();
+    expect(JSON.stringify(settings)).toContain('agentcomm hook session-start');
+    expect(JSON.stringify(settings)).toContain('agentcomm hook stop-guard');
+  });
+
+  it('--harness claude merges into existing settings without clobbering, once', async () => {
+    const dir = await mkTmp();
+    const file = path.join(dir, '.claude', 'settings.json');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ permissions: { allow: ['Bash(ls:*)'] }, hooks: { Stop: [{ hooks: [] }] } }));
+
+    const r = await run(['hooks', '--harness', 'claude', '--json'], dir);
+    expect(JSON.parse(r.stdout)).toMatchObject({ hooks: 'merged' });
+    const merged = JSON.parse(await fs.readFile(file, 'utf8')) as {
+      permissions: unknown;
+      hooks: { Stop: unknown[] };
+    };
+    expect(merged.permissions).toEqual({ allow: ['Bash(ls:*)'] }); // untouched
+    expect(merged.hooks.Stop.length).toBe(2); // theirs + ours
+
+    // Second run: the wiring is present — nothing changes.
+    const again = await run(['hooks', '--harness', 'claude', '--json'], dir);
+    expect(JSON.parse(again.stdout)).toMatchObject({ hooks: 'already-present' });
+  });
+
+  it('--harness codex writes .codex/hooks.json without the Claude-only task events', async () => {
+    const dir = await mkTmp();
+    const r = await run(['hooks', '--harness', 'codex', '--json'], dir);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ harness: 'codex', file: '.codex/hooks.json', hooks: 'created' });
+    const cfg = JSON.parse(await fs.readFile(path.join(dir, '.codex', 'hooks.json'), 'utf8')) as {
+      hooks: Record<string, unknown[]>;
+    };
+    expect(cfg.hooks.SessionStart).toBeDefined();
+    expect(cfg.hooks.TaskCreated).toBeUndefined(); // Codex has no task events
   });
 
   it('fails with a usage error when --harness is missing or unknown', async () => {

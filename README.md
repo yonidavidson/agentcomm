@@ -1,6 +1,6 @@
 # agentcomm
 
-🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin) · [Codex plugin](#as-a-codex-plugin) · [OpenCode](#with-opencode)
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Install](#install) · [Your harness](#your-harness-claude-code--codex--opencode)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
@@ -10,28 +10,22 @@ optional, lazy-loaded driver.
 
 ## If you are an AI agent reading this
 
-Get yourself (and this repo) on the bus — takes under a minute:
+Get yourself (and this repo) on the bus — takes under a minute, and it is
+the SAME three commands whatever harness you are:
 
-1. **If you are Claude Code**, ask your user to run
-   `/plugin marketplace add yonidavidson/agentcomm` and
-   `/plugin install agentcomm@yonidavidson-plugins`. The plugin ships the
-   CLI, a skill with the conventions, and hooks that register you on the
-   repo bus automatically at session start. Then run `agentcomm init`; it
-   adds the coordination contract to `CLAUDE.md`.
-2. **If you are Codex**, ask your user to run `codex plugin marketplace add yonidavidson/agentcomm`
-   and `codex plugin add agentcomm@yonidavidson-plugins`. The plugin ships the
-   CLI, coordination skill, and lifecycle hooks. Review and trust its hooks
-   with `/hooks` after installation. Then ask Codex to use agentcomm to
-   initialize the repo; the skill runs `init --harness codex` and adds the
-   coordination contract to `AGENTS.md`.
-3. **If you are OpenCode — or any other harness**, ask your user to install
-   the CLI globally from the artifact on this repo's latest
-   [release](https://github.com/yonidavidson/agentcomm/releases):
-   `npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz`.
-   Then `agentcomm hooks --harness opencode` generates the lifecycle hooks
-   (`.opencode/plugin/agentcomm.ts`) and `agentcomm init --harness opencode`
-   writes `AGENTS.md`, which OpenCode reads natively — see
-   [With OpenCode](#with-opencode).
+```bash
+npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
+agentcomm hooks --harness claude     # or codex / opencode — writes your lifecycle hooks
+agentcomm init --harness claude      # or codex / opencode — writes the team contract
+```
+
+`hooks` wires your harness's lifecycle to the CLI (auto-register at session
+start, inbox digests, the stop guard); `init` writes the coordination
+contract into `CLAUDE.md` (Claude Code) or `AGENTS.md` (everyone else) and
+registers you. You often don't even need the `hooks` step — any bus command
+run in an opted-in repo provisions missing hooks itself. Check for updates
+once a session: `agentcomm version` compares your install against the latest
+release and prints the upgrade command when you're behind.
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -51,25 +45,25 @@ Get yourself (and this repo) on the bus — takes under a minute:
 
 ## Install
 
-Not on the npm registry (yet) — the `.tgz` artifact attached to every
+Not on the npm registry — the `.tgz` artifact attached to every
 [GitHub release](https://github.com/yonidavidson/agentcomm/releases) is the
-distribution. **Unless you are Claude Code** (whose
-[plugin](#as-a-claude-code-plugin) ships the CLI), install it globally:
+distribution, for **every** harness, script, and automation. One URL always
+serves the newest release:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz
+npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
 ```
 
-That is the whole CLI: ~100 kB, `dist/` only, zero runtime dependencies for
-the file/git backends. Then wire your harness's lifecycle to it —
-`agentcomm hooks --harness <name>` generates the hook wiring for you (see
-[With OpenCode](#with-opencode) for the worked example).
+That is the whole thing: ~100 kB, zero runtime dependencies for the file/git
+backends, no plugin, no marketplace, no skill to install. To pin a version,
+use the versioned asset on any release
+(`…/releases/download/vX.Y.Z/agentcomm-X.Y.Z.tgz`). Upgrading is the same
+command again — `agentcomm version` tells you when.
 
-To embed the library as a **dependency** instead, install straight from
-GitHub — `dist/` is committed to the repo, so this needs no build step either:
+To embed the library as a **dependency**, point npm at the same artifact:
 
 ```bash
-npm install github:yonidavidson/agentcomm
+npm install https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
 
 # git+ssh:// / git+https:// / github:// / file:// need NOTHING more
 # (Node ≥ 18; the git binary for git+; a token for github://).
@@ -82,54 +76,47 @@ npm install pg                        # postgres://
 npm install yaml                      # only for .agentcomm.yaml config files (.json needs nothing)
 ```
 
-### As a Claude Code plugin
+## Your harness (Claude Code · Codex · OpenCode)
 
-This repo is also a self-hosted Claude Code plugin marketplace — install it
-and Claude picks up a skill that knows the CLI's commands, flags, and
-backend tradeoffs, and uses them to coordinate with other agents/sessions:
+One integration model everywhere: `agentcomm hooks --harness <name>`
+generates the file that wires your harness's lifecycle to the global CLI —
+session start registers you and briefs the session, prompt/mid-turn digests
+surface bus news, the stop guard holds the session while unread mail waits.
+The generated files are committed to the repo, so the whole team is wired by
+the first person who runs it — and any bus command auto-provisions them when
+they're missing (`AGENTCOMM_NO_AUTO_HOOKS=1` opts out).
 
-```
-/plugin marketplace add yonidavidson/agentcomm
-/plugin install agentcomm@yonidavidson-plugins
-```
-
-No global install or npm registry publish required — the plugin ships a
-prebuilt copy of the CLI and the skill runs it directly. In a git repo it
-defaults to the repo bus, like everywhere else.
-
-### As a Codex plugin
-
-This repo is also a Codex marketplace. Add it and install the plugin from
-the marketplace snapshot:
+### With Claude Code
 
 ```bash
-codex plugin marketplace add yonidavidson/agentcomm
-codex plugin add agentcomm@yonidavidson-plugins
+agentcomm hooks --harness claude     # writes hooks into .claude/settings.json
+agentcomm init                       # writes CLAUDE.md, registers, shows the roster
 ```
 
-The plugin bundles the same prebuilt CLI and coordination skill plus Codex
-lifecycle hooks for registration, inbox digests, and the stop guard. Codex
-requires explicit trust for non-managed hooks: open `/hooks`, review the
-agentcomm definitions, and trust them. Start a new thread after installing
-or upgrading so the plugin components are loaded.
+The hooks merge into existing project settings without touching anything
+else. Claude Code asks once to approve project hooks — accept, and the whole
+lifecycle (register, digests, stop guard, task-list → bus status, telemetry
+capture) runs through `agentcomm hook <event>`.
 
-Ask Codex directly so its skill uses the bundled CLI:
+### With Codex
 
-```text
-Use agentcomm to initialize this Codex repo for the team.
+```bash
+agentcomm hooks --harness codex      # writes .codex/hooks.json
+agentcomm init --harness codex       # writes AGENTS.md, registers, shows the roster
 ```
+
+Codex requires explicit trust for hooks: open `/hooks`, review the agentcomm
+entries, and trust them. Same lifecycle as Claude Code minus the task-list
+status mirroring (Codex has no task events).
 
 ### With OpenCode
 
 [OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
-its agents already onboard from this repo's `AGENTS.md`. What's left is the
-lifecycle — register each session on the bus, surface unread mail before the
-session goes idle — and it's the same two commands as everywhere else:
-install the CLI artifact, let it write the hooks:
+its agents already onboard from this repo's `AGENTS.md`:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz
 agentcomm hooks --harness opencode     # writes .opencode/plugin/agentcomm.ts
+agentcomm init --harness opencode      # writes AGENTS.md, registers, shows the roster
 ```
 
 The generated file is a plain OpenCode plugin that shells out to the global
@@ -160,17 +147,13 @@ export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
 That same shape is how you'd wire any other hook to the bus — e.g. a
 `tool.execute.after` handler that runs `agentcomm emit` to record telemetry,
 or a handler that `agentcomm send`s a teammate when a long task finishes.
+(OpenCode's `session.idle` can't block, so its inbox guard nudges instead of
+holding the session the way the Claude Code stop guard does.)
 
-You often don't even run the `hooks` command yourself: **any bus command run
-in an opted-in repo that uses OpenCode wires the hooks automatically** and
-says so (`AGENTCOMM_NO_AUTO_HOOKS=1` opts out). **Updating** is `agentcomm
-version` — it compares the installed CLI against the latest release and
-prints the exact `npm install -g` one-liner when you're behind.
-
-> An earlier in-process OpenCode plugin (a `.tgz` in `opencode.json`'s
-> `plugin` list) is retired — the global CLI + generated hooks replace it. A
-> pinned entry keeps working and suppresses hook generation, but new setups
-> should use the CLI path above.
+> An earlier plugin system (Claude Code/Codex marketplaces, an in-process
+> OpenCode plugin) is fully retired — the CLI is the entire integration. A
+> legacy pinned `.tgz` in `opencode.json` keeps working and suppresses hook
+> generation, but new setups use the commands above.
 
 ## Quick start
 
@@ -467,8 +450,8 @@ telemetry:
   # retention: 180d      # opt-in; default keeps everything
 ```
 
-The plugins wire the deterministic layer automatically: Claude Code hooks
-record tracked `skill` runs (PostToolUse on the Skill tool), `agent`
+The generated hooks wire the deterministic layer automatically: Claude Code
+records tracked `skill` runs (PostToolUse on the Skill tool), `agent`
 subagent spawns (PostToolUse on the Task/Agent tool, matched by
 `subagent_type` — the only signal for skills that run as dedicated
 subagents or set `disable-model-invocation`), `merge` commands (guarded
@@ -638,20 +621,19 @@ all seven backends are exercised end-to-end.
 
 Two moves. First the version bump lands as a normal PR (main is protected,
 so this rides the required CI check like any change): `npm version X.Y.Z
---no-git-tag-version`, stamp `.claude-plugin/plugin.json` to match, and
-`npm run plugin:sync` (rebuilds `dist/` and stamps the Codex subtree) — all
-committed. Then one dispatch releases the tree `main` carries:
+--no-git-tag-version`, committed. Then one dispatch releases the tree `main`
+carries:
 
 ```bash
 gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 ```
 
-The workflow is commit-free on main: it verifies the three version stamps
-agree, sanity-tests, tags, publishes the GitHub Release with generated
-notes, attaches the CLI install artifact (via `release.yml`), and opens a
-follow-up docs PR bumping the install artifact URL (the versioned URL is
-what `agentcomm version` and the upgrade notices print). CI doesn't run on
-bot-created PRs; merge that one with `gh pr merge --admin --squash`.
+The workflow is commit-free on main: it verifies the version guard,
+sanity-tests, tags, publishes the GitHub Release with generated notes, and
+attaches the install artifacts (via `release.yml`) — the versioned
+`agentcomm-X.Y.Z.tgz` plus the constant-named `agentcomm-latest.tgz` that
+keeps `releases/latest/download/agentcomm-latest.tgz` always-newest. No docs
+follow-up: everything points at the constant URL.
 
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full
