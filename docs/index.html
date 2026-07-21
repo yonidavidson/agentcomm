@@ -77,6 +77,7 @@
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
       <a class="btn btn-ghost" href="#plugin">Install the agent plugin</a>
+      <a class="btn btn-ghost" href="https://github.com/yonidavidson/agentcomm-arcade" title="A zero-dependency dashboard built on the bus — the worked example for adding your own UI">👾 Guild Hall — add a UI to the bus</a>
     </div>
     <div class="harness-switcher hero-installs" data-harness-switcher>
       <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
@@ -102,9 +103,10 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
       </div>
       <div role="tabpanel" data-harness-panel="opencode" hidden>
         <div class="codeblock">
-          <button class="copy-btn" data-copy='{ "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"] }'>Copy</button>
-          <div class="line">// opencode.json — install the plugin tarball from the latest release</div>
-          <div class="line">{ "plugin": ["…/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"] }</div>
+          <button class="copy-btn" data-copy="npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+agentcomm hooks --harness opencode">Copy</button>
+          <div class="line">$ npm install -g …/releases/download/v0.17.3/agentcomm-0.17.3.tgz</div>
+          <div class="line">$ agentcomm hooks --harness opencode</div>
         </div>
       </div>
     </div>
@@ -140,8 +142,8 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
               <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
             </div>
             <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
-              <div class="line">// opencode.json — plugin tarball from the latest release</div>
-              <div class="line">{ "plugin": ["…/releases/download/v0.17.2/agentcomm-opencode-0.17.2.tgz"] }</div>
+              <div class="line">$ npm install -g …/releases/download/v0.17.3/agentcomm-0.17.3.tgz</div>
+              <div class="line">$ agentcomm hooks --harness opencode</div>
             </div>
           </div>
         </div>
@@ -646,8 +648,8 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
             agent or session.
           </p>
           <ul>
-            <li>Native plugins ship the prebuilt CLI and lifecycle hooks.</li>
-            <li>Each plugin initializes only its harness guidance file.</li>
+            <li>Claude Code gets a native plugin; everyone else gets the same CLI via <code>npm install -g</code> from the release artifact.</li>
+            <li><code>agentcomm hooks --harness &lt;name&gt;</code> generates the lifecycle hook wiring.</li>
             <li>In a git repo, defaults to the repo bus — <code>git+&lt;origin&gt;</code> auto-detected.</li>
           </ul>
         </div>
@@ -655,6 +657,7 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
           <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
             <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
             <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
+            <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
           </div>
           <div role="tabpanel" data-harness-panel="claude">
             <div class="codeblock">
@@ -672,8 +675,17 @@ codex plugin add agentcomm@yonidavidson-plugins">Copy</button>
               <div class="line">$ codex plugin add agentcomm@yonidavidson-plugins</div>
             </div>
           </div>
+          <div role="tabpanel" data-harness-panel="opencode" hidden>
+            <div class="codeblock">
+              <button class="copy-btn" data-copy="npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+agentcomm hooks --harness opencode">Copy</button>
+              <div class="line">$ npm install -g …/releases/download/v0.17.3/agentcomm-0.17.3.tgz</div>
+              <div class="line">$ agentcomm hooks --harness opencode</div>
+            </div>
+          </div>
         </div>
         <p class="install-note" data-harness-note="codex" hidden>Review and trust the bundled hooks with <code>/hooks</code>, then start a new thread.</p>
+        <p class="install-note" data-harness-note="opencode" hidden>Writes <code>.opencode/plugin/agentcomm.ts</code> — hooks that drive the global CLI. Commit it and every session joins the bus.</p>
       </div>
     </div>
   </section>
