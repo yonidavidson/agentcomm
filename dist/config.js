@@ -65,6 +65,9 @@ export function parseArgs(argv) {
             case 'dry-run':
                 flags.dryRun = true;
                 break;
+            case 'repo':
+                flags.repo = takeVal();
+                break;
             case 'daemon':
                 flags.daemon = true;
                 break;

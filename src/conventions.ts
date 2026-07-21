@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { loadDriver } from './backends/lazy.js';
 import type { TelemetryConfig, TelemetryTrackRule } from './telemetry.js';
@@ -34,10 +35,24 @@ export const DEFAULT_CONVENTIONS: Conventions = {
 
 const CONFIG_FILENAMES = ['.agentcomm.json', '.agentcomm.yaml', '.agentcomm.yml'];
 
+/** `~`/`~/x` → the user's home directory (repo pointers are often cross-project paths). */
+export function expandTilde(p: string): string {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
+
 export interface LoadedConfig {
   conventions: Conventions;
   /** Optional default backend URI a project can pin in its config file. */
   backend?: string;
+  /**
+   * Repo pointer (issue #117): resolve the bus as if the CLI ran inside this
+   * directory — its config, its git remote, its file:// fallback. For
+   * projects that talk on ANOTHER repo's bus (dashboards, cron jobs, sibling
+   * checkouts). One hop only; an explicit backend always wins.
+   */
+  repo?: string;
   /**
    * Telemetry capture config (issue #100). PRESENCE is the opt-in — when the
    * config file has no `telemetry` section this stays undefined and every
@@ -85,6 +100,12 @@ export async function loadConventions(
         : DEFAULT_CONVENTIONS.subjects,
     },
     backend: typeof parsed.backend === 'string' ? parsed.backend : undefined,
+    // Relative pointers are relative to the config file that declares them,
+    // not to wherever the CLI happens to run.
+    repo:
+      typeof parsed.repo === 'string' && parsed.repo
+        ? path.resolve(path.dirname(file), expandTilde(parsed.repo))
+        : undefined,
     telemetry: parseTelemetry(parsed.telemetry),
     source: file,
   };
@@ -116,6 +137,7 @@ function parseTelemetry(raw: unknown): TelemetryConfig | undefined {
 interface RawConfig {
   conventions?: unknown;
   backend?: unknown;
+  repo?: unknown;
   telemetry?: unknown;
 }
 

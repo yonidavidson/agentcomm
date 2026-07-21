@@ -21,10 +21,19 @@ export interface Conventions {
     subjects: string[];
 }
 export declare const DEFAULT_CONVENTIONS: Conventions;
+/** `~`/`~/x` → the user's home directory (repo pointers are often cross-project paths). */
+export declare function expandTilde(p: string): string;
 export interface LoadedConfig {
     conventions: Conventions;
     /** Optional default backend URI a project can pin in its config file. */
     backend?: string;
+    /**
+     * Repo pointer (issue #117): resolve the bus as if the CLI ran inside this
+     * directory — its config, its git remote, its file:// fallback. For
+     * projects that talk on ANOTHER repo's bus (dashboards, cron jobs, sibling
+     * checkouts). One hop only; an explicit backend always wins.
+     */
+    repo?: string;
     /**
      * Telemetry capture config (issue #100). PRESENCE is the opt-in — when the
      * config file has no `telemetry` section this stays undefined and every

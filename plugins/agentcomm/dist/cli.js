@@ -66,6 +66,12 @@ Flags:
                            --backend > AGENTCOMM_BACKEND > .agentcomm config >
                            git+<origin> (probed inside a git repo — any host) >
                            github:// (token fallback) > file://./.agentcomm
+  --repo <dir>             Resolve the bus as if running inside <dir> — its
+                           .agentcomm config, its git remote, its file://
+                           fallback. For tools that live OUTSIDE the bus repo
+                           (dashboards, cron jobs, sibling projects). Also
+                           AGENTCOMM_REPO or "repo" in the .agentcomm config
+                           (one hop; an explicit backend always wins)
   --as <name>              Acting agent (env AGENTCOMM_AGENT)
   --subject <text>         Message subject (send/broadcast)
   --thread <id>            Thread id (send/broadcast)
@@ -91,6 +97,7 @@ Flags:
   --help                   Show this help
 
 Env:
+  AGENTCOMM_REPO             Repo pointer — same as --repo
   AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
   AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
@@ -118,17 +125,48 @@ async function main(argv) {
     // itself is the default bus — agents are on the network just by running.
     // Explicit choices always win; both auto paths announce themselves on
     // stderr so nobody talks on a bus they didn't know they picked.
+    //
+    // A repo POINTER (--repo / AGENTCOMM_REPO / config `repo`, issue #117)
+    // redirects that resolution to another checkout, so tools living outside
+    // the bus repo — dashboards, cron jobs, sibling projects — talk on its bus
+    // without cwd tricks. One hop only; an explicit backend still wins.
     if (!flags.backend && !process.env.AGENTCOMM_BACKEND) {
-        const fromConfig = (await loadConventions().catch(() => null))?.backend;
-        if (fromConfig) {
-            cfg.backendUri = fromConfig;
-            process.stderr.write(`agentcomm: using ${fromConfig} (project default from the .agentcomm config file)\n`);
+        const localCfg = await loadConventions().catch(() => null);
+        const pointer = flags.repo ?? process.env.AGENTCOMM_REPO ?? localCfg?.repo;
+        let busDir;
+        let busCfg = localCfg;
+        if (pointer) {
+            const { expandTilde } = await import('./conventions.js');
+            const { resolve } = await import('node:path');
+            busDir = resolve(expandTilde(pointer));
+            const { promises: fsp } = await import('node:fs');
+            const isDir = await fsp
+                .stat(busDir)
+                .then((s) => s.isDirectory())
+                .catch(() => false);
+            if (!isDir)
+                fail(`repo pointer ${busDir} is not a directory (--repo / AGENTCOMM_REPO / config "repo")`);
+            busCfg = await loadConventions(busDir).catch(() => null);
+            if (busCfg?.repo) {
+                fail(`repo pointer target ${busDir} declares a repo pointer of its own — chains are not supported`);
+            }
+        }
+        const via = busDir ? `; via repo pointer ${busDir}` : '';
+        if (busCfg?.backend) {
+            cfg.backendUri = busCfg.backend;
+            process.stderr.write(`agentcomm: using ${busCfg.backend} (project default from the .agentcomm config file${via})\n`);
         }
         else {
-            const detected = await detectRepoBus();
+            const detected = await detectRepoBus(busDir);
             if (detected) {
                 cfg.backendUri = detected;
-                process.stderr.write(`agentcomm: using ${detected} (auto-detected from the git remote; set AGENTCOMM_BACKEND or --backend to override)\n`);
+                process.stderr.write(`agentcomm: using ${detected} (auto-detected from the git remote${via}; set AGENTCOMM_BACKEND or --backend to override)\n`);
+            }
+            else if (busDir) {
+                // Even off-git, the pointer's meaning holds: the bus lives THERE.
+                const { join } = await import('node:path');
+                cfg.backendUri = `file://${join(busDir, '.agentcomm')}`;
+                process.stderr.write(`agentcomm: using ${cfg.backendUri} (via repo pointer ${busDir})\n`);
             }
         }
     }

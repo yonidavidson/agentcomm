@@ -30,6 +30,7 @@ export interface ParsedFlags {
   olderThan?: string;
   agentsOlderThan?: string;
   dryRun: boolean;
+  repo?: string;
   daemon?: boolean;
   direct?: boolean;
   sync?: boolean;
@@ -99,6 +100,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'dry-run':
         flags.dryRun = true;
+        break;
+      case 'repo':
+        flags.repo = takeVal();
         break;
       case 'daemon':
         flags.daemon = true;

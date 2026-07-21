@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { loadDriver } from './backends/lazy.js';
 export const DEFAULT_CONVENTIONS = {
@@ -8,6 +9,14 @@ export const DEFAULT_CONVENTIONS = {
     subjects: ['task', 'ack', 'done', 'revision', 'question', 'status'],
 };
 const CONFIG_FILENAMES = ['.agentcomm.json', '.agentcomm.yaml', '.agentcomm.yml'];
+/** `~`/`~/x` → the user's home directory (repo pointers are often cross-project paths). */
+export function expandTilde(p) {
+    if (p === '~')
+        return os.homedir();
+    if (p.startsWith('~/'))
+        return path.join(os.homedir(), p.slice(2));
+    return p;
+}
 /**
  * Load conventions: built-in defaults, overridden (shallow per section) by
  * the nearest config file. `AGENTCOMM_CONFIG` names a file explicitly (an
@@ -43,6 +52,11 @@ export async function loadConventions(cwd = process.cwd(), env = process.env) {
                 : DEFAULT_CONVENTIONS.subjects,
         },
         backend: typeof parsed.backend === 'string' ? parsed.backend : undefined,
+        // Relative pointers are relative to the config file that declares them,
+        // not to wherever the CLI happens to run.
+        repo: typeof parsed.repo === 'string' && parsed.repo
+            ? path.resolve(path.dirname(file), expandTilde(parsed.repo))
+            : undefined,
         telemetry: parseTelemetry(parsed.telemetry),
         source: file,
     };
