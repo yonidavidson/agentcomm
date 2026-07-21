@@ -43,7 +43,7 @@ export function updateMessage(mine, latestTag, harness) {
         `(latest: https://github.com/${REPO}/releases/latest)`);
 }
 /** This package's installed version, read from its own package.json (dist/ is one level down). */
-function ownVersion() {
+export function ownVersion() {
     try {
         const here = path.dirname(fileURLToPath(import.meta.url)); // <pkg>/dist
         const pkg = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8'));
@@ -53,10 +53,11 @@ function ownVersion() {
         return null;
     }
 }
-async function fetchLatestTag() {
+/** Latest release tag on GitHub, or null on any failure (offline, rate-limit, timeout). */
+export async function fetchLatestTag(timeoutMs = FETCH_TIMEOUT_MS) {
     try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
         const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
             headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'agentcomm' },
             signal: ctrl.signal,

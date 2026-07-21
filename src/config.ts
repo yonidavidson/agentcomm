@@ -30,6 +30,7 @@ export interface ParsedFlags {
   olderThan?: string;
   agentsOlderThan?: string;
   dryRun: boolean;
+  version: boolean;
   repo?: string;
   daemon?: boolean;
   direct?: boolean;
@@ -54,7 +55,7 @@ export interface ParsedFlags {
  * is a positional in `_`.
  */
 export function parseArgs(argv: string[]): ParsedFlags {
-  const flags: ParsedFlags = { json: false, dryRun: false, flush: false, _: [] };
+  const flags: ParsedFlags = { json: false, dryRun: false, flush: false, version: false, _: [] };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i]!;
     if (!tok.startsWith('--')) {
@@ -103,6 +104,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'repo':
         flags.repo = takeVal();
+        break;
+      case 'version':
+        flags.version = true;
         break;
       case 'daemon':
         flags.daemon = true;

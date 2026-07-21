@@ -16,7 +16,7 @@ export function resolveConfig(flags, env) {
  * is a positional in `_`.
  */
 export function parseArgs(argv) {
-    const flags = { json: false, dryRun: false, flush: false, _: [] };
+    const flags = { json: false, dryRun: false, flush: false, version: false, _: [] };
     for (let i = 0; i < argv.length; i++) {
         const tok = argv[i];
         if (!tok.startsWith('--')) {
@@ -67,6 +67,9 @@ export function parseArgs(argv) {
                 break;
             case 'repo':
                 flags.repo = takeVal();
+                break;
+            case 'version':
+                flags.version = true;
                 break;
             case 'daemon':
                 flags.daemon = true;

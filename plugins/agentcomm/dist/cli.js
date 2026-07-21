@@ -59,6 +59,10 @@ Commands:
                            bus over a local socket, so every command answers
                            immediately. Network schemes (git+ssh://, github://)
                            use it automatically
+  version                  Installed version + the latest GitHub release,
+                           compared — prints the npm install -g one-liner
+                           when an update exists (also -v / --version).
+                           Agents: run this once per session to stay current
 
 Flags:
   --backend <uri>          git+ssh:// | github:// | file:// | sqlite:// |
@@ -94,6 +98,7 @@ Flags:
   --since <dur>            events: only events newer than e.g. 30d, 12h
   --events <dur>           purge: age out telemetry events older than this
   --json                   Machine-readable JSON output
+  -v, --version            Installed version + latest-release check
   --help                   Show this help
 
 Env:
@@ -115,6 +120,11 @@ async function main(argv) {
     const cfg = resolveConfig(flags, process.env);
     const positional = flags._;
     const command = positional[0];
+    // version is static and network-optional: print the installed version and
+    // compare against the latest GitHub release. Handled before everything else
+    // so `-v`/`--version` behave like every other CLI's.
+    if (flags.version || command === 'version' || command === '-v')
+        return await cmdVersion(cfg);
     if (!command || command === '--help' || positional.includes('--help')) {
         process.stdout.write(USAGE);
         return command ? 0 : 1;
@@ -627,6 +637,47 @@ async function cmdInit(bus, cfg, requestedHarness) {
         `Commit ${guidanceFile} and every ${harnessLabel} teammate joins this bus automatically.`,
         '',
     ].join('\n'));
+    return 0;
+}
+/**
+ * version — the installed version, plus a live comparison against the latest
+ * GitHub release (the release artifact IS the distribution, so "latest
+ * release" == "latest version"). Explicit ask → no day-throttle cache, just a
+ * short network cap; offline it still prints the installed version.
+ */
+async function cmdVersion(cfg) {
+    const { ownVersion, fetchLatestTag, compareVersions } = await import('./update-check.js');
+    const mine = ownVersion();
+    const latest = (await fetchLatestTag(3000))?.replace(/^v/, '') ?? null;
+    const behind = mine !== null && latest !== null && compareVersions(latest, mine) > 0;
+    const install = behind
+        ? `npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v${latest}/agentcomm-${latest}.tgz`
+        : undefined;
+    if (cfg.json) {
+        emit({
+            version: mine ?? 'unknown',
+            latest,
+            upToDate: mine !== null && latest !== null ? !behind : null,
+            ...(install ? { install } : {}),
+        });
+        return 0;
+    }
+    const v = mine ?? 'unknown';
+    if (latest === null) {
+        process.stdout.write(`agentcomm ${v} (could not reach GitHub to check the latest release)\n`);
+    }
+    else if (behind) {
+        process.stdout.write([
+            `agentcomm ${v} — update available: v${latest}`,
+            'Upgrade the global install:',
+            `  ${install}`,
+            '(Claude Code plugin users: /plugin update agentcomm instead)',
+            '',
+        ].join('\n'));
+    }
+    else {
+        process.stdout.write(`agentcomm ${v} (latest)\n`);
+    }
     return 0;
 }
 const OPENCODE_HOOKS_FILE = '.opencode/plugin/agentcomm.ts';

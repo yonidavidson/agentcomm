@@ -21,6 +21,7 @@ export interface ParsedFlags {
     olderThan?: string;
     agentsOlderThan?: string;
     dryRun: boolean;
+    version: boolean;
     repo?: string;
     daemon?: boolean;
     direct?: boolean;

@@ -276,6 +276,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | ------------------ | ------------------------------------------------------------------- |
 | `init`             | Put this repo on the bus: writes `CLAUDE.md` by default, or `AGENTS.md` with `--harness codex\|opencode\|agents`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
+| `version` / `-v`   | Installed version + the latest GitHub release, compared; prints the `npm install -g` one-liner when an update exists. Agents: run once per session to stay current. |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
 | `broadcast [body]` | Send to every registered agent except yourself.                    |
