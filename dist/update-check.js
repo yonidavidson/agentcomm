@@ -18,7 +18,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 /** Per-harness upgrade instructions — the "how" appended to the version line. */
 const HOW_TO_UPGRADE = {
-    opencode: (tag) => `Bump the plugin tarball URL in your opencode.json to ${tag} — OpenCode caches by URL, so the version in the URL is what triggers the upgrade.`,
+    opencode: (tag) => {
+        const v = tag.replace(/^v/, '');
+        return `Upgrade the global CLI: npm install -g https://github.com/${REPO}/releases/download/${tag}/agentcomm-${v}.tgz`;
+    },
     claude: () => 'Upgrade with `/plugin update agentcomm` (or `/plugin` → Manage plugins).',
     codex: () => 'Upgrade with `codex plugin marketplace upgrade yonidavidson-plugins`, then `codex plugin add agentcomm@yonidavidson-plugins` to reinstall.',
 };

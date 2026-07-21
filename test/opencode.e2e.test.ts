@@ -1,12 +1,13 @@
 /**
- * Full end-to-end for the OpenCode plugin: installs nothing, but drives the
- * REAL `opencode` binary with our plugin loaded against a file:// bus and a
- * local mock model, asserting the plugin registered the session on the bus.
+ * Full end-to-end for the OpenCode integration: drives the REAL `opencode`
+ * binary against a file:// bus and a local mock model, with the shipping
+ * wiring — the generated hooks file (`agentcomm hooks --harness opencode` →
+ * `.opencode/plugin/agentcomm.ts`) shelling out to the `agentcomm` CLI on
+ * PATH (what `npm install -g <release .tgz>` provides; here the repo's own
+ * bin/ shim over dist/).
  *
- * The plugin is loaded from the PACKAGE ROOT — the same resolution
- * (`package.json` → `exports["./server"]` → dist/opencode-plugin.js) that
- * `"plugin": ["github:yonidavidson/agentcomm"]` uses once OpenCode has cloned
- * the repo. So this covers the github-install path minus the git clone itself.
+ * The in-process plugin was retired: the CLI + generated hooks ARE the
+ * OpenCode story, so that is what gets regression coverage.
  *
  * Self-skips unless `opencode` is on PATH AND AGENTCOMM_TEST_OPENCODE is set —
  * so the normal `test` job stays green; CI's `e2e-harness` job installs the
@@ -14,7 +15,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import http from 'node:http';
-import { promises as fs, createReadStream } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
@@ -22,9 +23,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url)) + '/..';
 const cli = path.join(root, 'dist', 'cli.js');
-// OpenCode resolves the plugin from the package root via exports["./server"] —
-// the same path a `github:yonidavidson/agentcomm` install takes.
-const pluginDir = root;
+// The global-install stand-in: bin/agentcomm resolves dist/cli.js relative to
+// itself, exactly like the `bin` entry of an `npm install -g` layout.
+const binDir = path.join(root, 'bin');
 
 const opencodePresent = spawnSync('opencode', ['--version'], { stdio: 'ignore' }).status === 0;
 const RUN = opencodePresent && !!process.env.AGENTCOMM_TEST_OPENCODE;
@@ -61,23 +62,22 @@ function startMock(): Promise<{ port: number; hits: () => number; close: () => v
   );
 }
 
-describe.skipIf(!RUN)('OpenCode plugin — real `opencode run`', () => {
+describe.skipIf(!RUN)('OpenCode generated hooks — real `opencode run`', () => {
   beforeAll(() => {
-    // ensure dist + the plugin's synced dist are fresh
-    execFileSync('npm', ['run', 'plugin:sync'], { cwd: root, stdio: 'ignore' });
+    execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'ignore' });
   }, 120_000);
 
-  it('registers the session on the bus when driven by the real binary', async () => {
+  it('the hooks file written by `agentcomm hooks` registers the session via the CLI on PATH', async () => {
     const mock = await startMock();
-    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-oc-')));
+    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-oc-hooks-')));
     const cfgDir = path.join(dir, 'xdg', 'opencode');
     await fs.mkdir(cfgDir, { recursive: true });
     await fs.writeFile(path.join(dir, 'AGENTS.md'), '<!-- agentcomm -->\n');
+    // No plugin entry — the project-local generated hooks are the wiring.
     await fs.writeFile(
       path.join(cfgDir, 'opencode.json'),
       JSON.stringify({
         $schema: 'https://opencode.ai/config.json',
-        plugin: [pluginDir],
         provider: {
           openai: {
             options: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'sk-mock' },
@@ -86,86 +86,27 @@ describe.skipIf(!RUN)('OpenCode plugin — real `opencode run`', () => {
         },
       }),
     );
+
     const env = {
       ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
       XDG_CONFIG_HOME: path.join(dir, 'xdg'),
       AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
       AGENTCOMM_NO_GIT_PROBE: '1',
-      AGENTCOMM_AGENT: 'ci-oc',
+      AGENTCOMM_AGENT: 'ci-hooks',
     };
-    // seed pending mail for the session's mailbox
-    spawnSync(process.execPath, [cli, 'send', 'ci-oc', 'wrap it up', '--as', 'seeder'], { env });
 
-    // drive one real, non-interactive session (mock model → no external calls)
+    // Generate the hooks exactly the way a user (or auto-provisioning) does.
+    execFileSync(process.execPath, [cli, 'hooks', '--harness', 'opencode'], { cwd: dir, env });
+    await fs.access(path.join(dir, '.opencode', 'plugin', 'agentcomm.ts'));
+
+    // Drive one real, non-interactive session (mock model → no external calls).
     await new Promise<void>((resolve) => {
       const child = spawn('opencode', ['run', 'hi', '--model', 'openai/gpt-4o-mini'], {
         cwd: dir,
         env,
         stdio: 'ignore',
       });
-      const killer = setTimeout(() => child.kill('SIGKILL'), 30_000);
-      child.on('close', () => {
-        clearTimeout(killer);
-        resolve();
-      });
-    });
-
-    // the plugin's factory ran register(): ci-oc is on the bus
-    const roster = JSON.parse(
-      execFileSync(process.execPath, [cli, 'agents', '--json'], { env, encoding: 'utf8' }),
-    ) as { name: string }[];
-    mock.close();
-    await fs.rm(dir, { recursive: true, force: true });
-    expect(roster.map((a) => a.name)).toContain('ci-oc');
-  }, 60_000);
-
-  // The real shipping path: OpenCode installs the plugin from a remote .tgz URL
-  // (a GitHub Release asset) — no git clone. `npm pack` here produces exactly
-  // the artifact release.yml attaches; we serve it over http and assert a real
-  // `opencode run` installs + registers from the URL.
-  it('installs from a tarball URL and registers on the bus', async () => {
-    // pack the dist-only tarball (same as `npm pack` / release.yml)
-    const packOut = execFileSync('npm', ['pack', '--silent'], { cwd: root, encoding: 'utf8' }).trim().split('\n').pop()!;
-    const tgz = path.join(root, packOut);
-
-    const mock = await startMock();
-    // a second server just for the tarball asset
-    const assetSrv = http.createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/gzip' });
-      createReadStream(tgz).pipe(res);
-    });
-    const assetPort: number = await new Promise((r) =>
-      assetSrv.listen(0, '127.0.0.1', () => r((assetSrv.address() as { port: number }).port)),
-    );
-    const tarballUrl = `http://127.0.0.1:${assetPort}/agentcomm-opencode.tgz`;
-
-    const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-tgz-')));
-    const cfgDir = path.join(dir, 'xdg', 'opencode');
-    await fs.mkdir(cfgDir, { recursive: true });
-    await fs.writeFile(path.join(dir, 'AGENTS.md'), '<!-- agentcomm -->\n');
-    await fs.writeFile(
-      path.join(cfgDir, 'opencode.json'),
-      JSON.stringify({
-        $schema: 'https://opencode.ai/config.json',
-        plugin: [tarballUrl],
-        provider: {
-          openai: {
-            options: { baseURL: `http://127.0.0.1:${mock.port}/v1`, apiKey: 'sk-mock' },
-            models: { 'gpt-4o-mini': { name: 'mock' } },
-          },
-        },
-      }),
-    );
-    const env = {
-      ...process.env,
-      XDG_CONFIG_HOME: path.join(dir, 'xdg'),
-      AGENTCOMM_BACKEND: `file://${path.join(dir, '.bus')}`,
-      AGENTCOMM_NO_GIT_PROBE: '1',
-      AGENTCOMM_AGENT: 'ci-tgz',
-    };
-
-    await new Promise<void>((resolve) => {
-      const child = spawn('opencode', ['run', 'hi', '--model', 'openai/gpt-4o-mini'], { cwd: dir, env, stdio: 'ignore' });
       const killer = setTimeout(() => child.kill('SIGKILL'), 60_000);
       child.on('close', () => {
         clearTimeout(killer);
@@ -173,13 +114,12 @@ describe.skipIf(!RUN)('OpenCode plugin — real `opencode run`', () => {
       });
     });
 
+    // The generated hook ran `agentcomm register`: ci-hooks is on the bus.
     const roster = JSON.parse(
       execFileSync(process.execPath, [cli, 'agents', '--json'], { env, encoding: 'utf8' }),
     ) as { name: string }[];
     mock.close();
-    assetSrv.close();
     await fs.rm(dir, { recursive: true, force: true });
-    await fs.rm(tgz, { force: true });
-    expect(roster.map((a) => a.name)).toContain('ci-tgz');
+    expect(roster.map((a) => a.name)).toContain('ci-hooks');
   }, 90_000);
 });

@@ -15,13 +15,13 @@ name: release-cut
 #   2. sanity    — typecheck + tests (docker-backed suites self-skip here;
 #                  the required `test` check already ran on every merge)
 #   3. tag + GitHub Release with generated notes
-#   4. dispatch release.yml to attach the install tarballs — the plain CLI
-#      artifact (npm install -g) and the OpenCode plugin tarball (explicit
-#      dispatch: events created with the built-in GITHUB_TOKEN never start
-#      `release: published` workflows on their own)
-#   5. open the docs PR bumping the install artifact URLs in README + site
-#      (versioned URLs are load-bearing: OpenCode caches by URL, so the
-#      version in the URL is the upgrade trigger). CI does not run on
+#   4. dispatch release.yml to attach the install tarball — the CLI artifact
+#      every harness `npm install -g`s (explicit dispatch: events created
+#      with the built-in GITHUB_TOKEN never start `release: published`
+#      workflows on their own)
+#   5. open the docs PR bumping the install artifact URL in README + site
+#      (versioned URLs are what `agentcomm version` compares against and
+#      what upgrade notices print). CI does not run on
 #      bot-created PRs — merge it with `gh pr merge --admin`. Best-effort:
 #      if PR creation is disallowed, the release still stands and the log
 #      says what to bump by hand.
@@ -107,10 +107,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # Two disjoint URL patterns: the OpenCode plugin tarball and the plain
-          # CLI artifact (`agentcomm-` followed by a digit never matches the
-          # `agentcomm-opencode-` name).
-          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-opencode-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-opencode-${VERSION}.tgz|g" README.md docs/index.html
           sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-${VERSION}.tgz|g" README.md docs/index.html
           if git diff --quiet; then
             echo "::notice::docs already point at v${VERSION} — no PR needed"

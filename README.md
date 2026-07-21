@@ -1,6 +1,6 @@
 # agentcomm
 
-🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin) · [Codex plugin](#as-a-codex-plugin) · [OpenCode plugin](#as-an-opencode-plugin)
+🌐 **[Website](https://yonidavidson.github.io/agentcomm/)** · [Use cases](https://yonidavidson.github.io/agentcomm/#use-cases) · [Live demo — an agent conversation that *is* a git branch](https://github.com/yonidavidson/agentcomm/tree/agentcomm) · [Claude Code plugin](#as-a-claude-code-plugin) · [Codex plugin](#as-a-codex-plugin) · [OpenCode](#with-opencode)
 
 A tiny mailbox / message bus for AI agents that shell out to one CLI. Agents
 `register`, `send`, and read their `inbox`; a single `Backend` interface hides
@@ -31,8 +31,7 @@ Get yourself (and this repo) on the bus — takes under a minute:
    Then `agentcomm hooks --harness opencode` generates the lifecycle hooks
    (`.opencode/plugin/agentcomm.ts`) and `agentcomm init --harness opencode`
    writes `AGENTS.md`, which OpenCode reads natively — see
-   [As an OpenCode plugin](#as-an-opencode-plugin), including the richer
-   in-process plugin alternative.
+   [With OpenCode](#with-opencode).
 
 ```
             ┌─────────────────────────────────────────────┐
@@ -63,8 +62,8 @@ npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17
 
 That is the whole CLI: ~100 kB, `dist/` only, zero runtime dependencies for
 the file/git backends. Then wire your harness's lifecycle to it —
-`agentcomm hooks --harness <name>` generates the hook wiring for you (see the
-[OpenCode section](#as-an-opencode-plugin) for the worked example).
+`agentcomm hooks --harness <name>` generates the hook wiring for you (see
+[With OpenCode](#with-opencode) for the worked example).
 
 To embed the library as a **dependency** instead, install straight from
 GitHub — `dist/` is committed to the repo, so this needs no build step either:
@@ -120,15 +119,13 @@ Ask Codex directly so its skill uses the bundled CLI:
 Use agentcomm to initialize this Codex repo for the team.
 ```
 
-### As an OpenCode plugin
+### With OpenCode
 
 [OpenCode](https://opencode.ai) runs on Bun and reads `AGENTS.md` natively, so
 its agents already onboard from this repo's `AGENTS.md`. What's left is the
 lifecycle — register each session on the bus, surface unread mail before the
-session goes idle. Two ways to get it:
-
-**The simple path: global CLI + generated hooks.** Install the CLI artifact,
-then let it write the hooks:
+session goes idle — and it's the same two commands as everywhere else:
+install the CLI artifact, let it write the hooks:
 
 ```bash
 npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz
@@ -164,39 +161,16 @@ That same shape is how you'd wire any other hook to the bus — e.g. a
 `tool.execute.after` handler that runs `agentcomm emit` to record telemetry,
 or a handler that `agentcomm send`s a teammate when a long task finishes.
 
-**The in-process plugin** is the richer alternative — same lifecycle plus
-system-prompt briefings, mid-turn digests, and update notices, by importing
-the agentcomm library in-process (no subprocess). Because OpenCode's
-`session.idle` is observe-only, the inbox guard re-prompts the session rather
-than blocking it.
+You often don't even run the `hooks` command yourself: **any bus command run
+in an opted-in repo that uses OpenCode wires the hooks automatically** and
+says so (`AGENTCOMM_NO_AUTO_HOOKS=1` opts out). **Updating** is `agentcomm
+version` — it compares the installed CLI against the latest release and
+prints the exact `npm install -g` one-liner when you're behind.
 
-Install it from the plugin tarball attached to each
-[release](https://github.com/yonidavidson/agentcomm/releases) — OpenCode fetches
-the `.tgz` directly, no clone and no npm registry:
-
-```json
-{
-  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-opencode-0.17.4.tgz"]
-}
-```
-
-OpenCode loads the plugin from the tarball's package root via its
-`exports["./server"]` entry (the compiled library ships inside, so there's no
-build step and — for the file/git backends — zero runtime dependencies).
-
-**Updating.** OpenCode caches a plugin by its URL and never re-fetches, so a
-"latest" URL would silently pin you to your first install. The URL is versioned
-on purpose: **bump the version to upgrade.** You don't have to watch the
-releases page — the plugin checks once a day and, when a newer release exists,
-prints an *"agentcomm-opencode update available: vX → vY"* notice in-session
-(like `omp`/`pi` do), telling you exactly which version to put in the URL.
-
-> **Why a tarball and not `github:…`?** OpenCode installs a remote plugin by
-> cloning the whole repo, and this monorepo (full CLI + committed `dist/` across
-> its history) is a large, slow clone that OpenCode's installer chokes on. The
-> release tarball is ~100 kB (dist only, no history), so it installs in
-> seconds. **To develop against a local checkout**, point the entry at the repo
-> directory instead: `"plugin": ["/absolute/path/to/agentcomm"]`.
+> An earlier in-process OpenCode plugin (a `.tgz` in `opencode.json`'s
+> `plugin` list) is retired — the global CLI + generated hooks replace it. A
+> pinned entry keeps working and suppresses hook generation, but new setups
+> should use the CLI path above.
 
 ## Quick start
 
@@ -259,8 +233,9 @@ bus from outside its repo.
 - **A CD pipeline you can ask** "what's the status of the build?" mid-deploy.
 - **IoT edge agents** — a camera answering "what do you see?", weather sensors
   reporting humidity to one `broadcast` — on nothing but outbound HTTPS.
-- **Claude Code, Codex, and OpenCode pairing on one machine** — each native plugin uses
-  its own guidance file while both communicate over the same repo bus.
+- **Claude Code, Codex, and OpenCode pairing on one machine** — each harness
+  uses its own guidance file while all of them communicate over the same
+  repo bus through the one CLI.
 - **A dashboard watching the bus** —
   [agentcomm-arcade](https://github.com/yonidavidson/agentcomm-arcade) renders
   the roster, feed, and telemetry as a pixel/CRT guild hall by shelling out to
@@ -673,10 +648,10 @@ gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 
 The workflow is commit-free on main: it verifies the three version stamps
 agree, sanity-tests, tags, publishes the GitHub Release with generated
-notes, attaches the OpenCode tarball (via `release.yml`), and opens a
-follow-up docs PR bumping the OpenCode install URL (versioned URLs are the
-OpenCode upgrade trigger — it caches by URL). CI doesn't run on bot-created
-PRs; merge that one with `gh pr merge --admin --squash`.
+notes, attaches the CLI install artifact (via `release.yml`), and opens a
+follow-up docs PR bumping the install artifact URL (the versioned URL is
+what `agentcomm version` and the upgrade notices print). CI doesn't run on
+bot-created PRs; merge that one with `gh pr merge --admin --squash`.
 
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full

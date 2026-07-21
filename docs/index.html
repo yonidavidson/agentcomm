@@ -257,11 +257,13 @@ agentcomm hooks --harness opencode">Copy</button>
         <div class="kicker">Nothing hidden</div>
         <h2 class="section-title">Lifecycle hooks, in the open</h2>
         <p class="section-sub">
-          Every native plugin covers session start, digests, long turns, and
-          the stop guard. Claude Code maps its task events to bus status; Codex
-          and OpenCode use explicit status updates. OpenCode runs the lifecycle
-          in-process (it's on Bun) and re-prompts on idle since it can't block.
-          Every hook is throttled, fail-open, and prompts are never shared.
+          Every harness covers session start, digests, long turns, and the
+          stop guard. Claude Code maps its task events to bus status; Codex
+          and OpenCode use explicit status updates. OpenCode's hooks are a
+          generated file you can read and edit — <code>agentcomm hooks</code>
+          writes it (or any bus command does, on first connect) — and it
+          re-prompts on idle since OpenCode can't block. Every hook is
+          throttled, fail-open, and prompts are never shared.
         </p>
       </div>
       <div class="grid reveal">
