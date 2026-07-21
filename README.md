@@ -232,6 +232,25 @@ if omitted:
 echo "from a pipe" | agentcomm send bob --as alice
 ```
 
+### Point a project at another repo's bus
+
+Some things that talk on the bus don't live in the bus repo — a dashboard, a
+cron job, a sibling project. A **repo pointer** resolves the bus as if the CLI
+ran inside another checkout (its `.agentcomm` config, its git remote, its
+`file://` fallback), with the usual flag > env > config precedence:
+
+```bash
+agentcomm agents --repo ~/dev/team-bus        # one-off
+export AGENTCOMM_REPO=~/dev/team-bus          # per process
+echo '{ "repo": "~/dev/team-bus" }' > .agentcomm.json   # committed: this
+                                              # project talks on THAT bus
+```
+
+One hop only (a pointer inside the target is an error), and an explicit
+`--backend`/`AGENTCOMM_BACKEND` always wins. This is how
+[agentcomm-arcade](https://github.com/yonidavidson/agentcomm-arcade) watches a
+bus from outside its repo.
+
 ## What people build with it
 
 - **Agents sharing a repo, talking through it** — the repo is the bus: repo
