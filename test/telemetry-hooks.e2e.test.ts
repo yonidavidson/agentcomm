@@ -59,9 +59,16 @@ function hookEnv(cwd: string): NodeJS.ProcessEnv {
   };
 }
 
+// The hook events now live in the CLI (`agentcomm hook <event>`).
+const HOOK_EVENTS: Record<string, string> = {
+  'session-start.mjs': 'session-start',
+  'telemetry-capture.mjs': 'telemetry',
+  'task-status.mjs': 'task-status',
+};
+
 function runHook(script: string, stdinJson: object, cwd: string): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(root, 'hooks', script)], {
+    const child = spawn(process.execPath, [path.join(root, 'dist', 'cli.js'), 'hook', HOOK_EVENTS[script]!], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd,
       env: hookEnv(cwd),

@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs\"",
+            "command": "agentcomm hook session-start",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "command": "agentcomm hook telemetry",
             "timeout": 10
           }
         ]
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "command": "agentcomm hook telemetry",
             "timeout": 20
           }
         ]
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-inbox-guard.mjs\"",
+            "command": "agentcomm hook stop-guard",
             "timeout": 15
           }
         ]
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-digest.mjs\"",
+            "command": "agentcomm hook prompt-digest",
             "timeout": 10
           }
         ]
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${CLAUDE_PROJECT_DIR:-$PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec node \"$CLAUDE_PLUGIN_ROOT/hooks/midturn-digest.mjs\"'",
+            "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${CLAUDE_PROJECT_DIR:-$PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec agentcomm hook midturn-digest'",
             "timeout": 10
           }
         ]
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "command": "agentcomm hook telemetry",
             "timeout": 10
           }
         ]
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/telemetry-capture.mjs\"",
+            "command": "agentcomm hook telemetry",
             "timeout": 10
           }
         ]
@@ -85,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'I=$(cat); case \"$I\" in *merge*) printf %s \"$I\" | node \"$CLAUDE_PLUGIN_ROOT/hooks/telemetry-capture.mjs\";; esac'",
+            "command": "sh -c 'I=$(cat); case \"$I\" in *merge*) printf %s \"$I\" | agentcomm hook telemetry;; esac'",
             "timeout": 10
           }
         ]
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/task-status.mjs\"",
+            "command": "agentcomm hook task-status",
             "timeout": 10
           }
         ]
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/task-status.mjs\"",
+            "command": "agentcomm hook task-status",
             "timeout": 10
           }
         ]

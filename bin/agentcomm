@@ -1,7 +1,7 @@
 #!/bin/sh
-# agentcomm launcher: plugin hosts can add this bin/ directory to PATH, so
-# agents can run bare `agentcomm ...` as the skill documents. Resolves
-# the prebuilt CLI relative to this script (survives version-dir upgrades).
+# agentcomm launcher: add this bin/ directory to PATH (npm's global install
+# does it for you) so agents can run bare `agentcomm ...`. Resolves the
+# built CLI relative to this script.
 self="$0"
 while [ -h "$self" ]; do
   link="$(readlink "$self")"

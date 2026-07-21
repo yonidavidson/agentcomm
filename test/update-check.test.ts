@@ -24,18 +24,15 @@ describe('update check', () => {
     expect(msg).toContain('v0.16.9 → v0.17.0');
   });
 
-  it('tailors the upgrade instructions per harness', () => {
+  it('gives every harness the same hardcoded latest-artifact upgrade command', () => {
     const opencode = updateMessage('0.16.9', 'v0.17.0', 'opencode');
     const claude = updateMessage('0.16.9', 'v0.17.0', 'claude');
     const codex = updateMessage('0.16.9', 'v0.17.0', 'codex');
-    expect(opencode).toContain('npm install -g');
-    expect(opencode).toContain('agentcomm-0.17.0.tgz');
-    expect(claude).toContain('/plugin update');
-    expect(codex).toContain('codex plugin marketplace upgrade');
-    // Every harness carries the same version delta and release link.
+    // One story everywhere: reinstall the global CLI from the constant URL —
+    // no version interpolation, so scripts can hardcode it too.
     for (const m of [opencode, claude, codex]) {
+      expect(m).toContain('npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz');
       expect(m).toContain('v0.16.9 → v0.17.0');
-      expect(m).toContain('releases/latest');
     }
   });
 });

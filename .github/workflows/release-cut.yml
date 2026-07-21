@@ -7,24 +7,20 @@ name: release-cut
 #
 # main is branch-protected (required check: test), so this workflow is
 # deliberately COMMIT-FREE on main: version bumps land in normal PRs first
-# (npm version + .claude-plugin/plugin.json + `npm run plugin:sync`, all
-# committed — the repo's existing convention), and release-cut releases the
-# tree main already carries:
+# (`npm version patch --no-git-tag-version`, committed), and release-cut
+# releases the tree main already carries:
 #
-#   1. preflight — all three version stamps agree, the tag doesn't exist yet
+#   1. preflight — the version guard holds, the tag doesn't exist yet
 #   2. sanity    — typecheck + tests (docker-backed suites self-skip here;
 #                  the required `test` check already ran on every merge)
 #   3. tag + GitHub Release with generated notes
-#   4. dispatch release.yml to attach the install tarball — the CLI artifact
-#      every harness `npm install -g`s (explicit dispatch: events created
-#      with the built-in GITHUB_TOKEN never start `release: published`
-#      workflows on their own)
-#   5. open the docs PR bumping the install artifact URL in README + site
-#      (versioned URLs are what `agentcomm version` compares against and
-#      what upgrade notices print). CI does not run on
-#      bot-created PRs — merge it with `gh pr merge --admin`. Best-effort:
-#      if PR creation is disallowed, the release still stands and the log
-#      says what to bump by hand.
+#   4. dispatch release.yml to attach the install tarballs — the versioned
+#      CLI artifact plus the constant-named agentcomm-latest.tgz that makes
+#      releases/latest/download/agentcomm-latest.tgz an always-newest URL
+#      (explicit dispatch: events created with the built-in GITHUB_TOKEN
+#      never start `release: published` workflows on their own)
+#
+# No docs follow-up: README and the website use the constant latest URL.
 
 on:
   workflow_dispatch:
@@ -37,7 +33,6 @@ on:
 permissions:
   contents: write
   actions: write # dispatches release.yml for the tarball attach
-  pull-requests: write # opens the docs URL-bump PR
 
 concurrency: release-cut
 
@@ -57,7 +52,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Preflight — stamps agree, tag is free
+      - name: Preflight — version guard, tag is free
         id: version
         env:
           GUARD: ${{ inputs.version }}
@@ -65,12 +60,6 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           if [ "$GUARD" != "current" ] && [ "$GUARD" != "$VERSION" ]; then
             echo "::error::main carries $VERSION but the dispatch asked for $GUARD — land the bump PR first (release-cut never commits to main)."
-            exit 1
-          fi
-          CLAUDE=$(node -p "require('./.claude-plugin/plugin.json').version")
-          CODEX=$(node -p "require('./plugins/agentcomm/.codex-plugin/plugin.json').version")
-          if [ "$CLAUDE" != "$VERSION" ] || [ "$CODEX" != "$VERSION" ]; then
-            echo "::error::version stamps disagree — package $VERSION, claude plugin $CLAUDE, codex plugin $CODEX. Fix with a bump PR (npm version + stamp .claude-plugin/plugin.json + npm run plugin:sync)."
             exit 1
           fi
           if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
@@ -101,21 +90,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: gh workflow run release.yml -f tag="v${VERSION}"
 
-      - name: Open the docs PR (install artifact URL bump)
-        continue-on-error: true # the release stands even if PR creation is disallowed
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/agentcomm-[0-9]+\.[0-9]+\.[0-9]+\.tgz|releases/download/v${VERSION}/agentcomm-${VERSION}.tgz|g" README.md docs/index.html
-          if git diff --quiet; then
-            echo "::notice::docs already point at v${VERSION} — no PR needed"
-            exit 0
-          fi
-          BRANCH="release-docs-v${VERSION}"
-          git checkout -b "$BRANCH"
-          git commit -am "docs: point the install artifact URLs at v${VERSION}"
-          git push origin "$BRANCH"
-          gh pr create --title "docs: install artifact URLs → v${VERSION}" \
-            --body "Follow-up from the v${VERSION} release-cut. CI does not run on bot-created PRs — merge with \`gh pr merge --admin --squash\`." \
-            || echo "::warning::could not open the docs PR — bump the artifact URLs to v${VERSION} in README.md and docs/index.html manually"
+# No docs follow-up needed: README and the website point at the constant
+# releases/latest/download/agentcomm-latest.tgz URL, which GitHub redirects
+# to the newest release's asset automatically.

@@ -48,13 +48,17 @@ jobs:
           # `npm pack` emits agentcomm-<version>.tgz (dist-only, per package.json "files").
           npm pack
           CLI="agentcomm-${VERSION}.tgz"
+          # Constant-named copy: GitHub's releases/latest/download/<asset>
+          # redirect makes …/releases/latest/download/agentcomm-latest.tgz a
+          # stable always-newest URL for scripts and automations.
+          cp "$CLI" agentcomm-latest.tgz
           echo "cli=$CLI" >> "$GITHUB_OUTPUT"
           echo "Packed $CLI ($(du -h "$CLI" | cut -f1))"
 
-      - name: Upload tarball to the release
+      - name: Upload tarballs to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          gh release upload "$TAG" "${{ steps.pack.outputs.cli }}" --clobber --repo "$GITHUB_REPOSITORY"
-          echo "::notice::Attached ${{ steps.pack.outputs.cli }} to $TAG"
+          gh release upload "$TAG" "${{ steps.pack.outputs.cli }}" agentcomm-latest.tgz --clobber --repo "$GITHUB_REPOSITORY"
+          echo "::notice::Attached ${{ steps.pack.outputs.cli }} + agentcomm-latest.tgz to $TAG"

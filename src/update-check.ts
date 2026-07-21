@@ -18,18 +18,18 @@ const REPO = 'yonidavidson/agentcomm';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 
+/**
+ * The always-latest install artifact: every release attaches a copy of the
+ * CLI tarball under this constant name, and GitHub's `releases/latest`
+ * redirect keeps the URL pointing at the newest one. One hardcoded upgrade
+ * command for every harness, script, and automation.
+ */
+export const LATEST_ARTIFACT_URL = `https://github.com/${REPO}/releases/latest/download/agentcomm-latest.tgz`;
+
 export type Harness = 'opencode' | 'claude' | 'codex';
 
-/** Per-harness upgrade instructions — the "how" appended to the version line. */
-const HOW_TO_UPGRADE: Record<Harness, (tag: string) => string> = {
-  opencode: (tag) => {
-    const v = tag.replace(/^v/, '');
-    return `Upgrade the global CLI: npm install -g https://github.com/${REPO}/releases/download/${tag}/agentcomm-${v}.tgz`;
-  },
-  claude: () => 'Upgrade with `/plugin update agentcomm` (or `/plugin` → Manage plugins).',
-  codex: () =>
-    'Upgrade with `codex plugin marketplace upgrade yonidavidson-plugins`, then `codex plugin add agentcomm@yonidavidson-plugins` to reinstall.',
-};
+/** One upgrade story for every harness: reinstall the global CLI from the latest artifact. */
+const HOW_TO_UPGRADE = (): string => `Upgrade: npm install -g ${LATEST_ARTIFACT_URL}`;
 
 /** Numeric semver-ish compare of dotted versions: >0 if a is newer than b. */
 export function compareVersions(a: string, b: string): number {
@@ -43,12 +43,12 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** Build the user-facing notice, or null if `latest` is not newer than `mine`. */
-export function updateMessage(mine: string, latestTag: string, harness: Harness): string | null {
+export function updateMessage(mine: string, latestTag: string, _harness: Harness): string | null {
   if (compareVersions(latestTag, mine) <= 0) return null;
   const v = mine.replace(/^v/, '');
   return (
     `agentcomm update available: v${v} → ${latestTag}. ` +
-    `${HOW_TO_UPGRADE[harness](latestTag)} ` +
+    `${HOW_TO_UPGRADE()} ` +
     `(latest: https://github.com/${REPO}/releases/latest)`
   );
 }

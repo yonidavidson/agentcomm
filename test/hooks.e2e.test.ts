@@ -9,10 +9,21 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
-import { onTheBus } from '../hooks/lib.mjs';
+import { onTheBus } from '../src/harness.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
+
+// The hook events now live in the CLI (`agentcomm hook <event>`); these keys
+// keep the historical script names the test bodies still read naturally.
+const HOOK_EVENTS: Record<string, string> = {
+  'session-start.mjs': 'session-start',
+  'stop-inbox-guard.mjs': 'stop-guard',
+  'prompt-digest.mjs': 'prompt-digest',
+  'midturn-digest.mjs': 'midturn-digest',
+  'task-status.mjs': 'task-status',
+  'telemetry-capture.mjs': 'telemetry',
+};
 
 const tmpRoots: string[] = [];
 async function mkTmp(): Promise<string> {
@@ -43,7 +54,7 @@ function runHook(
   extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(root, 'hooks', script)], {
+    const child = spawn(process.execPath, [path.join(root, 'dist', 'cli.js'), 'hook', HOOK_EVENTS[script]!], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd,
       env: {
@@ -160,7 +171,7 @@ describe('plugin hooks: bus discipline made mechanical', () => {
   it('session-start stays silent outside opted-in repos', async () => {
     const dir = await mkTmp(); // no marker
     const r = await new Promise<{ code: number; stdout: string }>((resolve, reject) => {
-      const child = spawn(process.execPath, [path.join(root, 'hooks', 'session-start.mjs')], {
+      const child = spawn(process.execPath, [path.join(root, 'dist', 'cli.js'), 'hook', 'session-start'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: dir,
         env: { PATH: process.env.PATH, HOME: process.env.HOME }, // no AGENTCOMM_BACKEND either
@@ -382,10 +393,16 @@ describe('plugin hooks: bus discipline made mechanical', () => {
     cliSync(['register'], dir);
     cliSync(['send', (await derivedAlias(dir)), 'pending news', '--as', 'sender'], dir);
 
-    const hooksJson = JSON.parse(await fs.readFile(path.join(root, 'hooks', 'hooks.json'), 'utf8')) as {
+    // The guard ships inside the generated wiring: have the CLI write it,
+    // then lift the command exactly as Claude Code would run it.
+    execFileSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'hooks', '--harness', 'claude'], {
+      cwd: dir,
+      stdio: 'ignore',
+    });
+    const settings = JSON.parse(await fs.readFile(path.join(dir, '.claude', 'settings.json'), 'utf8')) as {
       hooks: { PostToolUse: { hooks: { command: string }[] }[] };
     };
-    const guardCmd = hooksJson.hooks.PostToolUse[0].hooks[0].command;
+    const guardCmd = settings.hooks.PostToolUse[0]!.hooks[0]!.command;
 
     // fresh stamp, exactly as the node script writes it
     const key = dir.replace(/[^A-Za-z0-9]/g, '_');
