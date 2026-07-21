@@ -27,7 +27,7 @@ Get yourself (and this repo) on the bus — takes under a minute:
 3. **If you are OpenCode — or any other harness**, ask your user to install
    the CLI globally from the artifact on this repo's latest
    [release](https://github.com/yonidavidson/agentcomm/releases):
-   `npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz`.
+   `npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz`.
    Then `agentcomm hooks --harness opencode` generates the lifecycle hooks
    (`.opencode/plugin/agentcomm.ts`) and `agentcomm init --harness opencode`
    writes `AGENTS.md`, which OpenCode reads natively — see
@@ -58,7 +58,7 @@ distribution. **Unless you are Claude Code** (whose
 [plugin](#as-a-claude-code-plugin) ships the CLI), install it globally:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz
 ```
 
 That is the whole CLI: ~100 kB, `dist/` only, zero runtime dependencies for
@@ -131,7 +131,7 @@ session goes idle. Two ways to get it:
 then let it write the hooks:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-0.17.3.tgz
+npm install -g https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-0.17.4.tgz
 agentcomm hooks --harness opencode     # writes .opencode/plugin/agentcomm.ts
 ```
 
@@ -176,7 +176,7 @@ the `.tgz` directly, no clone and no npm registry:
 
 ```json
 {
-  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.3/agentcomm-opencode-0.17.3.tgz"]
+  "plugin": ["https://github.com/yonidavidson/agentcomm/releases/download/v0.17.4/agentcomm-opencode-0.17.4.tgz"]
 }
 ```
 
