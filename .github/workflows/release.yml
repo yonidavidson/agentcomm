@@ -1,19 +1,23 @@
 name: release
 
-# Attaches the install artifact to each GitHub Release:
+# Ships each GitHub Release to both distribution channels:
 #
-#   agentcomm-X.Y.Z.tgz — THE distribution. Every harness installs the CLI
-#   with `npm install -g <this URL>` (package.json's `bin` provides the
-#   global `agentcomm`), then wires hooks via `agentcomm hooks --harness …`
-#   (or lets a bus command auto-provision them on connect).
+#   1. npm registry (canonical) — `npm publish` via npm trusted publishing
+#      (OIDC; no token secret). Install/upgrade: `npm install -g agentcomm@latest`.
+#      Other systems embed the SDK with a plain `npm install agentcomm`.
+#   2. Release tarballs (fallback) — agentcomm-X.Y.Z.tgz plus the
+#      constant-named agentcomm-latest.tgz, so
+#      releases/latest/download/agentcomm-latest.tgz stays an always-newest
+#      install URL for registry-less environments.
 #
-# Why a tarball and not a `github:` spec: installers that git-clone the whole
-# repo choke on this monorepo (full CLI + committed dist/ across its history).
-# An `npm pack` tarball is ~100 kB (dist only, no history) and installs in
-# seconds from a URL.
+# Why a tarball fallback and not a `github:` spec: installers that git-clone
+# the whole repo choke on this monorepo (full CLI + committed dist/ across
+# its history). An `npm pack` tarball is ~100 kB (dist only, no history) and
+# installs in seconds from a URL.
 #
-# No secrets: uploads use the built-in GITHUB_TOKEN. The npm registry is not
-# involved — the GitHub release artifact IS the distribution.
+# No secrets: tarball uploads use the built-in GITHUB_TOKEN; npm publish uses
+# OIDC trusted publishing (configure this repo+workflow as the trusted
+# publisher for the `agentcomm` package on npmjs.com — one-time setup).
 
 on:
   release:
@@ -28,6 +32,36 @@ permissions:
   contents: write
 
 jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) — no token secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1 (node 22 bundles npm 10).
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - name: Publish to the npm registry (skip if this version is already up)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "agentcomm@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::agentcomm@${VERSION} already on the registry — skipping publish (re-run of the tarball attach?)"
+            exit 0
+          fi
+          # prepublishOnly runs the build; provenance links the publish to this workflow run.
+          npm publish --provenance
+          echo "::notice::Published agentcomm@${VERSION} to the npm registry"
+
   attach-install-tarball:
     runs-on: ubuntu-latest
     steps:

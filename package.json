@@ -20,6 +20,9 @@
   "bin": {
     "agentcomm": "dist/cli.js"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

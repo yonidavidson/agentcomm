@@ -24,14 +24,14 @@ describe('update check', () => {
     expect(msg).toContain('v0.16.9 → v0.17.0');
   });
 
-  it('gives every harness the same hardcoded latest-artifact upgrade command', () => {
+  it('gives every harness the same hardcoded registry upgrade command', () => {
     const opencode = updateMessage('0.16.9', 'v0.17.0', 'opencode');
     const claude = updateMessage('0.16.9', 'v0.17.0', 'claude');
     const codex = updateMessage('0.16.9', 'v0.17.0', 'codex');
-    // One story everywhere: reinstall the global CLI from the constant URL —
+    // One story everywhere: reinstall the global CLI from the registry —
     // no version interpolation, so scripts can hardcode it too.
     for (const m of [opencode, claude, codex]) {
-      expect(m).toContain('npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz');
+      expect(m).toContain('npm install -g agentcomm@latest');
       expect(m).toContain('v0.16.9 → v0.17.0');
     }
   });
