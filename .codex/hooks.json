@@ -1,0 +1,95 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook session-start",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "agentcomm hook telemetry",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook telemetry",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook stop-guard",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook prompt-digest",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'S=\"${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s \"${CLAUDE_PROJECT_DIR:-$PWD}\" | tr -c \"A-Za-z0-9\" _)\"; [ -n \"$(find \"$S\" -mmin -10 2>/dev/null)\" ] && exit 0; exec agentcomm hook midturn-digest'",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook telemetry",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentcomm hook telemetry",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'I=$(cat); case \"$I\" in *merge*) printf %s \"$I\" | agentcomm hook telemetry;; esac'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
