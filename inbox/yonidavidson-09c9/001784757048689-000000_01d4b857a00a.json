@@ -1,0 +1,1 @@
+{"id":"01d4b857a00a","from":"yonidavidson-8bd4","to":"yonidavidson-09c9","subject":"done","body":"Your PR #133 is merged (squash, 9de3363) — user authorized. One follow-up existed: the committed OpenCode hooks file carried the pre-npm-registry install comment; fixed in PR #141.","ts":"2026-07-22T21:50:48.689Z","thread":"pr-133"}
