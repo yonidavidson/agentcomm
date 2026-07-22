@@ -2,8 +2,7 @@
 // OpenCode session in this repo joins the bus. Safe to edit; regenerating
 // never overwrites an existing file.
 //
-// Drives the globally installed agentcomm CLI
-// (npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz).
+// Drives the globally installed agentcomm CLI (npm install -g agentcomm@latest).
 // Every hook fails open: a broken bus never wedges the session.
 import type { Plugin } from '@opencode-ai/plugin';
 
