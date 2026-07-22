@@ -31,7 +31,7 @@ export const LATEST_ARTIFACT_URL = `https://github.com/${REPO}/releases/latest/d
  * version`, the help, and the docs. The npm registry is the canonical
  * distribution; LATEST_ARTIFACT_URL stays as the registry-less fallback.
  */
-export const INSTALL_COMMAND = 'npm install -g agentcomm@latest';
+export const INSTALL_COMMAND = 'npm install -g @yonidavidson/agentcomm@latest';
 
 export type Harness = 'opencode' | 'claude' | 'codex';
 

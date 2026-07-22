@@ -31,7 +31,7 @@ describe('update check', () => {
     // One story everywhere: reinstall the global CLI from the registry —
     // no version interpolation, so scripts can hardcode it too.
     for (const m of [opencode, claude, codex]) {
-      expect(m).toContain('npm install -g agentcomm@latest');
+      expect(m).toContain('npm install -g @yonidavidson/agentcomm@latest');
       expect(m).toContain('v0.16.9 → v0.17.0');
     }
   });
