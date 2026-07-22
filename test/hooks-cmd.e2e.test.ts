@@ -57,6 +57,14 @@ describe('CLI hooks (harness hook generation)', () => {
     expect(content).toContain('agentcomm peek --json');
     expect(content).toContain("event.type !== 'session.idle'");
     expect(content).toContain("from '@opencode-ai/plugin'");
+    // Telemetry parity (#115): tool events feed the CLI's rule matcher, and
+    // dispose ships the spool. Matching stays CLI-side — the template only
+    // normalizes payloads.
+    expect(content).toContain('agentcomm hook telemetry');
+    expect(content).toContain("'tool.execute.after'");
+    for (const tool of ['skill', 'task', 'bash']) expect(content).toContain(`input.tool === '${tool}'`);
+    expect(content).toContain('agentcomm emit --flush');
+    expect(content).toContain('async dispose()');
   });
 
   it('never overwrites an existing (possibly user-edited) hooks file', async () => {

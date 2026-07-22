@@ -113,6 +113,7 @@ Flags:
   --ref <text>             emit/events: correlation handle (branch, PR#, run id)
   --attrs <json>           emit: free-form JSON payload for the event
   --flush                  emit: ship the spool now instead of riding the next write
+                           (bare --flush ships it without recording a new event)
   --since <dur>            events: only events newer than e.g. 30d, 12h
   --events <dur>           purge: age out telemetry events older than this
   --json                   Machine-readable JSON output
@@ -793,11 +794,30 @@ import type { Plugin } from '@opencode-ai/plugin';
 export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
   const sh = $.cwd(directory).nothrow();
 
+  // Telemetry parity with Claude Code/Codex: normalize the harness payload
+  // and hand it to the CLI, which owns the repo's telemetry.track rule
+  // matching (inert without a telemetry config).
+  const telemetry = (payload: Record<string, unknown>) =>
+    sh\`echo \${JSON.stringify(payload)} | agentcomm hook telemetry\`.quiet();
+
   // Session start: register on the repo bus (auto-detected from the git
   // remote) under a session-unique alias.
   await sh\`agentcomm register --status "opencode session"\`.quiet();
+  await telemetry({ hook_event_name: 'SessionStart' });
 
   return {
+    // Tracked tool events → the CLI's rule matcher. Only the tools the rules
+    // can name; bash is pre-filtered so ordinary commands never spawn a CLI.
+    async 'tool.execute.after'(input) {
+      const args = (input as { args?: Record<string, unknown> }).args ?? {};
+      if (input.tool === 'skill' && typeof args.name === 'string') {
+        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: args.name } });
+      } else if (input.tool === 'task' && typeof args.subagent_type === 'string') {
+        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Task', tool_input: { subagent_type: args.subagent_type } });
+      } else if (input.tool === 'bash' && typeof args.command === 'string' && args.command.includes('merge')) {
+        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: args.command } });
+      }
+    },
     // OpenCode's session.idle can't block, so the inbox guard degrades to a
     // nudge: unread mail re-prompts the session instead of holding it open.
     async event({ event }) {
@@ -825,6 +845,12 @@ export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
           },
         })
         .catch(() => {});
+    },
+
+    // Session end is the last chance to ship the local event spool.
+    async dispose() {
+      await telemetry({ hook_event_name: 'SessionEnd' });
+      await sh\`agentcomm emit --flush\`.quiet();
     },
   };
 };
@@ -1276,7 +1302,21 @@ async function cmdEmit(cfg: ResolvedConfig, flags: ParsedFlags): Promise<number>
     return 0;
   }
   if (!flags.type) {
-    fail('emit requires --type <event-type>, e.g. emit --type skill-outcome --name my-skill --attrs \'{"found_bugs":true}\'');
+    if (!flags.flush) {
+      fail('emit requires --type <event-type> (or a bare --flush to ship the spool), e.g. emit --type skill-outcome --name my-skill --attrs \'{"found_bugs":true}\'');
+    }
+    // Bare --flush: ship whatever is spooled without recording a new event —
+    // the generated hooks' last-chance flush at session end.
+    const me = await resolveAgent(cfg);
+    const backend = await resolveTransport(cfg, flags);
+    try {
+      const shipped = await flushEvents(backend, cfg.backendUri, me);
+      if (cfg.json) emit({ spooled: false, flushed: shipped });
+      else process.stdout.write(`shipped ${shipped} spooled event(s)\n`);
+    } finally {
+      await backend.close?.();
+    }
+    return 0;
   }
   let attrs: Record<string, unknown> | undefined;
   if (flags.attrs !== undefined) {

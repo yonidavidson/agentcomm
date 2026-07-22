@@ -140,13 +140,21 @@ export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
       const peek = await sh`agentcomm peek --json`.quiet();
       // …parses the inbox and re-prompts the session when mail is waiting…
     },
+    // Telemetry parity with the other harnesses: tool events are normalized
+    // and handed to `agentcomm hook telemetry`, which owns the repo's
+    // telemetry.track rule matching; dispose() ships the event spool.
+    async 'tool.execute.after'(input) {
+      // …skill / task / bash(merge) → agentcomm hook telemetry…
+    },
+    async dispose() {
+      // …agentcomm emit --flush…
+    },
   };
 };
 ```
 
 That same shape is how you'd wire any other hook to the bus — e.g. a
-`tool.execute.after` handler that runs `agentcomm emit` to record telemetry,
-or a handler that `agentcomm send`s a teammate when a long task finishes.
+handler that `agentcomm send`s a teammate when a long task finishes.
 (OpenCode's `session.idle` can't block, so its inbox guard nudges instead of
 holding the session the way the Claude Code stop guard does.)
 
@@ -450,16 +458,19 @@ telemetry:
   # retention: 180d      # opt-in; default keeps everything
 ```
 
-The generated hooks wire the deterministic layer automatically: Claude Code
-records tracked `skill` runs (PostToolUse on the Skill tool), `agent`
-subagent spawns (PostToolUse on the Task/Agent tool, matched by
-`subagent_type` — the only signal for skills that run as dedicated
-subagents or set `disable-model-invocation`), `merge` commands (guarded
-Bash matcher), and `session` start/end (end also ships the spool); Codex
-and OpenCode record `session` events; and the session
-briefing injects each rule's `record:` text so the model knows what to
-self-report. The `on`/`match` layer never depends on the model — if it's
-in the config, it fires.
+The generated hooks wire the deterministic layer automatically, and capture
+is identical across Claude Code, Codex, and OpenCode — the config is the
+only knob: tracked `skill` runs (the Skill/skill tool), `agent` subagent
+spawns (the Task/task tool, matched by `subagent_type` — the only signal
+for skills that run as dedicated subagents or set
+`disable-model-invocation`), `merge` commands (guarded Bash matcher), and
+`session` start/end (end also ships the spool via a bare
+`agentcomm emit --flush`). The harness payloads are normalized and handed
+to `agentcomm hook telemetry`, so the rule matching lives in the CLI once;
+the session briefing injects each rule's `record:` text so the model knows
+what to self-report. The `on`/`match` layer never depends on the model —
+if it's in the config, it fires. (Only task-list tracking differs: Codex
+and OpenCode have no task events.)
 
 Recording is free at capture time: `agentcomm emit --type skill-outcome
 --name my-review-skill --ref "$(git branch --show-current)" --attrs
