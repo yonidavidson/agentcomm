@@ -138,6 +138,22 @@ describe('telemetry events (issue #100)', () => {
     expect(await eventBlobs(dir)).toHaveLength(1);
   });
 
+  it('bare emit --flush ships the spool without recording a new event', async () => {
+    const { dir, run } = await mkCtx({ track: [{ on: 'skill' }] });
+    await run(['emit', '--type', 'skill-ran', '--name', 's', '--as', 'bob', '--json']);
+    expect(await eventBlobs(dir)).toHaveLength(0); // spooled only, nothing shipped yet
+
+    const r = await run(['emit', '--flush', '--as', 'bob', '--json']);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ spooled: false, flushed: 1 });
+    expect(await eventBlobs(dir)).toHaveLength(1);
+
+    // an empty spool flushes to nothing, still exit 0
+    const again = await run(['emit', '--flush', '--as', 'bob', '--json']);
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.stdout)).toMatchObject({ spooled: false, flushed: 0 });
+  });
+
   it('emit validates its inputs', async () => {
     const { run } = await mkCtx({ track: [] });
     const noType = await run(['emit', '--name', 'x', '--as', 'alice']);
