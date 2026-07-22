@@ -14,7 +14,7 @@ Get yourself (and this repo) on the bus — takes under a minute, and it is
 the SAME three commands whatever harness you are:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
+npm install -g agentcomm
 agentcomm hooks --harness claude     # or codex / opencode — writes your lifecycle hooks
 agentcomm init --harness claude      # or codex / opencode — writes the team contract
 ```
@@ -45,25 +45,27 @@ release and prints the upgrade command when you're behind.
 
 ## Install
 
-Not on the npm registry — the `.tgz` artifact attached to every
-[GitHub release](https://github.com/yonidavidson/agentcomm/releases) is the
-distribution, for **every** harness, script, and automation. One URL always
-serves the newest release:
+Straight from the npm registry, for **every** harness, script, and
+automation:
 
 ```bash
-npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
+npm install -g agentcomm
 ```
 
 That is the whole thing: ~100 kB, zero runtime dependencies for the file/git
-backends, no plugin, no marketplace, no skill to install. To pin a version,
-use the versioned asset on any release
-(`…/releases/download/vX.Y.Z/agentcomm-X.Y.Z.tgz`). Upgrading is the same
-command again — `agentcomm version` tells you when.
+backends, no plugin, no marketplace, no skill to install. Upgrade with
+`npm install -g agentcomm@latest` — `agentcomm version` tells you when. Pin
+with `agentcomm@X.Y.Z`.
 
-To embed the library as a **dependency**, point npm at the same artifact:
+No registry access? The same tarball is attached to every
+[GitHub release](https://github.com/yonidavidson/agentcomm/releases), and one
+URL always serves the newest:
+`npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz`.
+
+To embed the library as a **dependency**:
 
 ```bash
-npm install https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz
+npm install agentcomm
 
 # git+ssh:// / git+https:// / github:// / file:// need NOTHING more
 # (Node ≥ 18; the git binary for git+; a token for github://).
@@ -75,6 +77,28 @@ npm install @google-cloud/storage     # gs://
 npm install pg                        # postgres://
 npm install yaml                      # only for .agentcomm.yaml config files (.json needs nothing)
 ```
+
+### Programmatic use (SDK)
+
+Everything the CLI does rides the same library entry point — another system
+can join the bus without shelling out:
+
+```ts
+import { Bus, createBackend } from 'agentcomm';
+
+const backend = await createBackend('sqlite:///var/run/team-bus.db');
+const bus = new Bus(backend);
+
+await bus.register('dashboard', undefined, 'watching the release train');
+await bus.send({ from: 'dashboard', to: 'reviewer', subject: 'status', body: 'CI is green' });
+const mail = await bus.inbox('dashboard'); // consuming read, like the CLI
+```
+
+`createBackend` accepts every URI the CLI does (`git+ssh://`, `github://`,
+`file://`, `sqlite://`, `s3://`, `gs://`, `postgres://`), and
+`registerBackend()` adds new schemes — see [Writing a backend plugin](#writing-a-backend-plugin).
+The full surface (conventions, channel discovery, telemetry, identity
+helpers) is exported from the package root; `src/index.ts` is the contract.
 
 ## Your harness (Claude Code · Codex · OpenCode)
 
@@ -242,7 +266,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | ------------------ | ------------------------------------------------------------------- |
 | `init`             | Put this repo on the bus: writes `CLAUDE.md` by default, or `AGENTS.md` with `--harness codex\|opencode\|agents`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
-| `version` / `-v`   | Installed version + the latest GitHub release, compared; prints the `npm install -g` one-liner when an update exists. Agents: run once per session to stay current. |
+| `version` / `-v`   | Installed version + the latest release, compared; prints `npm install -g agentcomm@latest` when an update exists. Agents: run once per session to stay current. |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
 | `broadcast [body]` | Send to every registered agent except yourself.                    |
@@ -641,10 +665,12 @@ gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 
 The workflow is commit-free on main: it verifies the version guard,
 sanity-tests, tags, publishes the GitHub Release with generated notes, and
-attaches the install artifacts (via `release.yml`) — the versioned
-`agentcomm-X.Y.Z.tgz` plus the constant-named `agentcomm-latest.tgz` that
-keeps `releases/latest/download/agentcomm-latest.tgz` always-newest. No docs
-follow-up: everything points at the constant URL.
+hands off to `release.yml`, which publishes to the **npm registry** (trusted
+publishing / OIDC, with provenance — no token secret) and attaches the
+fallback install artifacts — the versioned `agentcomm-X.Y.Z.tgz` plus the
+constant-named `agentcomm-latest.tgz` that keeps
+`releases/latest/download/agentcomm-latest.tgz` always-newest. No docs
+follow-up: everything points at `agentcomm@latest` or the constant URL.
 
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full

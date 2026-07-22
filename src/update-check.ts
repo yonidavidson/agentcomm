@@ -19,17 +19,24 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 
 /**
- * The always-latest install artifact: every release attaches a copy of the
- * CLI tarball under this constant name, and GitHub's `releases/latest`
- * redirect keeps the URL pointing at the newest one. One hardcoded upgrade
- * command for every harness, script, and automation.
+ * The registry-less fallback install artifact: every release attaches a copy
+ * of the CLI tarball under this constant name, and GitHub's `releases/latest`
+ * redirect keeps the URL pointing at the newest one. Environments that can't
+ * reach the npm registry `npm install -g` this URL instead.
  */
 export const LATEST_ARTIFACT_URL = `https://github.com/${REPO}/releases/latest/download/agentcomm-latest.tgz`;
 
+/**
+ * THE upgrade command, quoted verbatim by the update notice, `agentcomm
+ * version`, the help, and the docs. The npm registry is the canonical
+ * distribution; LATEST_ARTIFACT_URL stays as the registry-less fallback.
+ */
+export const INSTALL_COMMAND = 'npm install -g agentcomm@latest';
+
 export type Harness = 'opencode' | 'claude' | 'codex';
 
-/** One upgrade story for every harness: reinstall the global CLI from the latest artifact. */
-const HOW_TO_UPGRADE = (): string => `Upgrade: npm install -g ${LATEST_ARTIFACT_URL}`;
+/** One upgrade story for every harness: reinstall the global CLI from the registry. */
+const HOW_TO_UPGRADE = (): string => `Upgrade: ${INSTALL_COMMAND}`;
 
 /** Numeric semver-ish compare of dotted versions: >0 if a is newer than b. */
 export function compareVersions(a: string, b: string): number {
@@ -64,7 +71,13 @@ export function ownVersion(): string | null {
   }
 }
 
-/** Latest release tag on GitHub, or null on any failure (offline, rate-limit, timeout). */
+/**
+ * Latest release tag on GitHub, or null on any failure (offline, rate-limit,
+ * timeout). GitHub stays the version source of truth even though installs go
+ * through the npm registry: the release workflow tags and publishes in one
+ * motion, so tag == npm version, and the check keeps working in environments
+ * where only github.com is reachable.
+ */
 export async function fetchLatestTag(timeoutMs: number = FETCH_TIMEOUT_MS): Promise<string | null> {
   try {
     const ctrl = new AbortController();

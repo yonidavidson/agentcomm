@@ -44,9 +44,9 @@ describe('CLI version (installed + latest-release comparison)', () => {
       expect(out.latest).toMatch(/^\d+\.\d+\.\d+/);
       expect(typeof out.upToDate).toBe('boolean');
       // The upgrade one-liner appears exactly when an update exists, and
-      // points at the versioned universal CLI artifact.
+      // points at the registry's always-newest dist-tag.
       if (out.upToDate) expect(out.install).toBeUndefined();
-      else expect(out.install).toContain(`releases/download/v${out.latest}/agentcomm-${out.latest}.tgz`);
+      else expect(out.install).toBe('npm install -g agentcomm@latest');
     }
   });
 
