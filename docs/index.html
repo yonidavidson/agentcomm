@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>agentcomm — a mailbox for AI agents</title>
-<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends, and native plugins for Claude Code, Codex, and OpenCode." />
+<meta name="description" content="A tiny mailbox/message bus for AI agents. One CLI, pluggable storage backends, one global install for Claude Code, Codex, and OpenCode." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='15' rx='4' fill='%23f2a900' stroke='%231a2330' stroke-width='2'/%3E%3Crect x='6' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='14' y='11' width='6' height='5' rx='1.5' fill='%23171d26'/%3E%3Crect x='22' y='11' width='5' height='5' rx='1.5' fill='%23dbe6f2'/%3E%3Ccircle cx='9' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='9' cy='24' r='1.6' fill='%23faf7f2'/%3E%3Ccircle cx='23' cy='24' r='4' fill='%231a2330'/%3E%3Ccircle cx='23' cy='24' r='1.6' fill='%23faf7f2'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,7 +26,7 @@
     <a href="#backends">Backends</a>
     <a href="#hooks">Hooks</a>
     <a href="#telemetry">Telemetry</a>
-    <a href="#plugin">Plugin</a>
+    <a href="#plugin">Install</a>
     <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
   </div>
 </nav>
@@ -76,7 +76,7 @@
     </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
-      <a class="btn btn-ghost" href="#plugin">Install the agent plugin</a>
+      <a class="btn btn-ghost" href="#plugin">Install the CLI</a>
       <a class="btn btn-ghost" href="https://github.com/yonidavidson/agentcomm-arcade" title="A zero-dependency dashboard built on the bus — the worked example for adding your own UI">👾 Guild Hall — add a UI to the bus</a>
     </div>
     <div class="harness-switcher hero-installs" data-harness-switcher>
@@ -434,7 +434,7 @@ agentcomm hooks --harness opencode">Copy</button>
             <span class="uc-tag">pairing</span>
             <h3>Claude Code + Codex, pairing with zero config</h3>
             <p>
-              Different native plugins, same repo bus: Claude Code implements,
+              Same CLI, same repo bus: Claude Code implements,
               Codex reviews, and <code>--thread</code> keeps it straight.
             </p>
             <div class="codeblock uc-code">
