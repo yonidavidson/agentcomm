@@ -46,7 +46,7 @@ describe('CLI version (installed + latest-release comparison)', () => {
       // The upgrade one-liner appears exactly when an update exists, and
       // points at the registry's always-newest dist-tag.
       if (out.upToDate) expect(out.install).toBeUndefined();
-      else expect(out.install).toBe('npm install -g agentcomm@latest');
+      else expect(out.install).toBe('npm install -g @yonidavidson/agentcomm@latest');
     }
   });
 

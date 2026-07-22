@@ -14,7 +14,7 @@ Get yourself (and this repo) on the bus — takes under a minute, and it is
 the SAME three commands whatever harness you are:
 
 ```bash
-npm install -g agentcomm
+npm install -g @yonidavidson/agentcomm
 agentcomm hooks --harness claude     # or codex / opencode — writes your lifecycle hooks
 agentcomm init --harness claude      # or codex / opencode — writes the team contract
 ```
@@ -49,12 +49,12 @@ Straight from the npm registry, for **every** harness, script, and
 automation:
 
 ```bash
-npm install -g agentcomm
+npm install -g @yonidavidson/agentcomm
 ```
 
 That is the whole thing: ~100 kB, zero runtime dependencies for the file/git
 backends, no plugin, no marketplace, no skill to install. Upgrade with
-`npm install -g agentcomm@latest` — `agentcomm version` tells you when. Pin
+`npm install -g @yonidavidson/agentcomm@latest` — `agentcomm version` tells you when. Pin
 with `agentcomm@X.Y.Z`.
 
 No registry access? The same tarball is attached to every
@@ -65,7 +65,7 @@ URL always serves the newest:
 To embed the library as a **dependency**:
 
 ```bash
-npm install agentcomm
+npm install @yonidavidson/agentcomm
 
 # git+ssh:// / git+https:// / github:// / file:// need NOTHING more
 # (Node ≥ 18; the git binary for git+; a token for github://).
@@ -84,7 +84,7 @@ Everything the CLI does rides the same library entry point — another system
 can join the bus without shelling out:
 
 ```ts
-import { Bus, createBackend } from 'agentcomm';
+import { Bus, createBackend } from '@yonidavidson/agentcomm';
 
 const backend = await createBackend('sqlite:///var/run/team-bus.db');
 const bus = new Bus(backend);
@@ -266,7 +266,7 @@ why the security story is *subtraction*: your storage's auth is the bus's auth.
 | ------------------ | ------------------------------------------------------------------- |
 | `init`             | Put this repo on the bus: writes `CLAUDE.md` by default, or `AGENTS.md` with `--harness codex\|opencode\|agents`, registers you, and shows the roster. Commit the selected harness file. |
 | `register`         | Register / heartbeat the calling agent (`--as`).                    |
-| `version` / `-v`   | Installed version + the latest release, compared; prints `npm install -g agentcomm@latest` when an update exists. Agents: run once per session to stay current. |
+| `version` / `-v`   | Installed version + the latest release, compared; prints `npm install -g @yonidavidson/agentcomm@latest` when an update exists. Agents: run once per session to stay current. |
 | `agents`           | List registered agents.                                             |
 | `send <to> [body]` | Send a message (body from arg or stdin).                            |
 | `broadcast [body]` | Send to every registered agent except yourself.                    |
@@ -534,8 +534,8 @@ always safe.
 through the exact same seam any third-party package uses:
 
 ```ts
-import { registerBackend } from 'agentcomm';
-import type { Backend } from 'agentcomm';
+import { registerBackend } from '@yonidavidson/agentcomm';
+import type { Backend } from '@yonidavidson/agentcomm';
 
 class RedisBackend implements Backend { /* put/get/list/delete/exists/move */ }
 
@@ -609,7 +609,7 @@ consumer reading via `inbox`.
 ## Library use
 
 ```ts
-import { Bus, createBackend } from 'agentcomm';
+import { Bus, createBackend } from '@yonidavidson/agentcomm';
 
 const backend = await createBackend('sqlite:///tmp/bus.db');
 const bus = new Bus(backend);
@@ -670,7 +670,7 @@ publishing / OIDC, with provenance — no token secret) and attaches the
 fallback install artifacts — the versioned `agentcomm-X.Y.Z.tgz` plus the
 constant-named `agentcomm-latest.tgz` that keeps
 `releases/latest/download/agentcomm-latest.tgz` always-newest. No docs
-follow-up: everything points at `agentcomm@latest` or the constant URL.
+follow-up: everything points at `@yonidavidson/agentcomm@latest` or the constant URL.
 
 The test suite runs the **same backend-contract and bus tests** against
 every backend (the git suite runs against local bare repos, so its full

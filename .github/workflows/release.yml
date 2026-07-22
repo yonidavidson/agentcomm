@@ -3,8 +3,8 @@ name: release
 # Ships each GitHub Release to both distribution channels:
 #
 #   1. npm registry (canonical) — `npm publish` via npm trusted publishing
-#      (OIDC; no token secret). Install/upgrade: `npm install -g agentcomm@latest`.
-#      Other systems embed the SDK with a plain `npm install agentcomm`.
+#      (OIDC; no token secret). Install/upgrade: `npm install -g @yonidavidson/agentcomm@latest`.
+#      Other systems embed the SDK with a plain `npm install @yonidavidson/agentcomm`.
 #   2. Release tarballs (fallback) — agentcomm-X.Y.Z.tgz plus the
 #      constant-named agentcomm-latest.tgz, so
 #      releases/latest/download/agentcomm-latest.tgz stays an always-newest
@@ -54,7 +54,7 @@ jobs:
       - name: Publish to the npm registry (skip if this version is already up)
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          if npm view "agentcomm@${VERSION}" version >/dev/null 2>&1; then
+          if npm view "@yonidavidson/agentcomm@${VERSION}" version >/dev/null 2>&1; then
             echo "::notice::agentcomm@${VERSION} already on the registry — skipping publish (re-run of the tarball attach?)"
             exit 0
           fi
