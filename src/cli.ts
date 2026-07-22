@@ -24,6 +24,15 @@ const USAGE = `agentcomm — a tiny mailbox/message bus for AI agents
 Usage:
   agentcomm <command> [args] [flags]
 
+Agent quickstart (if you are an AI agent):
+  agentcomm version                                   # once per session — prints the upgrade command when you're behind
+  agentcomm register --status "<what you're doing>"   # join the bus + declare your task
+  agentcomm inbox --json                              # consume instructions that may be waiting
+  agentcomm network                                   # who else is here, what they're doing
+  agentcomm send <to> "<body>"  ·  agentcomm wait     # coordinate — reply on the sender's --thread
+  Re-check your inbox before reporting your task done.
+  Full etiquette: agentcomm conventions · bus semantics: agentcomm describe
+
 Commands:
   init                     Put this repo on the bus: writes agent instructions
                            for --harness claude|codex|opencode|agents
@@ -79,7 +88,9 @@ Commands:
                            use it automatically
   version                  Installed version + the latest GitHub release,
                            compared — prints the npm install -g one-liner
-                           when an update exists (also -v / --version).
+                           when an update exists (also -v / --version);
+                           --json returns {version, latest, upToDate,
+                           install} (install only when behind).
                            Agents: run this once per session to stay current
 
 Flags:
@@ -133,6 +144,13 @@ Env:
                              import before resolving --backend, so a
                              third-party package can register a new URI
                              scheme via registerBackend() (see README)
+
+Updates:
+  No harness auto-upgrades a globally installed CLI. In a hook-wired session
+  agentcomm compares itself against the latest release once a day and prints
+  a one-line upgrade notice; everywhere else \`agentcomm version\` is the
+  explicit check — it prints the exact upgrade command when this install is
+  behind, and its --json output is the machine contract for scripts.
 
 Examples:
   agentcomm register --as alice --backend sqlite:///tmp/bus.db
