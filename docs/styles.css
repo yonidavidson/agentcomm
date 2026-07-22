@@ -331,7 +331,7 @@ tr:last-child td { border-bottom: none; }
 .step-harness-switcher .harness-tabs button { flex: 1; padding-inline: 6px; }
 .plugin-installs .codeblock { min-width: 0; overflow-x: auto; }
 .install-note { margin: 0; font-size: 0.82rem; }
-#plugin { scroll-margin-top: 140px; }
+main section[id] { scroll-margin-top: 140px; }
 
 /* ---- use cases: route cards ---- */
 .usecase-stack { display: flex; flex-direction: column; gap: 28px; margin-bottom: 56px; }
