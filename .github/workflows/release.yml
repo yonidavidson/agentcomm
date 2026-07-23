@@ -79,13 +79,17 @@ jobs:
         id: pack
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          # `npm pack` emits agentcomm-<version>.tgz (dist-only, per package.json "files").
-          npm pack
+          # `npm pack` emits yonidavidson-agentcomm-<version>.tgz for the
+          # scoped name (dist-only, per package.json "files"); take the
+          # filename from npm itself, then keep the historical asset names —
+          # README documents …/download/vX.Y.Z/agentcomm-X.Y.Z.tgz.
+          PACKED=$(npm pack --silent | tail -1)
           CLI="agentcomm-${VERSION}.tgz"
+          cp "$PACKED" "$CLI"
           # Constant-named copy: GitHub's releases/latest/download/<asset>
           # redirect makes …/releases/latest/download/agentcomm-latest.tgz a
           # stable always-newest URL for scripts and automations.
-          cp "$CLI" agentcomm-latest.tgz
+          cp "$PACKED" agentcomm-latest.tgz
           echo "cli=$CLI" >> "$GITHUB_OUTPUT"
           echo "Packed $CLI ($(du -h "$CLI" | cut -f1))"
 
