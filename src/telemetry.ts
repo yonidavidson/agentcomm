@@ -49,7 +49,7 @@ export const EVENTS_PREFIX = 'events/';
 
 /** A declarative capture rule from the repo config — if it's listed, it fires. */
 export interface TelemetryTrackRule {
-  /** Deterministic trigger: 'skill' | 'tool' | 'session' | 'task' | 'merge' (open vocabulary). */
+  /** Deterministic trigger: 'skill' | 'agent' | 'tool' | 'session' | 'task' | 'merge' (open vocabulary). */
   on: string;
   /** Optional name filter for the trigger (a skill name, a tool glob). */
   match?: string;
