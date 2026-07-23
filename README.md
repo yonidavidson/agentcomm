@@ -478,6 +478,8 @@ telemetry:
     - on: skill
       match: my-review-skill
       record: "whether it uncovered bugs, findings count, iteration for the branch"
+    - on: agent                 # skills that run as dedicated subagents
+      match: my-review-agent
     - on: merge
   # retention: 180d      # opt-in; default keeps everything
 ```
@@ -495,6 +497,19 @@ the session briefing injects each rule's `record:` text so the model knows
 what to self-report. The `on`/`match` layer never depends on the model —
 if it's in the config, it fires. (Only task-list tracking differs: Codex
 and OpenCode have no task events.)
+
+Capture is precise about what it records. `merged` events fire only for
+real `git merge` / `gh pr merge` invocations — plumbing like `merge-base`
+and unwinding via `merge --abort` don't count, commands the harness marked
+as failed are skipped — and they carry the merged source branch or PR
+number in `attrs`. `agent-ran` events resolve their `ref` from worktree
+paths named in the subagent prompt (the session's own cwd often sits on
+the default branch while the work happens in a sibling worktree), falling
+back to the cwd branch, with provenance in `attrs.ref_source`. And when a
+harness fires the same hook twice for one occurrence — the same hook
+registered in two settings scopes is the common case — the twins collapse:
+events dedup on identity within a 10-second window at both flush and read
+time.
 
 Recording is free at capture time: `agentcomm emit --type skill-outcome
 --name my-review-skill --ref "$(git branch --show-current)" --attrs

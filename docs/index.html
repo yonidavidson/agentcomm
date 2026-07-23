@@ -290,6 +290,7 @@ agentcomm hooks --harness opencode">Copy</button>
         <div class="line">  "telemetry": { "track": [</div>
         <div class="line">    { "on": "skill", "match": "code-review",</div>
         <div class="line">      "record": "whether it uncovered bugs, and the findings count" },</div>
+        <div class="line">    { "on": "agent", "match": "code-review-*" },</div>
         <div class="line">    { "on": "merge" }</div>
         <div class="line">  ] }</div>
         <div class="line">}</div>
@@ -314,8 +315,11 @@ agentcomm hooks --harness opencode">Copy</button>
           answers questions like <em>“how many runs of our review skill uncovered
           bugs — and how many iterations before we merge?”</em>. Opt-in per repo and
           deterministic: declare what to track in the config above, and it fires —
-          hooks record the facts (a tracked skill ran, a merge happened), the model
-          self-reports the judgments the config's <code>record:</code> text asks for.
+          hooks record the facts (a tracked skill ran, a tracked subagent was
+          spawned, a merge happened), the model self-reports the judgments the
+          config's <code>record:</code> text asks for. Skills that run as dedicated
+          subagents are invisible to the skill trigger — track those with
+          <code>on: agent</code>, matched by subagent type.
         </p>
       </div>
       <div class="grid reveal">
@@ -326,7 +330,7 @@ agentcomm hooks --harness opencode">Copy</button>
         <div class="card"><span class="cmd">keep everything</span>
           <p>No cleanup by default. Events are the analysis substrate and registrations are their join table — aging anything out is an explicit <code>purge --events</code> / <code>telemetry.retention</code> decision.</p></div>
         <div class="card"><span class="cmd">analysis is an agent</span>
-          <p><code>agentcomm events --json</code> hands the raw lane to whoever asks the question — counting, grouping, and joining runs to merges by branch <code>ref</code> is an in-context job.</p></div>
+          <p><code>agentcomm events --json</code> hands the raw lane to whoever asks the question — counting, grouping, and joining runs to merges by branch <code>ref</code> is an in-context job. Merged events carry the source branch or PR number in <code>attrs</code>; duplicate hook firings dedup automatically.</p></div>
       </div>
       <div class="codeblock reveal" style="max-width:640px; margin-top:28px;">
         <div class="line out"># the agent self-reports the outcome the config asked for</div>
