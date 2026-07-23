@@ -73,6 +73,23 @@ describe('GitBackend (local bare remotes — same code path as any host)', () =>
     await expect(b.delete('inbox/a/001.json')).resolves.toBeUndefined();
   }, 60000);
 
+  it('snapshot: one pass returns every key + body, honors prefixes (issue #144)', async () => {
+    const { uri, cache } = await bareRemote();
+    const b = await open(uri, cache);
+
+    expect((await b.snapshot('')).size).toBe(0); // branch not born yet
+
+    await b.put('inbox/a/001.json', Buffer.from('one'));
+    await b.put('inbox/b/001.json', Buffer.from('two'));
+    await b.put('agents/a.json', Buffer.from('{"alias":"a"}'));
+
+    const all = await b.snapshot('');
+    expect([...all.keys()].sort()).toEqual(['agents/a.json', 'inbox/a/001.json', 'inbox/b/001.json']);
+    for (const [k, v] of all) expect(v.equals(await b.get(k))).toBe(true); // bodies match per-key reads
+
+    expect([...(await b.snapshot('inbox/a/')).keys()]).toEqual(['inbox/a/001.json']);
+  }, 60000);
+
   it('move is ATOMIC — one commit relocates the key', async () => {
     const { uri, cache } = await bareRemote();
     const b = await open(uri, cache);

@@ -7,6 +7,12 @@
  * read-your-write always holds. `claim` is forwarded verbatim — atomicity
  * must come from the store, never from a cache.
  *
+ * The socket binds BEFORE the first poll (issue #144): warming a large bus
+ * key-by-key can take minutes on round-trip-per-read stores, and a daemon
+ * that is invisible until then makes every client spawn another daemon — a
+ * stampede that never converges. Clients connect immediately; data ops just
+ * block until the warm-up finishes.
+ *
  * The protocol is newline-delimited JSON, the Backend interface verbatim:
  *   → {id, op: 'get'|'put'|'list'|'delete'|'exists'|'move'|'claim'|'info'|'stop', ...}
  *   ← {id, ok: true, ...} | {id, ok: false, error, code?}
@@ -18,7 +24,7 @@ import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createBackend } from './backends/index.js';
-import { isClaimable, type Backend } from './types.js';
+import { isClaimable, isSnapshottable, type Backend } from './types.js';
 
 export function daemonDir(): string {
   return process.env.AGENTCOMM_DAEMON_DIR ?? path.join(os.homedir(), '.cache', 'agentcomm', 'd');
@@ -49,55 +55,6 @@ export async function runDaemon(uri: string): Promise<void> {
   const backend: Backend = await createBackend(uri);
   const claimable = isClaimable(backend);
 
-  // warm mirror: full key set + bodies. Message blobs are immutable; agent
-  // records mutate (heartbeats), so those are refreshed on every poll.
-  const mirror = new Map<string, Buffer>();
-  let keys = new Set<string>();
-
-  async function poll(): Promise<void> {
-    // Snapshot the outbox BEFORE listing the store: a key is always in at
-    // least one of the two (spool until delivered, store afterwards) — the
-    // other order can miss it mid-flush for a full poll cycle. The snapshot
-    // runs under the flush mutex (issue #79): reading a spool file while the
-    // flusher rm's it silently dropped the key for a cycle under load.
-    const spooled: string[] = await snapshotSpool();
-    const listed = await backend.list('');
-    const next = new Set([...listed, ...spooled]);
-    for (const k of listed) {
-      if (!mirror.has(k) || k.startsWith('agents/')) {
-        try {
-          mirror.set(k, await backend.get(k));
-        } catch {
-          next.delete(k); // vanished between list and get
-        }
-      }
-    }
-    for (const k of mirror.keys()) if (!next.has(k)) mirror.delete(k);
-    keys = next;
-  }
-
-  async function snapshotSpool(): Promise<string[]> {
-    const take = async (): Promise<string[]> => {
-      const keys: string[] = [];
-      try {
-        for (const f of (await fs.readdir(sockPath + '.spool')).filter((x) => !x.startsWith('.'))) {
-          try {
-            const { key } = JSON.parse(
-              await fs.readFile(path.join(sockPath + '.spool', f), 'utf8'),
-            ) as { key: string };
-            keys.push(key);
-          } catch { /* entry mid-write */ }
-        }
-      } catch { /* spool not created yet */ }
-      return keys;
-    };
-    // before the socket dir exists (first poll) there is no spool nor mutex state
-    return typeof withSpoolRef === 'function' ? withSpoolRef(take) : take();
-  }
-  let withSpoolRef: (<T>(fn: () => Promise<T>) => Promise<T>) | null = null;
-
-  await poll();
-
   let lastActivity = Date.now();
   const sockPath = socketPathFor(uri);
   await fs.mkdir(path.dirname(sockPath), { recursive: true });
@@ -105,32 +62,177 @@ export async function runDaemon(uri: string): Promise<void> {
   // Two instances may autostart simultaneously for the same bus. Never
   // steal a LIVE peer's socket — if someone already answers, bow out and
   // let every client share that one daemon. Only a dead socket is removed.
-  const peerAlive = await new Promise<boolean>((resolve) => {
-    const probe = net.createConnection(sockPath);
-    const timer = setTimeout(() => {
-      probe.destroy();
-      resolve(false);
-    }, 1000);
-    probe.once('connect', () => {
-      clearTimeout(timer);
-      probe.destroy();
-      resolve(true);
+  const probePeer = (): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const probe = net.createConnection(sockPath);
+      const timer = setTimeout(() => {
+        probe.destroy();
+        resolve(false);
+      }, 1000);
+      probe.once('connect', () => {
+        clearTimeout(timer);
+        probe.destroy();
+        resolve(true);
+      });
+      probe.once('error', () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
     });
-    probe.once('error', () => {
-      clearTimeout(timer);
-      resolve(false);
-    });
-  });
-  if (peerAlive) {
-    process.stderr.write(`agentcomm daemon: another daemon already serves ${uri} — exiting
-`);
+  const bowOut = async (): Promise<never> => {
+    process.stderr.write(`agentcomm daemon: another daemon already serves ${uri} — exiting\n`);
     await backend.close?.().catch(() => {});
     process.exit(0);
+  };
+  if (await probePeer()) await bowOut();
+
+  // Outbox spool: puts are accepted onto disk and delivered by the flusher,
+  // so `send` acks in milliseconds while delivery (a git push, an API call)
+  // happens on the daemon's clock — FIFO, retried, surviving restarts.
+  const spoolDir = sockPath + '.spool';
+  await fs.mkdir(spoolDir, { recursive: true });
+  let spoolSeq = 0;
+  let flushFailures = 0;
+  async function spoolAdd(key: string, data: Buffer): Promise<void> {
+    const name = `${String(Date.now()).padStart(14, '0')}-${String(++spoolSeq).padStart(6, '0')}`;
+    const tmp = path.join(spoolDir, '.' + name);
+    await fs.writeFile(tmp, JSON.stringify({ key, data: data.toString('base64') }));
+    await fs.rename(tmp, path.join(spoolDir, name)); // atomic appearance
   }
-  await fs.rm(sockPath, { force: true });
+  async function spoolDepth(): Promise<number> {
+    try {
+      return (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).length;
+    } catch {
+      return 0;
+    }
+  }
+  // One mutex serializes the flusher against spool mutations (a move/delete
+  // of a not-yet-delivered key rewrites its spool entry — racing the flusher
+  // there would deliver the stale key and lose the rewrite).
+  let spoolChain: Promise<unknown> = Promise.resolve();
+  function withSpool<T>(fn: () => Promise<T>): Promise<T> {
+    const next = spoolChain.then(fn, fn);
+    spoolChain = next.catch(() => {});
+    return next;
+  }
+  function flush(): Promise<void> {
+    return withSpool(async () => {
+      const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();
+      for (const f of entries) {
+        const file = path.join(spoolDir, f);
+        try {
+          const { key, data } = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
+          await backend.put(key, Buffer.from(data, 'base64'));
+          await fs.rm(file, { force: true });
+          flushFailures = 0;
+        } catch {
+          flushFailures++;
+          break; // keep FIFO order — retry this entry next tick
+        }
+      }
+    });
+  }
+  /** If `key` is still spooled, rewrite/remove it locally and return true. */
+  function spoolTake(key: string, rewriteTo?: string): Promise<boolean> {
+    return withSpool(async () => {
+      for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.')).sort()) {
+        const file = path.join(spoolDir, f);
+        try {
+          const entry = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
+          if (entry.key !== key) continue;
+          if (rewriteTo) await fs.writeFile(file, JSON.stringify({ ...entry, key: rewriteTo }));
+          else await fs.rm(file, { force: true });
+          return true;
+        } catch { /* unreadable entry: leave for the flusher */ }
+      }
+      return false;
+    });
+  }
+
+  // warm mirror: full key set + bodies. On Snapshottable backends every poll
+  // is one round trip (bodies included); elsewhere the poll carries keys only
+  // and bodies fill lazily through the `get` passthrough — message blobs are
+  // immutable, and agent records (which mutate: heartbeats) are invalidated
+  // each poll so the next read refetches them.
+  const mirror = new Map<string, Buffer>();
+  let keys = new Set<string>();
+
+  /** Snapshot the outbox BEFORE listing the store: a key is always in at
+   * least one of the two (spool until delivered, store afterwards) — the
+   * other order can miss it mid-flush for a full poll cycle. Runs under the
+   * flush mutex (issue #79): reading a spool file while the flusher rm's it
+   * silently dropped the key for a cycle under load. */
+  function snapshotSpool(): Promise<string[]> {
+    return withSpool(async () => {
+      const spooled: string[] = [];
+      try {
+        for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.'))) {
+          try {
+            const { key } = JSON.parse(await fs.readFile(path.join(spoolDir, f), 'utf8')) as {
+              key: string;
+            };
+            spooled.push(key);
+          } catch { /* entry mid-write */ }
+        }
+      } catch { /* spool gone (shutdown) */ }
+      return spooled;
+    });
+  }
+
+  async function doPoll(): Promise<void> {
+    const spooled = await snapshotSpool();
+    if (isSnapshottable(backend)) {
+      const snap = await backend.snapshot('');
+      for (const k of spooled) {
+        const body = snap.get(k) ?? mirror.get(k);
+        if (body) snap.set(k, body); // spooled but not delivered yet — keep the local body
+      }
+      mirror.clear();
+      for (const [k, v] of snap) mirror.set(k, v);
+      keys = new Set([...snap.keys(), ...spooled]);
+      return;
+    }
+    const listed = await backend.list('');
+    const next = new Set([...listed, ...spooled]);
+    for (const k of mirror.keys()) {
+      if (!next.has(k) || k.startsWith('agents/')) mirror.delete(k);
+    }
+    keys = next;
+  }
+  // Coalesce: timer ticks, `refresh`, and post-claim polls that overlap a
+  // slow poll join it instead of stacking concurrent fetches.
+  let inFlight: Promise<void> | null = null;
+  function poll(): Promise<void> {
+    inFlight ??= doPoll().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  }
+
+  // First poll starts now and runs behind the (soon-bound) socket; if it
+  // fails the daemon is useless — clean up and die so clients fall back to
+  // direct connections.
+  let warmed = false;
+  let bound = false;
+  const ready: Promise<void> = poll();
+  ready.then(
+    () => {
+      warmed = true;
+    },
+    (err: Error) => {
+      process.stderr.write(`agentcomm daemon: warm-up failed for ${uri}: ${err.message}\n`);
+      if (bound) {
+        void fs.rm(sockPath, { force: true }).catch(() => {});
+        void fs.rm(sockPath + '.pid', { force: true }).catch(() => {});
+      }
+      void backend.close?.().catch(() => {});
+      setTimeout(() => process.exit(1), 100);
+    },
+  );
 
   async function handle(req: Req): Promise<Record<string, unknown>> {
     lastActivity = Date.now();
+    if (req.op !== 'info' && req.op !== 'stop') await ready; // data ops wait out the warm-up
     switch (req.op) {
       case 'info':
         return {
@@ -139,6 +241,7 @@ export async function runDaemon(uri: string): Promise<void> {
           claimable,
           pollMs,
           pid: process.pid,
+          warming: !warmed,
           outbox: await spoolDepth(),
           flushFailures,
         };
@@ -228,75 +331,29 @@ export async function runDaemon(uri: string): Promise<void> {
     sock.on('error', () => {});
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(sockPath, resolve);
-  });
+  // Bind now — warm later. On EADDRINUSE the path is either a live peer that
+  // bound between our probe and our listen (bow out) or a dead leftover
+  // (remove and retry). Never rm first: that stole a live peer's socket.
+  const listen = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const onErr = (err: Error): void => reject(err);
+      server.once('error', onErr);
+      server.listen(sockPath, () => {
+        server.removeListener('error', onErr);
+        resolve();
+      });
+    });
+  try {
+    await listen();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+    if (await probePeer()) await bowOut();
+    await fs.rm(sockPath, { force: true });
+    await listen();
+  }
+  bound = true;
   await fs.writeFile(sockPath + '.pid', String(process.pid));
 
-  // Outbox spool: puts are accepted onto disk and delivered by the flusher,
-  // so `send` acks in milliseconds while delivery (a git push, an API call)
-  // happens on the daemon's clock — FIFO, retried, surviving restarts.
-  const spoolDir = sockPath + '.spool';
-  await fs.mkdir(spoolDir, { recursive: true });
-  let spoolSeq = 0;
-  let flushFailures = 0;
-  async function spoolAdd(key: string, data: Buffer): Promise<void> {
-    const name = `${String(Date.now()).padStart(14, '0')}-${String(++spoolSeq).padStart(6, '0')}`;
-    const tmp = path.join(spoolDir, '.' + name);
-    await fs.writeFile(tmp, JSON.stringify({ key, data: data.toString('base64') }));
-    await fs.rename(tmp, path.join(spoolDir, name)); // atomic appearance
-  }
-  async function spoolDepth(): Promise<number> {
-    try {
-      return (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).length;
-    } catch {
-      return 0;
-    }
-  }
-  // One mutex serializes the flusher against spool mutations (a move/delete
-  // of a not-yet-delivered key rewrites its spool entry — racing the flusher
-  // there would deliver the stale key and lose the rewrite).
-  let spoolChain: Promise<unknown> = Promise.resolve();
-  function withSpool<T>(fn: () => Promise<T>): Promise<T> {
-    const next = spoolChain.then(fn, fn);
-    spoolChain = next.catch(() => {});
-    return next;
-  }
-  withSpoolRef = withSpool;
-  function flush(): Promise<void> {
-    return withSpool(async () => {
-      const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();
-      for (const f of entries) {
-        const file = path.join(spoolDir, f);
-        try {
-          const { key, data } = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
-          await backend.put(key, Buffer.from(data, 'base64'));
-          await fs.rm(file, { force: true });
-          flushFailures = 0;
-        } catch {
-          flushFailures++;
-          break; // keep FIFO order — retry this entry next tick
-        }
-      }
-    });
-  }
-  /** If `key` is still spooled, rewrite/remove it locally and return true. */
-  function spoolTake(key: string, rewriteTo?: string): Promise<boolean> {
-    return withSpool(async () => {
-      for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.')).sort()) {
-        const file = path.join(spoolDir, f);
-        try {
-          const entry = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
-          if (entry.key !== key) continue;
-          if (rewriteTo) await fs.writeFile(file, JSON.stringify({ ...entry, key: rewriteTo }));
-          else await fs.rm(file, { force: true });
-          return true;
-        } catch { /* unreadable entry: leave for the flusher */ }
-      }
-      return false;
-    });
-  }
   const flushMs = Math.max(100, Number(process.env.AGENTCOMM_FLUSH_MS ?? 250));
   const flushTimer = setInterval(() => void flush(), flushMs);
   flushTimer.unref?.();
@@ -312,6 +369,7 @@ export async function runDaemon(uri: string): Promise<void> {
   const housekeepMs = Math.max(10_000, Number(process.env.AGENTCOMM_HOUSEKEEP_MS ?? 6 * 3600_000));
   const archiveTtl = Number(process.env.AGENTCOMM_PURGE_AFTER_MS ?? 30 * 24 * 3600_000);
   async function housekeep(): Promise<void> {
+    await ready; // never stack backend calls onto an unfinished warm-up
     const now = Date.now();
     if (archiveTtl > 0) {
       for (const k of await backend.list('read/')) {

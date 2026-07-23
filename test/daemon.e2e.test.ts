@@ -164,6 +164,35 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect(after.pid).toBe(before.pid); // the incumbent survived untouched
   });
 
+  it('git-backed daemon: one-round-trip snapshot warm serves pre-existing keys (issue #144)', async () => {
+    const dir = await mkTmp();
+    const remote = path.join(dir, 'remote.git');
+    execFileSync('git', ['init', '--bare', '--quiet', remote]);
+    const extra = {
+      AGENTCOMM_BACKEND: `git+file://${remote}`,
+      AGENTCOMM_GIT_CACHE_DIR: path.join(dir, 'gitcache'),
+    };
+
+    // seed the bus before any daemon exists — warm-up must mirror it
+    const seed = await run(['send', 'alpha', 'pre-daemon message', '--as', 'seeder', '--direct'], dir, extra);
+    expect(seed.code, seed.stderr).toBe(0);
+
+    const reg = await run(['register', '--as', 'alpha', '--daemon'], dir, extra);
+    expect(reg.code, reg.stderr).toBe(0);
+
+    const status = await run(['daemon', 'status', '--json'], dir, extra);
+    expect(status.code, status.stderr).toBe(0);
+    const info = JSON.parse(status.stdout) as { running: boolean; claimable: boolean; warming: boolean };
+    expect(info.running).toBe(true);
+    expect(info.claimable).toBe(true); // git backend supports claim, through the daemon too
+    expect(info.warming).toBe(false); // the register above already waited out the warm
+
+    const inbox = await run(['inbox', '--as', 'alpha', '--daemon', '--json'], dir, extra);
+    expect(inbox.code, inbox.stderr).toBe(0);
+    const msgs = JSON.parse(inbox.stdout) as Array<{ body: string }>;
+    expect(msgs.map((m) => m.body)).toContain('pre-daemon message');
+  }, 120000);
+
   it('daemon housekeeping trims the archive but NEVER registrations (issue #100)', async () => {
     const dir = await mkTmp();
     await run(['register', '--as', 'fresh-agent', '--daemon'], dir);
