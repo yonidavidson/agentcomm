@@ -162,10 +162,11 @@ async function drainSpoolFile(file: string): Promise<TelemetryEvent[]> {
  * but a transient backend error does not eat the batch.
  */
 export async function flushEvents(backend: Backend, busUri: string, respoolAgent: string): Promise<number> {
-  const events: TelemetryEvent[] = [];
+  let events: TelemetryEvent[] = [];
   for (const file of await spoolFiles(busUri)) events.push(...(await drainSpoolFile(file)));
   if (events.length === 0) return 0;
   events.sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0) || a.id.localeCompare(b.id));
+  events = dedupeEvents(events);
   const batch: EventBatch = { v: 1, events };
   const id = randomUUID().replace(/-/g, '').slice(0, 12);
   try {
@@ -175,6 +176,52 @@ export async function flushEvents(backend: Backend, busUri: string, respoolAgent
     await spoolEvents(busUri, respoolAgent, events);
     throw err;
   }
+}
+
+// ── dedup ───────────────────────────────────────────────────────────────────
+// Harnesses can end up running the same hook more than once for a single
+// underlying occurrence (the same hook command registered in more than one
+// settings scope is the common case): each spawn derives the same event and
+// emits it independently, so the store accumulates twins that differ only in
+// their minted id/ts. Identity below is everything BUT id/ts; a repeat inside
+// the window is the same occurrence, a repeat beyond it is a genuine re-run.
+
+export const DEDUP_WINDOW_MS = 10_000;
+
+/** JSON.stringify with object keys sorted at every depth, so equal attrs stringify equally. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** Identity of an event minus its minted id/ts — re-derivations of one occurrence collide. */
+export function eventDedupKey(e: TelemetryEvent): string {
+  return stableJson([e.agent, e.session ?? null, e.type, e.name ?? null, e.ref ?? null, e.attrs ?? null]);
+}
+
+/**
+ * Collapse events whose identity already appeared within `windowMs` of the
+ * last KEPT twin. Input must be ts-sorted (both call sites sort first);
+ * keep-first, so a burst of N twins collapses to the earliest one.
+ */
+export function dedupeEvents(events: TelemetryEvent[], windowMs = DEDUP_WINDOW_MS): TelemetryEvent[] {
+  const lastKept = new Map<string, number>();
+  const out: TelemetryEvent[] = [];
+  for (const e of events) {
+    const key = eventDedupKey(e);
+    const ts = Date.parse(e.ts) || 0;
+    const prev = lastKept.get(key);
+    if (prev !== undefined && ts - prev < windowMs) continue;
+    lastKept.set(key, ts);
+    out.push(e);
+  }
+  return out;
 }
 
 let _counter = 0;
@@ -254,5 +301,9 @@ export async function listEvents(backend: Backend, filter: EventFilter = {}): Pr
     }
   }
   out.sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0) || a.id.localeCompare(b.id));
-  return out;
+  // Read-time dedup is authoritative: it also collapses twins that landed in
+  // DIFFERENT batches (two hook spawns racing a flush), which write-time
+  // dedup inside one batch cannot see — and it heals stores written before
+  // dedup existed.
+  return dedupeEvents(out);
 }

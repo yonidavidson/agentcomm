@@ -133,14 +133,15 @@ describe('telemetry capture hooks (issue #100)', () => {
     const dir = await trackedRepo();
     // the same subagent skill is unreachable via the Skill tool when it sets
     // disable-model-invocation — the Task/Agent spawn is the only signal
+    // distinct tool_use ids: two separate spawns, as the harness reports them
     await runHook(
       'telemetry-capture.mjs',
-      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Task', tool_input: { subagent_type: 'code-review-nuclear' } },
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Task', tool_use_id: 't-1', tool_input: { subagent_type: 'code-review-nuclear' } },
       dir,
     );
     await runHook(
       'telemetry-capture.mjs',
-      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'code-review-nuclear' } },
+      { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_use_id: 't-2', tool_input: { subagent_type: 'code-review-nuclear' } },
       dir,
     );
     await runHook(
@@ -156,7 +157,47 @@ describe('telemetry capture hooks (issue #100)', () => {
     cliJson(['register', '--as', 'rider'], dir);
     const events = cliJson<Ev[]>(['events'], dir);
     expect(events).toHaveLength(2); // both tool spellings fire; untracked/typeless do not
-    for (const e of events) expect(e).toMatchObject({ type: 'agent-ran', name: 'code-review-nuclear', ref: 'feat-x' });
+    for (const e of events)
+      expect(e).toMatchObject({
+        type: 'agent-ran',
+        name: 'code-review-nuclear',
+        ref: 'feat-x',
+        attrs: { ref_source: 'cwd' },
+      });
+  });
+
+  it('agent-ran resolves its ref from a worktree path in the prompt, not the session cwd', async () => {
+    const dir = await trackedRepo(); // session cwd: a checkout on feat-x
+    const wt = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-telwt-')));
+    tmpRoots.push(wt);
+    execFileSync('git', ['-C', wt, 'init', '-q']);
+    execFileSync('git', ['-C', wt, 'symbolic-ref', 'HEAD', 'refs/heads/review-branch-1']);
+    await fs.mkdir(path.join(wt, 'src'), { recursive: true });
+    await fs.writeFile(path.join(wt, 'src', 'foo.ts'), 'export {};\n');
+
+    await runHook(
+      'telemetry-capture.mjs',
+      {
+        cwd: dir,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Task',
+        tool_use_id: 't-wt',
+        tool_input: {
+          subagent_type: 'code-review-nuclear',
+          prompt: `Review the changes in ${wt}/src/foo.ts and report findings.`,
+        },
+      },
+      dir,
+    );
+    cliJson(['register', '--as', 'rider'], dir);
+    const events = cliJson<Ev[]>(['events'], dir);
+    expect(events).toHaveLength(1);
+    // reverting the worktree-aware resolution turns this red: cwd gives feat-x
+    expect(events[0]).toMatchObject({
+      type: 'agent-ran',
+      ref: 'review-branch-1',
+      attrs: { ref_source: 'prompt-path' },
+    });
   });
 
   it('a merge command through Bash is recorded when tracked', async () => {
@@ -177,6 +218,105 @@ describe('telemetry capture hooks (issue #100)', () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'merged', ref: 'feat-x' });
     expect(String(events[0]!.attrs?.command)).toContain('git merge feat-x');
+  });
+
+  it('git plumbing and merge-unwinding commands are NOT recorded as merges', async () => {
+    const dir = await trackedRepo();
+    for (const command of [
+      'git merge-base --fork-point origin/main HEAD',
+      'git merge-tree A B',
+      'git merge-file ours base theirs',
+      'git merge --abort',
+      'gh pr view 123 --json state,mergeCommit,mergedAt',
+    ]) {
+      await runHook(
+        'telemetry-capture.mjs',
+        { cwd: dir, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command } },
+        dir,
+      );
+    }
+    cliJson(['register', '--as', 'rider'], dir);
+    expect(cliJson<Ev[]>(['events'], dir)).toEqual([]);
+  });
+
+  it('merged events carry the source branch or PR number, and a clearly-failed call is skipped', async () => {
+    const dir = await trackedRepo();
+    await runHook(
+      'telemetry-capture.mjs',
+      {
+        cwd: dir,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_use_id: 't-m1',
+        tool_input: { command: 'git merge --no-ff -m "landing" feat-y' },
+        tool_response: { stdout: 'Merge made by the ort strategy.' }, // unknown-good shape → emits
+      },
+      dir,
+    );
+    await runHook(
+      'telemetry-capture.mjs',
+      {
+        cwd: dir,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_use_id: 't-m2',
+        tool_input: { command: 'gh pr merge 123 --squash' },
+      },
+      dir,
+    );
+    await runHook(
+      'telemetry-capture.mjs',
+      {
+        cwd: dir,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Bash',
+        tool_use_id: 't-m3',
+        tool_input: { command: 'git merge feat-z' },
+        tool_response: { is_error: true }, // explicit failure → no event
+      },
+      dir,
+    );
+    cliJson(['register', '--as', 'rider'], dir);
+    const events = cliJson<Ev[]>(['events'], dir);
+    expect(events).toHaveLength(2);
+    expect(events[0]!.attrs).toMatchObject({ source: 'feat-y' });
+    expect(events[1]!.attrs).toMatchObject({ pr: '123' });
+  });
+
+  it('the same tool call double-hooked (two settings scopes) records ONE event; distinct calls record two', async () => {
+    const dir = await trackedRepo();
+    const payload = {
+      cwd: dir,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_use_id: 't-dup',
+      tool_input: { command: 'git merge feat-x' },
+    };
+    await runHook('telemetry-capture.mjs', payload, dir); // scope 1
+    await runHook('telemetry-capture.mjs', payload, dir); // scope 2, same tool call
+    cliJson(['register', '--as', 'rider'], dir);
+    expect(cliJson<Ev[]>(['events'], dir)).toHaveLength(1);
+
+    // a genuinely distinct call moments later still counts
+    await runHook('telemetry-capture.mjs', { ...payload, tool_use_id: 't-dup2' }, dir);
+    cliJson(['register', '--as', 'rider2'], dir);
+    expect(cliJson<Ev[]>(['events'], dir)).toHaveLength(2);
+  });
+
+  it('double-hooked twins split across two flushes still read as ONE event', async () => {
+    const dir = await trackedRepo();
+    const payload = {
+      cwd: dir,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_use_id: 't-x',
+      tool_input: { command: 'git merge feat-x' },
+    };
+    await runHook('telemetry-capture.mjs', payload, dir);
+    cliJson(['register', '--as', 'rider'], dir); // twin 1 ships in batch 1
+    await runHook('telemetry-capture.mjs', payload, dir);
+    cliJson(['register', '--as', 'rider2'], dir); // twin 2 ships in batch 2
+    expect(cliJson<Ev[]>(['events'], dir)).toHaveLength(1); // read-time dedup spans batches
   });
 
   it('session start spools; session end flushes without waiting for a ride', async () => {
@@ -210,5 +350,6 @@ describe('telemetry capture hooks (issue #100)', () => {
     expect(ctx).toContain('YOU self-report');
     expect(ctx).toContain('after skill "thermo-*": record whether it uncovered bugs');
     expect(ctx).toContain('agentcomm emit --type skill-outcome --name thermo-*');
+    expect(ctx).toContain('if a script already reported it, do not emit a duplicate');
   });
 });
