@@ -26,7 +26,9 @@ interface HookInput {
   stop_hook_active?: boolean;
   task_subject?: string;
   tool_name?: string;
-  tool_input?: { skill?: string; name?: string; subagent_type?: string; command?: string };
+  tool_use_id?: string;
+  tool_input?: { skill?: string; name?: string; subagent_type?: string; command?: string; prompt?: string };
+  tool_response?: unknown;
 }
 
 async function readStdinJson(): Promise<HookInput> {
@@ -243,6 +245,9 @@ async function hookSessionStart(input: HookInput): Promise<void> {
             `\`agentcomm emit --type ${r.on}-outcome${name} --ref "$(git branch --show-current)" --attrs '{"…":"…"}'\``,
         );
       }
+      lines.push(
+        '  (Some repos emit these outcomes automatically from their own scripts — if a script already reported it, do not emit a duplicate.)',
+      );
     }
   } catch {
     /* fail open — telemetry must never block a session */
@@ -485,6 +490,130 @@ async function hookTaskStatus(input: HookInput): Promise<void> {
 
 // ── telemetry ───────────────────────────────────────────────────────────────
 
+/** What a parsed merge invocation tells us — enough to correlate the event. */
+export type MergeInfo = { kind: 'git-merge'; source?: string } | { kind: 'gh-pr-merge'; pr?: string };
+
+const GIT_MERGE_RE = /(?:^|[\s;&|(])git\s+merge(?=\s|$)/;
+const GH_PR_MERGE_RE = /(?:^|[\s;&|(])gh\s+pr\s+merge(?=\s|$)/;
+/** Chars that end the merge invocation inside a compound command line. */
+const COMMAND_END = /[;|&\n]/;
+
+/**
+ * Parse a Bash command for a REAL merge invocation, or null when it isn't
+ * one. `(?=\s|$)` (not `\b`) keeps plumbing like `git merge-base`,
+ * `merge-tree` and `merge-file` out — a hyphen is a word boundary, so `\b`
+ * matched them all. `git merge --abort|--quit` is unwinding a merge, not
+ * performing one, so it is null too.
+ */
+export function parseMergeCommand(command: string): MergeInfo | null {
+  const gh = GH_PR_MERGE_RE.exec(command);
+  if (gh) {
+    const rest = command.slice(gh.index + gh[0].length);
+    const tail = rest.split(COMMAND_END, 1)[0] ?? '';
+    for (const tok of tail.trim().split(/\s+/)) {
+      const m = /^#?(\d+)$/.exec(tok) ?? /\/pull\/(\d+)/.exec(tok);
+      // A bare number could also be a numeric flag value; for telemetry the
+      // first numeric token being the PR is the overwhelmingly common case.
+      if (m) return { kind: 'gh-pr-merge', pr: m[1] };
+    }
+    return { kind: 'gh-pr-merge' };
+  }
+  const git = GIT_MERGE_RE.exec(command);
+  if (git) {
+    const rest = command.slice(git.index + git[0].length);
+    // collapse quoted spans to one opaque token so "-m \"two words\"" skips cleanly
+    const tail = (rest.split(COMMAND_END, 1)[0] ?? '').replace(/"[^"]*"|'[^']*'/g, '__quoted__');
+    const tokens = tail.trim().split(/\s+/).filter(Boolean);
+    const flags: string[] = [];
+    let source: string | undefined;
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i]!;
+      if (tok === '-m' || tok === '-F' || tok === '--message' || tok === '--file') {
+        i++; // skip the flag's value
+      } else if (tok.startsWith('-')) {
+        flags.push(tok);
+      } else if (!source) {
+        source = tok;
+      }
+    }
+    if (flags.includes('--abort') || flags.includes('--quit')) return null;
+    return { kind: 'git-merge', ...(source ? { source } : {}) };
+  }
+  return null;
+}
+
+/** True only when the harness payload clearly marks the tool call as failed; unknown shapes → false. */
+function toolFailed(resp: unknown): boolean {
+  if (typeof resp !== 'object' || resp === null) return false;
+  const r = resp as Record<string, unknown>;
+  return r.is_error === true || r.success === false;
+}
+
+/** Absolute filesystem paths mentioned in free text — deduped, deepest-first, capped. */
+export function extractAbsolutePaths(text: string, cap = 8): string[] {
+  const seen = new Set<string>();
+  // anchor to a boundary so `src/foo.ts` doesn't leak a phantom `/foo.ts`
+  for (const m of text.matchAll(/(^|[\s"'`(\[<])(\/[^\s"'`)(\[\]<>,;]+)/g)) {
+    const p = (m[2] ?? '').replace(/[.,:;)\]}"']+$/, '');
+    if (p.length > 1) seen.add(p);
+  }
+  return [...seen].sort((a, b) => b.split('/').length - a.split('/').length).slice(0, cap);
+}
+
+/** Branch of the git checkout containing `p` (falling back to its dirname), or null. */
+async function branchForPath(p: string): Promise<string | null> {
+  let dir = p;
+  try {
+    if (!(await fs.stat(p)).isDirectory()) dir = path.dirname(p);
+  } catch {
+    dir = path.dirname(p);
+    try {
+      await fs.stat(dir);
+    } catch {
+      return null;
+    }
+  }
+  return new Promise((resolve) =>
+    execFile('git', ['-C', dir, 'branch', '--show-current'], { timeout: 1_500 }, (err, out) =>
+      resolve(err ? null : out.trim() || null),
+    ),
+  );
+}
+
+const DEFAULT_BRANCHES = new Set(['main', 'master']);
+
+/**
+ * Best ref for an agent-ran event. The event fires in the SESSION that
+ * spawned the subagent, whose cwd is often the primary checkout while the
+ * actual work lives in a sibling git worktree — so the cwd branch says
+ * "main" even though the run was about a feature branch. The subagent
+ * prompt usually names paths inside that worktree; the deepest path that
+ * resolves to a non-default branch is the honest ref. Falls back to the
+ * cwd branch, with provenance so readers can discount cwd-derived refs.
+ */
+async function resolveAgentRef(
+  prompt: string | undefined,
+  cwd: string,
+): Promise<{ ref: string | null; source: 'prompt-path' | 'cwd' }> {
+  let fromPath: string | null = null;
+  let gitCalls = 0;
+  for (const p of extractAbsolutePaths(prompt ?? '')) {
+    if (gitCalls >= 5) break;
+    gitCalls++;
+    const branch = await branchForPath(p);
+    if (!branch) continue;
+    if (!DEFAULT_BRANCHES.has(branch)) return { ref: branch, source: 'prompt-path' };
+    fromPath ??= branch; // deepest default-named branch — still evidence-based
+  }
+  if (fromPath) return { ref: fromPath, source: 'prompt-path' };
+  const ref = await new Promise<string | null>((resolve) =>
+    execFile('git', ['-C', cwd, 'branch', '--show-current'], { timeout: 1_500 }, (err, out) =>
+      resolve(err ? null : out.trim() || null),
+    ),
+  );
+  return { ref, source: 'cwd' };
+}
+
 async function hookTelemetry(input: HookInput): Promise<void> {
   const cwd = input.cwd || process.cwd();
   if (!(await onTheBus(cwd))) return;
@@ -527,10 +656,14 @@ async function hookTelemetry(input: HookInput): Promise<void> {
     }
     if (hook === 'PostToolUse' && input.tool_name === 'Bash') {
       const command = String(input.tool_input?.command ?? '');
-      if (/(^|[\s;&|(])git\s+merge\b/.test(command) || /(^|[\s;&|(])gh\s+pr\s+merge\b/.test(command)) {
-        if (tracked('merge')) {
-          return { type: 'merged', attrs: { command: command.length > 120 ? command.slice(0, 119) + '…' : command } };
-        }
+      const merge = parseMergeCommand(command);
+      if (merge && tracked('merge') && !toolFailed(input.tool_response)) {
+        const attrs: Record<string, unknown> = {
+          command: command.length > 120 ? command.slice(0, 119) + '…' : command,
+        };
+        if (merge.kind === 'git-merge' && merge.source) attrs.source = merge.source;
+        if (merge.kind === 'gh-pr-merge' && merge.pr) attrs.pr = merge.pr;
+        return { type: 'merged', attrs };
       }
       return null;
     }
@@ -550,9 +683,22 @@ async function hookTelemetry(input: HookInput): Promise<void> {
   const event = deriveEvent();
   if (!event) return;
 
-  const ref = await new Promise<string | null>((resolve) =>
-    execFile('git', ['-C', cwd, 'branch', '--show-current'], (err, out) => resolve(err ? null : out.trim() || null)),
-  );
+  // The harness's tool_use_id makes the event's identity exact: a re-derivation
+  // of the SAME tool call (the same hook registered in two settings scopes)
+  // shares it and dedups, while two genuinely distinct calls that happen to
+  // look alike — parallel spawns of one agent type — differ and both count.
+  if (input.tool_use_id) event.attrs = { ...event.attrs, tool_use: input.tool_use_id };
+
+  let ref: string | null;
+  if (event.type === 'agent-ran') {
+    const resolved = await resolveAgentRef(input.tool_input?.prompt, cwd);
+    ref = resolved.ref;
+    event.attrs = { ...event.attrs, ref_source: resolved.source };
+  } else {
+    ref = await new Promise<string | null>((resolve) =>
+      execFile('git', ['-C', cwd, 'branch', '--show-current'], (err, out) => resolve(err ? null : out.trim() || null)),
+    );
+  }
 
   await cli(
     [
