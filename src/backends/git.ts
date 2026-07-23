@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { type Backend, type Claimable, type Message } from '../types.js';
+import { type Backend, type Claimable, type Message, type Snapshottable } from '../types.js';
 
 /**
  * GitBackend — the generic "commits are the storage" transport, host-agnostic
@@ -34,7 +34,7 @@ import { type Backend, type Claimable, type Message } from '../types.js';
  *   - `claim` is implemented (Claimable) via optimistic CAS — race-free
  *     shared work queues with zero infrastructure.
  */
-export class GitBackend implements Backend, Claimable {
+export class GitBackend implements Backend, Claimable, Snapshottable {
   /** Each poll is a real fetch — cheap against local remotes, a round trip against hosts. */
   readonly pollIntervalMs = 2000;
 
@@ -118,14 +118,37 @@ export class GitBackend implements Backend, Claimable {
     });
   }
 
+  /**
+   * Fetches force-update the same refs/agentcomm/tip, and concurrent ones
+   * collide on its ref lock and fail spuriously — the daemon drives poll,
+   * outbox flusher, and client ops through ONE instance concurrently (issue
+   * #144). In-instance fetches queue here; a collision with another PROCESS
+   * (a --direct CLI sharing the cache repo) is retried below.
+   */
+  private tipChain: Promise<unknown> = Promise.resolve();
+
   /** Fetch the bus branch; its local tip sha, or null when it doesn't exist yet. */
-  private async tip(): Promise<string | null> {
-    try {
-      await this.git(['fetch', '--quiet', 'origin', `+refs/heads/${this.branch}:refs/agentcomm/tip`]);
-    } catch (err) {
-      const stderr = (err as { gitStderr?: string }).gitStderr ?? '';
-      if (/couldn'?t find remote ref|Could not find remote ref/i.test(stderr)) return null;
-      throw err;
+  private tip(): Promise<string | null> {
+    const run = (): Promise<string | null> => this.tipFetch();
+    const next = this.tipChain.then(run, run);
+    this.tipChain = next.catch(() => {});
+    return next;
+  }
+
+  private async tipFetch(): Promise<string | null> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.git(['fetch', '--quiet', 'origin', `+refs/heads/${this.branch}:refs/agentcomm/tip`]);
+        break;
+      } catch (err) {
+        const stderr = (err as { gitStderr?: string }).gitStderr ?? '';
+        if (/couldn'?t find remote ref|Could not find remote ref/i.test(stderr)) return null;
+        if (attempt < 4 && /cannot lock ref|unable to update local ref|File exists/i.test(stderr)) {
+          await sleep(20 * attempt + Math.floor(Math.random() * 40));
+          continue;
+        }
+        throw err;
+      }
     }
     return (await this.git(['rev-parse', 'refs/agentcomm/tip'])).toString('utf8').trim();
   }
@@ -195,6 +218,38 @@ export class GitBackend implements Backend, Claimable {
     } catch {
       throw notFound(key);
     }
+  }
+
+  /**
+   * One fetch, then every body read from local objects at that tip — the
+   * daemon's warm path. Key-by-key `get` would pay a fetch per key.
+   */
+  async snapshot(prefix: string): Promise<Map<string, Buffer>> {
+    const out = new Map<string, Buffer>();
+    const tip = await this.tip();
+    if (tip === null) return out;
+    const full = this.k(prefix);
+    const names = (await this.git(['ls-tree', '-r', '--name-only', '-z', tip]))
+      .toString('utf8')
+      .split('\0')
+      .filter((p) => p.length > 0 && p.startsWith(full) && p.startsWith(this.keyPrefix));
+    if (names.length === 0) return out;
+    const batch = await this.git(['cat-file', '--batch'], {
+      input: Buffer.from(names.map((p) => `${tip}:${p}`).join('\n') + '\n'),
+    });
+    // --batch emits "<oid> blob <size>\n<bytes>\n" per object, in input order
+    let off = 0;
+    for (const p of names) {
+      const nl = batch.indexOf(0x0a, off);
+      if (nl < 0) break;
+      const header = batch.subarray(off, nl).toString('utf8');
+      off = nl + 1;
+      if (header.endsWith(' missing')) continue; // vanished between ls-tree and read
+      const size = Number(header.split(' ')[2]);
+      out.set(p.slice(this.keyPrefix.length), Buffer.from(batch.subarray(off, off + size)));
+      off += size + 1; // body + trailing newline
+    }
+    return out;
   }
 
   async list(prefix: string): Promise<string[]> {

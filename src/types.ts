@@ -66,6 +66,17 @@ export interface Claimable {
   claim(queue: string, owner: string): Promise<Message | null>;
 }
 
+/**
+ * Optional capability: read every key (and body) under a prefix in one
+ * atomic pass. On stores where each `get` pays a network round trip (a git
+ * fetch, a REST call), warming a large bus key-by-key is minutes of wall
+ * clock — the bus daemon uses this to warm its mirror in one round trip.
+ */
+export interface Snapshottable {
+  /** All keys under `prefix` with their bodies, read at a single consistent point. */
+  snapshot(prefix: string): Promise<Map<string, Buffer>>;
+}
+
 /** Optional capability: block until a message arrives (push instead of poll). */
 export interface Waitable {
   /**
@@ -81,6 +92,10 @@ export function isClaimable(b: Backend): b is Backend & Claimable {
 
 export function isWaitable(b: Backend): b is Backend & Waitable {
   return typeof (b as Partial<Waitable>).waitPush === 'function';
+}
+
+export function isSnapshottable(b: Backend): b is Backend & Snapshottable {
+  return typeof (b as Partial<Snapshottable>).snapshot === 'function';
 }
 
 /** Thrown when an optional driver (better-sqlite3, pg, aws/gcs sdk) is missing. */

@@ -61,6 +61,18 @@ class Rpc {
   }
 }
 
+/** Whether the daemon that wrote `<sockPath>.pid` is still running. */
+async function pidAlive(sockPath: string): Promise<boolean> {
+  try {
+    const pid = Number((await fs.readFile(sockPath + '.pid', 'utf8')).trim());
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ok(res: Record<string, unknown>): Record<string, unknown> {
   if (res.ok) return res;
   const err = new Error(String(res.error ?? 'daemon error'));
@@ -88,8 +100,13 @@ export class SocketBackend implements Backend {
       s.once('error', () => resolve(null));
     });
     if (!sock) {
-      await fs.rm(sockPath, { force: true }).catch(() => {}); // stale leftover
-      await fs.rm(sockPath + '.pid', { force: true }).catch(() => {});
+      // Unlink only a DEAD daemon's leftovers (issue #144): a connect error
+      // while the pid is alive is transient (busy accept queue) — unlinking
+      // then orphans a live daemon and triggers a respawn stampede.
+      if (!(await pidAlive(sockPath))) {
+        await fs.rm(sockPath, { force: true }).catch(() => {}); // stale leftover
+        await fs.rm(sockPath + '.pid', { force: true }).catch(() => {});
+      }
       return null;
     }
     const rpc = new Rpc(sock);
@@ -126,9 +143,9 @@ export class SocketBackend implements Backend {
     } catch {
       return null;
     }
-    // a git-backed daemon warms its mirror (a full fetch) before listening,
-    // and on loaded machines (CI) even node startup can crawl — the window
-    // is tunable so tests on starved runners can wait longer
+    // the daemon binds its socket before warming the mirror, so this window
+    // only covers node startup + backend open — but on loaded machines (CI)
+    // even that can crawl, so tests on starved runners can wait longer
     const waitMs = Math.max(1_000, Number(process.env.AGENTCOMM_DAEMON_SPAWN_WAIT_MS ?? 10_000));
     for (let waited = 0; waited < waitMs; waited += 100) {
       await new Promise((r) => setTimeout(r, 100));
