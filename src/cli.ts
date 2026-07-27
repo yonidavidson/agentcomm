@@ -143,7 +143,7 @@ Env:
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
                              import before resolving --backend, so a
                              third-party package can register a new URI
-                             scheme via registerBackend() (see README)
+                             scheme via registerBackend() (see guide/sdk.md)
 
 Updates:
   No harness auto-upgrades a globally installed CLI. In a hook-wired session

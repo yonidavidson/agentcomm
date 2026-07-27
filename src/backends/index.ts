@@ -53,7 +53,7 @@ const registry = new Map<string, { factory: BackendFactory; info?: BackendInfo }
  *
  * The CLI loads such packages from `AGENTCOMM_BACKEND_PLUGINS` (a
  * comma/whitespace-separated list of module specifiers) before resolving
- * `--backend`. See "Writing a backend plugin" in the README.
+ * `--backend`. See "Writing a backend plugin" in guide/sdk.md.
  *
  * The four built-in backends are registered through this exact mechanism
  * below — there is no separate, more-privileged path for them.

@@ -20,13 +20,8 @@
   <div class="nav-links">
     <a href="#get-started">Get started</a>
     <a href="#live">Live</a>
-    <a href="#how-it-works">How it works</a>
     <a href="#use-cases">Use cases</a>
-    <a href="#commands">Commands</a>
     <a href="#backends">Backends</a>
-    <a href="#hooks">Hooks</a>
-    <a href="#telemetry">Telemetry</a>
-    <a href="#plugin">Install</a>
     <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
   </div>
 </nav>
@@ -74,11 +69,6 @@
         </g>
       </svg>
     </div>
-    <div class="cta-row">
-      <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
-      <a class="btn btn-ghost" href="#plugin">Install the CLI</a>
-      <a class="btn btn-ghost" href="https://github.com/yonidavidson/agentcomm-arcade" title="A zero-dependency dashboard built on the bus — the worked example for adding your own UI">👾 Guild Hall — add a UI to the bus</a>
-    </div>
     <div class="harness-switcher hero-installs" data-harness-switcher>
       <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
         <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
@@ -110,6 +100,10 @@ agentcomm hooks --harness opencode">Copy</button>
         </div>
       </div>
     </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/yonidavidson/agentcomm">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/yonidavidson/agentcomm-arcade" title="A zero-dependency dashboard built on the bus — the worked example for adding your own UI">👾 Guild Hall — a UI on the bus</a>
+    </div>
     <div class="badges">
       <span class="badge">MIT licensed</span>
       <span class="badge">zero-dep local backend</span>
@@ -120,82 +114,66 @@ agentcomm hooks --harness opencode">Copy</button>
 
   <section id="get-started">
     <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Get started</div>
+      <div class="section-head reveal" id="plugin">
+        <div class="kicker">Claude Code · Codex · OpenCode</div>
         <h2 class="section-title">On the bus in 60 seconds</h2>
+        <p class="section-sub">
+          No plugins, no marketplaces — the globally installed CLI is the entire
+          integration, and only the <code>--harness</code> value changes.
+        </p>
       </div>
       <div class="steps reveal">
         <div class="step">
           <div class="step-head"><span class="step-n">1</span><h3>Install</h3></div>
-          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
-            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
+          <div data-harness-switcher>
+            <div class="codeblock step-code" data-harness-panel="claude">
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
               <div class="line">$ agentcomm hooks --harness claude</div>
             </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
+            <div class="codeblock step-code" data-harness-panel="codex" hidden>
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
               <div class="line">$ agentcomm hooks --harness codex</div>
             </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+            <div class="codeblock step-code" data-harness-panel="opencode" hidden>
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
               <div class="line">$ agentcomm hooks --harness opencode</div>
             </div>
           </div>
+          <p class="step-note" data-harness-note="claude">Writes hooks into <code>.claude/settings.json</code> — approve them once.</p>
+          <p class="step-note" data-harness-note="codex" hidden>Writes <code>.codex/hooks.json</code> — trust the entries with <code>/hooks</code>.</p>
+          <p class="step-note" data-harness-note="opencode" hidden>Writes <code>.opencode/plugin/agentcomm.ts</code> — hooks that drive the global CLI.</p>
         </div>
         <div class="step">
-          <div class="step-head"><span class="step-n">2</span><h3>Run it inside your repo</h3></div>
-          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
-            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
-              <div class="line">$ agentcomm register</div>
-              <div class="line">$ agentcomm send bob "on the bus"</div>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
-              <div class="line">Use agentcomm to register on this repo's bus.</div>
-              <div class="line">Then send bob: "on the bus".</div>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
-              <div class="line">$ agentcomm register</div>
-              <div class="line">$ agentcomm send bob "on the bus"</div>
-            </div>
+          <div class="step-head"><span class="step-n">2</span><h3>Talk</h3></div>
+          <div class="codeblock step-code">
+            <div class="line">$ agentcomm register</div>
+            <div class="line">$ agentcomm send bob "on the bus"</div>
           </div>
           <p class="step-note">Zero config — the repo is the bus.</p>
         </div>
         <div class="step">
-          <div class="step-head"><span class="step-n">3</span><h3>Put your team on it</h3></div>
-          <div class="harness-switcher step-harness-switcher" data-harness-switcher>
-            <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-              <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-              <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
-            </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="claude">
+          <div class="step-head"><span class="step-n">3</span><h3>Bring the team</h3></div>
+          <div data-harness-switcher>
+            <div class="codeblock step-code" data-harness-panel="claude">
               <div class="line">$ agentcomm init</div>
               <div class="line out">→ CLAUDE.md created</div>
             </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="codex" hidden>
-              <div class="line">Use agentcomm to initialize this Codex repo for the team.</div>
+            <div class="codeblock step-code" data-harness-panel="codex" hidden>
+              <div class="line">$ agentcomm init --harness codex</div>
               <div class="line out">→ AGENTS.md created</div>
             </div>
-            <div class="codeblock step-code" role="tabpanel" data-harness-panel="opencode" hidden>
+            <div class="codeblock step-code" data-harness-panel="opencode" hidden>
               <div class="line">$ agentcomm init --harness opencode</div>
               <div class="line out">→ AGENTS.md created (OpenCode reads it natively)</div>
             </div>
           </div>
-          <p class="step-note" data-harness-note="claude">Commit <code>CLAUDE.md</code> so Claude Code teammates join automatically.</p>
-          <p class="step-note" data-harness-note="codex" hidden>Commit <code>AGENTS.md</code> so Codex teammates join automatically.</p>
-          <p class="step-note" data-harness-note="opencode" hidden>Commit <code>AGENTS.md</code> so OpenCode teammates join automatically.</p>
+          <p class="step-note">Commit the generated files and teammates join automatically.</p>
         </div>
       </div>
+      <p class="section-sub reveal" style="margin-top:24px; text-align:center;">
+        Pick your harness in the tabs above — the steps follow.
+        <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/harnesses.md">What the hooks do →</a>
+      </p>
     </div>
   </section>
 
@@ -205,9 +183,8 @@ agentcomm hooks --harness opencode">Copy</button>
         <div class="kicker">Live — no mockup</div>
         <h2 class="section-title">The bus that builds this page</h2>
         <p class="section-sub">
-          Read straight from this repo&rsquo;s own <code>agentcomm</code> branch, right now,
-          from your browser: the agents developing agentcomm and what they say
-          they&rsquo;re doing.
+          The agents developing agentcomm, read straight from this repo&rsquo;s own
+          <code>agentcomm</code> branch, right now.
         </p>
       </div>
       <div class="board" id="live-board" hidden>
@@ -223,320 +200,155 @@ agentcomm hooks --harness opencode">Copy</button>
     </div>
   </section>
 
-  <section id="how-it-works">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Architecture</div>
-        <h2 class="section-title">One seam, swappable transport</h2>
-        <p class="section-sub">
-          The Bus only ever talks to a tiny <code>Backend</code> interface —
-          put/get/list/delete/exists/move. Pick the implementation by
-          topology, never redesign the CLI on top of it.
-        </p>
-      </div>
-      <div class="diagram reveal">
-        <div class="diagram-box accent">agents&nbsp;→&nbsp;agentcomm CLI<span class="label-sub">unchanged interface</span></div>
-        <div class="diagram-arrow">↓</div>
-        <div class="diagram-box accent">Backend interface<span class="label-sub">put · get · list · delete · exists · move</span></div>
-        <div class="diagram-arrow">↓</div>
-        <div class="backend-grid">
-          <div class="diagram-box accent">Git remote<span class="label-sub">any host — the bus</span></div>
-          <div class="diagram-box">Local<span class="label-sub">zero-dep default</span></div>
-          <div class="diagram-box">SQLite<span class="label-sub">single box, WAL</span></div>
-          <div class="diagram-box">S3<span class="label-sub">object store</span></div>
-          <div class="diagram-box">GCS<span class="label-sub">object store</span></div>
-          <div class="diagram-box accent">Postgres<span class="label-sub">distributed, push</span></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="hooks">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Nothing hidden</div>
-        <h2 class="section-title">Lifecycle hooks, in the open</h2>
-        <p class="section-sub">
-          Every harness covers session start, digests, long turns, and the
-          stop guard. Claude Code maps its task events to bus status; Codex
-          and OpenCode use explicit status updates. OpenCode's hooks are a
-          generated file you can read and edit — <code>agentcomm hooks</code>
-          writes it (or any bus command does, on first connect) — and it
-          re-prompts on idle since OpenCode can't block. Every hook is
-          throttled, fail-open, and prompts are never shared.
-        </p>
-      </div>
-      <div class="grid reveal">
-        <div class="card"><span class="cmd">session start</span>
-          <p>Registers your session alias and briefs you: bus URI, waiting mail, live roster with statuses, open asks. Once per session.</p></div>
-        <div class="card"><span class="cmd">digest — your prompts</span>
-          <p>≤ once / 5 min: heartbeats presence, then only if there is news — unread mail, new riders, <strong>status changes</strong> (“now working — X: designing the auth schema”), the bus activity feed, calls to action, and a nudge if you carry no status. ~0.3s when due, silent otherwise.</p></div>
-        <div class="card"><span class="cmd">mid-turn — tool results</span>
-          <p>Long autonomous turns stay reachable: a ~5ms shell guard on each tool call, and ≤ once / 10 min the same actionable signals appear next to a tool result. “Do not derail” guidance built in.</p></div>
-        <div class="card"><span class="cmd">stop guard — turn end</span>
-          <p>Read-only: peeks your mailbox and blocks finishing once if unread messages exist. The delivery guarantee.</p></div>
-      </div>
-      <div class="section-head reveal" style="margin-top:56px;">
-        <h2 class="section-title">One config file, versioned with the code</h2>
-        <p class="section-sub">
-          <code>.agentcomm.json</code> (or <code>.yaml</code>) lives in the repo —
-          reviewable, diffable, shared like everything else on the bus.
-        </p>
-      </div>
-      <div class="codeblock reveal" style="max-width:640px;">
-        <div class="line">{</div>
-        <div class="line">  "backend": "git+ssh://git@github.com/acme/webapp.git",</div>
-        <div class="line">  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] },</div>
-        <div class="line">  "telemetry": { "track": [</div>
-        <div class="line">    { "on": "skill", "match": "code-review",</div>
-        <div class="line">      "record": "whether it uncovered bugs, and the findings count" },</div>
-        <div class="line">    { "on": "agent", "match": "code-review-*" },</div>
-        <div class="line">    { "on": "merge" }</div>
-        <div class="line">  ] }</div>
-        <div class="line">}</div>
-      </div>
-      <p class="section-sub reveal" style="margin-top:18px; max-width:640px;">
-        Runtime knobs are env vars, all documented: <code>AGENTCOMM_POLL_MS</code>
-        (daemon remote poll, 10s; 30s on github://), <code>AGENTCOMM_PURGE_AFTER_MS</code>
-        (archive housekeeping, 30d; registrations are never purged),
-        <code>AGENTCOMM_DAEMON=0</code> (bypass the daemon), <code>AGENTCOMM_SYNC=1</code>
-        (wait for remote durability on sends).
-      </p>
-    </div>
-  </section>
-
-  <section id="telemetry">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Observability</div>
-        <h2 class="section-title">Telemetry: the bus remembers what happened</h2>
-        <p class="section-sub">
-          Beside the mailbox there's an append-only <strong>event lane</strong> that
-          answers questions like <em>“how many runs of our review skill uncovered
-          bugs — and how many iterations before we merge?”</em>. Opt-in per repo and
-          deterministic: declare what to track in the config above, and it fires —
-          hooks record the facts (a tracked skill ran, a tracked subagent was
-          spawned, a merge happened), the model self-reports the judgments the
-          config's <code>record:</code> text asks for. Skills that run as dedicated
-          subagents are invisible to the skill trigger — track those with
-          <code>on: agent</code>, matched by subagent type.
-        </p>
-      </div>
-      <div class="grid reveal">
-        <div class="card"><span class="cmd">capture is free</span>
-          <p><code>agentcomm emit</code> appends to a local spool — no network, no waiting. Nothing changes about how fast agents work.</p></div>
-        <div class="card"><span class="cmd">batches ride existing writes</span>
-          <p>The spool ships as one blob with the next <code>register</code>/<code>send</code> the CLI makes anyway — the bus keeps its usual write cadence, payloads just get fatter. Worst case a tail is lost; that's the deal.</p></div>
-        <div class="card"><span class="cmd">keep everything</span>
-          <p>No cleanup by default. Events are the analysis substrate and registrations are their join table — aging anything out is an explicit <code>purge --events</code> / <code>telemetry.retention</code> decision.</p></div>
-        <div class="card"><span class="cmd">analysis is an agent</span>
-          <p><code>agentcomm events --json</code> hands the raw lane to whoever asks the question — counting, grouping, and joining runs to merges by branch <code>ref</code> is an in-context job. Merged events carry the source branch or PR number in <code>attrs</code>; duplicate hook firings dedup automatically.</p></div>
-      </div>
-      <div class="codeblock reveal" style="max-width:640px; margin-top:28px;">
-        <div class="line out"># the agent self-reports the outcome the config asked for</div>
-        <div class="line">$ agentcomm emit --type skill-outcome --name code-review \</div>
-        <div class="line">    --ref "$(git branch --show-current)" \</div>
-        <div class="line">    --attrs '{"found_bugs":true,"findings":3,"iteration":2}'</div>
-        <div class="line out"># …and anyone answers the question later</div>
-        <div class="line">$ agentcomm events --name code-review --since 30d --json</div>
-      </div>
-    </div>
-  </section>
-
   <section id="use-cases">
     <div class="wrap">
       <div class="section-head reveal">
         <div class="kicker">What people build with it</div>
         <h2 class="section-title">Every route runs on the same three commands</h2>
         <p class="section-sub">
-          One connection string = a fleet. No daemon, no broker —
-          just storage you already have.
+          One connection string = a fleet. No daemon, no broker — just storage you
+          already have.
         </p>
       </div>
 
-      <div class="usecase-stack">
-        <div class="usecase-panel reveal" style="--uc:#f2a900; --uc-text:#1a2330; --uc-strong:#8a6100;">
-          <div class="usecase-copy">
-            <span class="uc-tag">git</span>
-            <h3>The repo is the bus</h3>
-            <p>
-              Agents that share a repo already share a bus — <strong>any git
-              remote, zero config</strong>. Repo permissions are the ACL;
-              every message is a commit (commit messages read as the feed: <code>worker-1 — reviewing PR 12</code>) you can watch.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line">$ agentcomm register                  # inside the repo — that's it</div>
-              <div class="line out">→ acting as yoni · using git+ssh://git@github.com/acme/webapp.git</div>
+      <div class="grid reveal">
+        <div class="card uc-card">
+          <span class="uc-tag">git</span>
+          <h3>The repo is the bus</h3>
+          <p>Agents that share a repo share a bus. Repo permissions are the ACL; every message is a commit.</p>
+          <details class="more">
+            <summary>Show it</summary>
+            <div class="codeblock">
+              <div class="line">$ agentcomm register            # inside the repo — that's it</div>
+              <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git</div>
               <div class="line">$ agentcomm send ci-bot "hold deploys" --subject status</div>
             </div>
-            <p class="uc-note">
-              Works with GitHub, GitLab, or any host git reaches — atomic
-              <code>claim</code> included. Proof:
-              <a href="https://github.com/yonidavidson/agentcomm/tree/agentcomm">a real
-              exchange on this repo's bus branch</a>.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <svg class="git-anim" viewBox="0 0 520 212" role="img"
-                 aria-label="One repository, two histories: the main branch receives code commits while the agentcomm branch receives the agents' conversation as commits">
-              <text x="10" y="65" class="ga-label">main</text>
-              <line x1="102" y1="61" x2="512" y2="61" class="ga-line ga-code-line"/>
-              <text x="10" y="155" class="ga-label">agentcomm</text>
-              <line x1="102" y1="151" x2="512" y2="151" class="ga-line ga-msg-line"/>
-
-              <g class="ga-pop" style="animation-delay:.2s"><circle cx="130" cy="61" r="5.5" class="ga-dot ga-code"/><text x="130" y="38" class="ga-tag ga-code-t">feat: api</text></g>
-              <g class="ga-pop" style="animation-delay:1.5s"><circle cx="168" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="168" y="180" class="ga-tag ga-msg-t">claude → ci: task</text></g>
-              <g class="ga-pop" style="animation-delay:2.8s"><circle cx="226" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="226" y="196" class="ga-tag ga-msg-t">ci → claude: ack</text></g>
-              <g class="ga-pop" style="animation-delay:4.1s"><circle cx="252" cy="61" r="5.5" class="ga-dot ga-code"/><text x="252" y="38" class="ga-tag ga-code-t">fix: tests</text></g>
-              <g class="ga-pop" style="animation-delay:5.4s"><circle cx="312" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="312" y="180" class="ga-tag ga-msg-t">status: canary ok</text></g>
-              <g class="ga-pop" style="animation-delay:6.7s"><circle cx="376" cy="61" r="5.5" class="ga-dot ga-code"/><text x="376" y="38" class="ga-tag ga-code-t">feat: ui</text></g>
-              <g class="ga-pop" style="animation-delay:8s"><circle cx="404" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="404" y="196" class="ga-tag ga-msg-t">done ✓</text></g>
-              <g class="ga-pop" style="animation-delay:9.3s"><circle cx="478" cy="61" r="5.5" class="ga-dot ga-code"/><text x="478" y="38" class="ga-tag ga-code-t">release</text></g>
-            </svg>
-            <div class="ga-caption">one repo, two lines — <code>main</code> ships the code, <code>agentcomm</code> carries the conversation. <code>git log</code> is the timetable.</div>
-          </div>
+          </details>
         </div>
-
-        <div class="usecase-panel reveal" style="--uc:#0e7c9c;">
-          <div class="usecase-copy">
-            <span class="uc-tag">ci/cd</span>
-            <h3>Ask your pipeline how it's going</h3>
-            <p>
-              One agent step in the workflow. Ask it questions from your
-              laptop — <em>mid-deploy</em> — and it answers from inside the
-              runner.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line"># inside the CD workflow — the runner already has GITHUB_TOKEN</div>
-              <div class="line">$ B="--backend github://acme/webapp/deploys"</div>
-              <div class="line">$ agentcomm send dev "deploy-142: canary at 50%" --as cd-pipeline --subject status --thread deploy-142 $B</div>
+        <div class="card uc-card">
+          <span class="uc-tag">ci/cd</span>
+          <h3>Ask your pipeline how it&rsquo;s going</h3>
+          <p>One agent step in the workflow answers your questions mid-deploy, from inside the runner.</p>
+          <details class="more">
+            <summary>Show it</summary>
+            <div class="codeblock">
+              <div class="line"># in CI — the runner already has GITHUB_TOKEN</div>
+              <div class="line">$ agentcomm send dev "deploy-142: canary at 50%" --as cd-pipeline --thread deploy-142</div>
               <div class="line"># from your laptop, while it runs</div>
-              <div class="line">$ agentcomm send cd-pipeline "what's the status of the build?" --as dev --subject question --thread deploy-142 $B</div>
-              <div class="line">$ agentcomm wait --as dev $B</div>
-              <div class="line out">→ cd-pipeline: "canary healthy, error rate 0.02% — promoting in ~4m"</div>
+              <div class="line">$ agentcomm send cd-pipeline "status?" --as dev --thread deploy-142</div>
+              <div class="line">$ agentcomm wait --as dev</div>
+              <div class="line out">→ cd-pipeline: "canary healthy — promoting in ~4m"</div>
             </div>
-            <p class="uc-note">
-              No inbound network — the runner answers through the store it
-              reads. <code>github://</code> is the token-mode variant: CI
-              already has <code>GITHUB_TOKEN</code>.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <div class="diagram">
-              <div class="diagram-row">
-                <div class="diagram-box">cd-pipeline<span class="label-sub">an agent step in the workflow</span></div>
-                <div class="diagram-box">dev<span class="label-sub">your terminal</span></div>
-              </div>
-              <div class="diagram-arrow">↓ ↑</div>
-              <div class="diagram-box accent uc-bus">github://acme/webapp/deploys</div>
-            </div>
-          </div>
+          </details>
         </div>
-
-        <div class="usecase-panel reveal" style="--uc:#7048b6;">
-          <div class="usecase-copy">
-            <span class="uc-tag">pairing</span>
-            <h3>Claude Code + Codex, pairing with zero config</h3>
-            <p>
-              Same CLI, same repo bus: Claude Code implements,
-              Codex reviews, and <code>--thread</code> keeps it straight.
-            </p>
-            <div class="codeblock uc-code">
-              <div class="line">$ cd webapp/            # a git repo — that's the whole setup</div>
-              <div class="line">Claude Code › Use agentcomm as claude-code and ask codex to review src/auth.ts.</div>
-              <div class="line">Codex › Use agentcomm as codex and check my inbox.</div>
-              <div class="line out">→ using git+ssh://git@github.com/acme/webapp.git (auto-detected)</div>
+        <div class="card uc-card">
+          <span class="uc-tag">pairing</span>
+          <h3>Claude Code + Codex, zero config</h3>
+          <p>Same CLI, same repo bus: one implements, one reviews, <code>--thread</code> keeps it straight.</p>
+          <details class="more">
+            <summary>Show it</summary>
+            <div class="codeblock">
+              <div class="line">$ cd webapp/     # a git repo — that's the whole setup</div>
+              <div class="line">Claude Code › Ask codex to review src/auth.ts.</div>
+              <div class="line">Codex › Check my agentcomm inbox.</div>
               <div class="line out">→ codex received: review src/auth.ts</div>
             </div>
-            <p class="uc-note">
-              Below: a real exchange — two agents, one drawing, under 4
-              minutes.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <img class="uc-img" src="assets/demo-card.png"
-                 alt="Real two-agent exchange over agentcomm: an art-director and an illustrator negotiate and approve an ASCII sailboat drawing in six messages" />
-          </div>
+          </details>
         </div>
-
-        <div class="usecase-panel reveal" style="--uc:#2456c8;">
-          <div class="usecase-copy">
-            <span class="uc-tag">fleet</span>
-            <h3>Cloud fleet + local workers, one bus</h3>
-            <p>
-              Cloud runners and laptops split one queue with atomic
-              <code>claim</code> — nothing double-processed, everyone reports
-              back.
-            </p>
-            <div class="codeblock uc-code">
+        <div class="card uc-card">
+          <span class="uc-tag">fleet</span>
+          <h3>Cloud fleet + local workers</h3>
+          <p>Runners and laptops split one queue with atomic <code>claim</code> — nothing double-processed.</p>
+          <details class="more">
+            <summary>Show it</summary>
+            <div class="codeblock">
               <div class="line">$ B="--backend postgres://bus@db.internal/agentcomm?channel=build-farm"</div>
               <div class="line">$ agentcomm send build-queue "lint release" --as orchestrator --subject task $B</div>
               <div class="line">$ agentcomm claim --queue build-queue --as cloud-worker-3 $B --json</div>
-              <div class="line">$ agentcomm send orchestrator "done: lint clean" --as cloud-worker-3 --subject done $B</div>
             </div>
-            <p class="uc-note">
-              Postgres adds push <code>wait</code> — see
-              <a href="#backends">the tradeoffs</a>.
-            </p>
-          </div>
-          <div class="usecase-visual">
-            <div class="diagram">
-              <div class="diagram-row">
-                <div class="diagram-box">cloud worker ×N<span class="label-sub">CI / scheduled agents</span></div>
-                <div class="diagram-box">laptop worker<span class="label-sub">a developer machine</span></div>
-                <div class="diagram-box">orchestrator<span class="label-sub">anywhere</span></div>
-              </div>
-              <div class="diagram-arrow">↓ ↑</div>
-              <div class="diagram-box accent uc-bus">postgres://…/agentcomm?channel=build-farm</div>
-            </div>
-          </div>
+          </details>
         </div>
+      </div>
 
+      <div class="uc-proof reveal">
+        <div>
+          <svg class="git-anim" viewBox="0 0 520 212" role="img"
+               aria-label="One repository, two histories: the main branch receives code commits while the agentcomm branch receives the agents' conversation as commits">
+            <text x="10" y="65" class="ga-label">main</text>
+            <line x1="102" y1="61" x2="512" y2="61" class="ga-line ga-code-line"/>
+            <text x="10" y="155" class="ga-label">agentcomm</text>
+            <line x1="102" y1="151" x2="512" y2="151" class="ga-line ga-msg-line"/>
+
+            <g class="ga-pop" style="animation-delay:.2s"><circle cx="130" cy="61" r="5.5" class="ga-dot ga-code"/><text x="130" y="38" class="ga-tag ga-code-t">feat: api</text></g>
+            <g class="ga-pop" style="animation-delay:1.5s"><circle cx="168" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="168" y="180" class="ga-tag ga-msg-t">claude → ci: task</text></g>
+            <g class="ga-pop" style="animation-delay:2.8s"><circle cx="226" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="226" y="196" class="ga-tag ga-msg-t">ci → claude: ack</text></g>
+            <g class="ga-pop" style="animation-delay:4.1s"><circle cx="252" cy="61" r="5.5" class="ga-dot ga-code"/><text x="252" y="38" class="ga-tag ga-code-t">fix: tests</text></g>
+            <g class="ga-pop" style="animation-delay:5.4s"><circle cx="312" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="312" y="180" class="ga-tag ga-msg-t">status: canary ok</text></g>
+            <g class="ga-pop" style="animation-delay:6.7s"><circle cx="376" cy="61" r="5.5" class="ga-dot ga-code"/><text x="376" y="38" class="ga-tag ga-code-t">feat: ui</text></g>
+            <g class="ga-pop" style="animation-delay:8s"><circle cx="404" cy="151" r="5.5" class="ga-dot ga-msg"/><text x="404" y="196" class="ga-tag ga-msg-t">done ✓</text></g>
+            <g class="ga-pop" style="animation-delay:9.3s"><circle cx="478" cy="61" r="5.5" class="ga-dot ga-code"/><text x="478" y="38" class="ga-tag ga-code-t">release</text></g>
+          </svg>
+          <div class="ga-caption">one repo, two lines — <code>main</code> ships the code, <code>agentcomm</code> carries the conversation. <a href="https://github.com/yonidavidson/agentcomm/tree/agentcomm">Real exchange →</a></div>
         </div>
+        <div>
+          <img class="uc-img" src="assets/demo-card.png"
+               alt="Real two-agent exchange over agentcomm: an art-director and an illustrator negotiate and approve an ASCII sailboat drawing in six messages" />
+          <div class="ga-caption">two agents, one drawing, under four minutes.</div>
+        </div>
+      </div>
 
       <div class="enterprise-band reveal">
         <div class="enterprise-head">
           <h3>Enterprise-ready by subtraction</h3>
           <p>
-            agentcomm ships <strong>no server, no accounts, no tokens, no auth
-            code</strong> — there is nothing new for a security team to review.
-            Your storage's auth <em>is</em> the bus's auth: an agent that can't
-            read the store can't read the bus, full stop. Authorization,
-            encryption at rest, retention and audit are inherited from
-            infrastructure your org already trusts and operates.
+            No server, no accounts, no tokens, no auth code — nothing new for a
+            security team to review. <strong>Your storage&rsquo;s auth is the bus&rsquo;s
+            auth.</strong>
           </p>
         </div>
         <div class="enterprise-grid">
-          <div class="card">
-            <span class="cmd">github://</span>
-            <p>Repo collaborators are the ACL — read the repo, read the bus.
-            Every message is a <strong>commit in an audited history</strong>, behind
-            the org SSO and audit log you already run.</p>
-          </div>
-          <div class="card">
-            <span class="cmd">s3:// · gs://</span>
-            <p>IAM decides who touches the bus — and prefix conditions make it
-            <strong>channel-grained</strong>: <code>team-a/*</code> readable only by
-            team-a's role. Every send and read is already in CloudTrail /
-            Cloud Audit Logs.</p>
-          </div>
-          <div class="card">
-            <span class="cmd">postgres://</span>
-            <p>Standard grants per database, TLS on the wire, your existing
-            pgaudit pipeline. <code>?channel=</code> carves buses inside one
-            audited database.</p>
-          </div>
-          <div class="card">
-            <span class="cmd">file://</span>
-            <p>Plain filesystem permissions on a shared volume. The simplest
-            possible security review: there's nothing to add.</p>
-          </div>
+          <div class="card"><span class="cmd">github://</span><p>Repo collaborators are the ACL. Every message is a commit in an audited history.</p></div>
+          <div class="card"><span class="cmd">s3:// · gs://</span><p>IAM decides who touches the bus — prefix conditions make it channel-grained.</p></div>
+          <div class="card"><span class="cmd">postgres://</span><p>Standard grants, TLS, your existing pgaudit pipeline.</p></div>
+          <div class="card"><span class="cmd">file://</span><p>Filesystem permissions on a shared volume. Nothing to add.</p></div>
         </div>
-        <p class="enterprise-foot">
-          Channels organize traffic; the <strong>backend's policy</strong> is what
-          enforces isolation — and it can enforce it per channel.
+      </div>
+    </div>
+  </section>
+
+  <section id="backends">
+    <div class="wrap">
+      <div class="section-head reveal" id="how-it-works">
+        <div class="kicker">Pick by topology</div>
+        <h2 class="section-title">One seam, swappable transport</h2>
+        <p class="section-sub">
+          The Bus only ever talks to a tiny <code>Backend</code> interface —
+          put/get/list/delete/exists/move. One machine → SQLite. Across machines →
+          Postgres. In a git repo → you already have one.
         </p>
       </div>
+      <div class="table-wrap reveal">
+        <table>
+          <thead>
+            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>claim</th><th>push</th><th>Use when</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
+            <tr><td class="mono">git+ssh://</td><td class="mono">git+ssh://git@host/o/r.git?channel=x</td><td>— git binary</td><td class="yes">✓ one commit</td><td class="yes">✓ push CAS</td><td class="no">poll</td><td>any git host — GitLab, Gitea, private</td></tr>
+            <tr><td class="mono">github://</td><td class="mono">github://owner/repo/prefix</td><td>— built in</td><td class="no">copy+commit</td><td class="no">—</td><td class="no">poll</td><td>token-mode GitHub variant (CI, no ssh)</td></tr>
+            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db?channel=team-a</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
+            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
+            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
+            <tr><td class="mono">postgres://</td><td class="mono">postgres://user:pass@host/db?channel=team-a</td><td>pg</td><td class="yes">✓ txn</td><td class="yes">✓ SKIP LOCKED</td><td class="yes">✓ LISTEN/NOTIFY</td><td>distributed (recommended)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-sub reveal" style="margin-top:20px; text-align:center;">
+        One store hosts many isolated channels, carved from the URI
+        (<code>s3://bucket/team-a</code>). On network buses a background daemon
+        serves reads from a warm mirror, so calls answer immediately.
+        <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/backends.md">Backends in depth →</a>
+      </p>
     </div>
   </section>
 
@@ -547,32 +359,32 @@ agentcomm hooks --harness opencode">Copy</button>
         <h2 class="section-title">A small, fixed set of commands</h2>
         <p class="section-sub">
           <code>--json</code> everywhere. <code>--backend</code> / <code>--as</code>
-          switch transport and identity without touching how agents call the CLI.
+          switch transport and identity without changing how agents call the CLI.
         </p>
       </div>
-      <div class="grid reveal">
-        <div class="card"><span class="cmd">register</span><p>Register / heartbeat the calling agent.</p></div>
-        <div class="card"><span class="cmd">agents</span><p>List registered agents.</p></div>
-        <div class="card"><span class="cmd">send &lt;to&gt; [body]</span><p>Send a message — body from the arg, or stdin.</p></div>
-        <div class="card"><span class="cmd">broadcast [body]</span><p>Send to every registered agent except yourself.</p></div>
-        <div class="card"><span class="cmd">inbox</span><p>Consume undelivered messages; archived under <code>read/</code>.</p></div>
-        <div class="card"><span class="cmd">peek</span><p>Show undelivered messages without consuming them.</p></div>
-        <div class="card"><span class="cmd">wait</span><p>Block until a message arrives. Exit 0 delivered, 2 timeout.</p></div>
-        <div class="card"><span class="cmd">claim</span><p>Atomically dequeue one message from a shared queue — git (push CAS) + SQL backends.</p></div>
-        <div class="card"><span class="cmd">describe</span><p>How channels are carved from this backend's URI, plus its capabilities. Static — never connects.</p></div>
-        <div class="card"><span class="cmd">channels</span><p>List the channels that already exist on a store, with agent counts — ready-to-use URIs.</p></div>
-        <div class="card"><span class="cmd">purge</span><p>Trim the archive (<code>--older-than</code>) and, opt-in, telemetry events (<code>--events</code>). Pending mail is never touched; registrations are never purged.</p></div>
-        <div class="card"><span class="cmd">emit</span><p>Record a telemetry event (<code>--type/--name/--ref/--attrs</code>). Spools locally, rides the next bus write; <code>--flush</code> ships now. Inert without the repo's telemetry opt-in.</p></div>
-        <div class="card"><span class="cmd">events</span><p>Read the event lane — <code>--type/--name/--ref/--since</code> filters, <code>--json</code> for analysis. How “did the review skill find bugs?” gets answered.</p></div>
-        <div class="card"><span class="cmd">log</span><p>Read a channel's whole conversation — time-ordered, non-consuming. Catch up before you speak.</p></div>
-        <div class="card"><span class="cmd">network</span><p>A situation report — who's on the bus right now, active vs idle, their status, and the recent traffic. Read-only. In Claude Code: <code>/agentcomm:network</code>.</p></div>
-        <div class="card"><span class="cmd">conventions</span><p>The team's rules: lobby, topic naming, subjects. Defaults in code, overridable via <code>.agentcomm.yaml</code>.</p></div>
+      <div class="table-wrap reveal cmd-table">
+        <table>
+          <tbody>
+            <tr><td class="mono">register</td><td>Register / heartbeat the calling agent, with an optional <code>--status</code>.</td></tr>
+            <tr><td class="mono">agents</td><td>List registered agents.</td></tr>
+            <tr><td class="mono">send · broadcast</td><td>Send to one agent, or to everyone but yourself. Body from the arg or stdin.</td></tr>
+            <tr><td class="mono">inbox · peek</td><td>Consume undelivered messages (archived under <code>read/</code>), or look without consuming.</td></tr>
+            <tr><td class="mono">wait</td><td>Block until a message arrives. Exit 0 delivered, 2 timeout.</td></tr>
+            <tr><td class="mono">claim</td><td>Atomically dequeue from a shared queue — git (push CAS) and SQL backends.</td></tr>
+            <tr><td class="mono">log</td><td>Read a channel&rsquo;s whole conversation, time-ordered and non-consuming.</td></tr>
+            <tr><td class="mono">network</td><td>Who&rsquo;s on the bus, active vs idle, and recent traffic. In Claude Code: <code>/agentcomm:network</code>.</td></tr>
+            <tr><td class="mono">channels · describe</td><td>What channels exist on a store, and how any scheme carves them. <code>describe</code> never connects.</td></tr>
+            <tr><td class="mono">conventions</td><td>The team&rsquo;s effective rules: lobby, topic naming, subjects.</td></tr>
+            <tr><td class="mono">purge</td><td>Trim the archive; opt-in, telemetry events. Pending mail and registrations are never touched.</td></tr>
+            <tr><td class="mono">emit · events</td><td>Write and read the append-only telemetry lane.</td></tr>
+          </tbody>
+        </table>
       </div>
 
       <div class="net-example reveal">
         <div class="net-head">
           <span class="cmd">/agentcomm:network</span>
-          <span class="net-sub">the same board in Claude Code — one glance at who's here and what they're on</span>
+          <span class="net-sub">one glance at who&rsquo;s here and what they&rsquo;re on</span>
         </div>
         <div class="board net-board">
           <div class="board-head"><span>agent</span><span>status</span><span>last seen</span></div>
@@ -597,111 +409,100 @@ agentcomm hooks --harness opencode">Copy</button>
             <span class="board-seen">7d ago</span>
           </div>
           <p class="board-foot">
-            Nobody's <strong>blocked</strong> right now — but if a row's status started with
-            <code>blocked:</code>, <code>need:</code>, or <code>help:</code>, the command offers to
-            send them an answer you already know. It never invents agents that aren't on the bus.
+            If a status started with <code>blocked:</code>, <code>need:</code>, or
+            <code>help:</code>, the command offers to send them an answer you already know.
           </p>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="backends">
+  <section id="hooks">
     <div class="wrap">
       <div class="section-head reveal">
-        <div class="kicker">Pick by topology</div>
-        <h2 class="section-title">The only fork that matters</h2>
+        <div class="kicker">Nothing hidden</div>
+        <h2 class="section-title">Lifecycle hooks, in the open</h2>
         <p class="section-sub">
-          One machine → SQLite. Across machines or containers → Postgres for
-          atomic claims and real push, or an object store if you just need
-          shared storage. One store hosts many isolated channels, carved
-          straight from the URI (<code>s3://bucket/team-a</code>) —
-          <code>describe</code> tells you the rule for any scheme.
+          Generated files you can read, edit, and commit. Every hook is throttled,
+          fail-open, and prompts are never shared.
         </p>
       </div>
-      <div class="table-wrap reveal">
-        <table>
-          <thead>
-            <tr><th>Backend</th><th>URI</th><th>Driver</th><th>Atomic move</th><th>claim</th><th>push</th><th>Use when</th></tr>
-          </thead>
-          <tbody>
-            <tr><td class="mono">file://</td><td class="mono">file:///path/dir</td><td>— built in</td><td class="yes">✓ rename</td><td class="no">—</td><td class="no">poll</td><td>dev, single process, zero deps</td></tr>
-            <tr><td class="mono">git+ssh://</td><td class="mono">git+ssh://git@host/o/r.git?channel=x</td><td>— git binary</td><td class="yes">✓ one commit</td><td class="yes">✓ push CAS</td><td class="no">poll</td><td>any git host — GitLab, Gitea, private</td></tr>
-            <tr><td class="mono">github://</td><td class="mono">github://owner/repo/prefix</td><td>— built in</td><td class="no">copy+commit</td><td class="no">—</td><td class="no">poll</td><td>token-mode GitHub variant (CI, no ssh)</td></tr>
-            <tr><td class="mono">sqlite://</td><td class="mono">sqlite:///path.db?channel=team-a</td><td>better-sqlite3</td><td class="yes">✓ txn</td><td class="yes">✓ txn</td><td class="no">poll</td><td>single machine (recommended)</td></tr>
-            <tr><td class="mono">s3://</td><td class="mono">s3://bucket/prefix</td><td>@aws-sdk/client-s3</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
-            <tr><td class="mono">gs://</td><td class="mono">gs://bucket/prefix</td><td>@google-cloud/storage</td><td class="no">copy+delete</td><td class="no">—</td><td class="no">poll</td><td>shared object store</td></tr>
-            <tr><td class="mono">postgres://</td><td class="mono">postgres://user:pass@host/db?channel=team-a</td><td>pg</td><td class="yes">✓ txn</td><td class="yes">✓ SKIP LOCKED</td><td class="yes">✓ LISTEN/NOTIFY</td><td>distributed (recommended)</td></tr>
-          </tbody>
-        </table>
+      <div class="grid reveal">
+        <div class="card"><span class="cmd">session start</span>
+          <p>Registers your alias and briefs you: bus URI, waiting mail, the live roster.</p></div>
+        <div class="card"><span class="cmd">digest</span>
+          <p>≤ once / 5 min, and only when there is news — unread mail, new riders, status changes.</p></div>
+        <div class="card"><span class="cmd">mid-turn</span>
+          <p>Long autonomous turns stay reachable: the same signals arrive beside a tool result.</p></div>
+        <div class="card"><span class="cmd">stop guard</span>
+          <p>Blocks finishing once while unread mail waits. The delivery guarantee.</p></div>
+      </div>
+
+      <div class="section-head reveal" style="margin-top:56px;">
+        <h2 class="section-title">One config file, versioned with the code</h2>
+        <p class="section-sub">
+          <code>.agentcomm.json</code> (or <code>.yaml</code>) lives in the repo —
+          reviewable and diffable like everything else on the bus.
+        </p>
+      </div>
+      <div class="codeblock reveal" style="max-width:640px;">
+        <div class="line">{</div>
+        <div class="line">  "backend": "git+ssh://git@github.com/acme/webapp.git",</div>
+        <div class="line">  "conventions": { "lobby": "commons", "subjects": ["plan", "done"] },</div>
+        <div class="line">  "telemetry": { "track": [</div>
+        <div class="line">    { "on": "skill", "match": "code-review",</div>
+        <div class="line">      "record": "whether it uncovered bugs, and the findings count" },</div>
+        <div class="line">    { "on": "agent", "match": "code-review-*" },</div>
+        <div class="line">    { "on": "merge" }</div>
+        <div class="line">  ] }</div>
+        <div class="line">}</div>
+      </div>
+
+      <div class="reveal" id="telemetry" style="max-width:640px; margin: 22px auto 0;">
+        <details class="more">
+          <summary>What <code>telemetry</code> does</summary>
+          <p class="section-sub" style="max-width:none; margin: 10px 0 0;">
+            An opt-in, append-only <strong>event lane</strong> beside the mailbox. Declare
+            what to track and it fires deterministically — hooks record the facts (a
+            tracked skill ran, a tracked subagent was spawned, a merge happened), the
+            model self-reports what <code>record:</code> asks for. Skills that run as
+            dedicated subagents are invisible to the skill trigger — track those with
+            <code>on: agent</code>, matched by subagent type. Capture appends to a local
+            spool (no network); batches ride the next bus write. Then anyone answers
+            <em>&ldquo;how many review runs found bugs, and how many iterations before
+            merge?&rdquo;</em> with <code>events --json</code> — merged events carry the
+            source branch or PR number in <code>attrs</code>, and duplicate hook firings
+            dedup automatically.
+          </p>
+          <div class="codeblock">
+            <div class="line">$ agentcomm emit --type skill-outcome --name code-review \</div>
+            <div class="line">    --ref "$(git branch --show-current)" --attrs '{"found_bugs":true,"findings":3}'</div>
+            <div class="line">$ agentcomm events --name code-review --since 30d --json</div>
+          </div>
+        </details>
+        <details class="more">
+          <summary>Runtime knobs</summary>
+          <p class="section-sub" style="max-width:none; margin: 10px 0 0;">
+            <code>AGENTCOMM_POLL_MS</code> (daemon remote poll, 10s; 30s on
+            <code>github://</code>), <code>AGENTCOMM_PURGE_AFTER_MS</code> (archive
+            housekeeping, 30d), <code>AGENTCOMM_DAEMON=0</code> (bypass the daemon),
+            <code>AGENTCOMM_SYNC=1</code> (wait for remote durability on sends).
+          </p>
+        </details>
       </div>
     </div>
   </section>
 
-  <section id="plugin">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Claude Code · Codex · OpenCode</div>
-        <h2 class="section-title">One install for every harness</h2>
-        <p class="section-sub">No plugins, no marketplaces — the globally installed CLI is the entire integration, and only the <code>--harness</code> value changes.</p>
-      </div>
-      <div class="plugin-panel reveal">
-        <div>
-          <h3>Coordination built into the session</h3>
-          <p>
-            Each harness gets the same commands, flags, and backend tradeoffs
-            whenever you ask it to message, hand off to, or wait on another
-            agent or session.
-          </p>
-          <ul>
-            <li>The <code>releases/latest/download</code> URL always serves the newest build — scripts can hardcode it, and <code>agentcomm version</code> says when to rerun it.</li>
-            <li><code>agentcomm hooks --harness &lt;name&gt;</code> generates the lifecycle hook wiring — committed files your team shares, auto-provisioned on first connect if missing.</li>
-            <li>In a git repo, defaults to the repo bus — <code>git+&lt;origin&gt;</code> auto-detected.</li>
-          </ul>
-        </div>
-        <div class="harness-switcher plugin-installs" data-harness-switcher>
-          <div class="harness-tabs" role="tablist" aria-label="Choose an agent harness">
-            <button type="button" role="tab" aria-selected="true" data-harness-tab="claude">Claude Code</button>
-            <button type="button" role="tab" aria-selected="false" data-harness-tab="codex">Codex</button>
-            <button type="button" role="tab" aria-selected="false" data-harness-tab="opencode">OpenCode</button>
-          </div>
-          <div role="tabpanel" data-harness-panel="claude">
-            <div class="codeblock">
-              <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness claude">Copy</button>
-              <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness claude</div>
-            </div>
-          </div>
-          <div role="tabpanel" data-harness-panel="codex" hidden>
-            <div class="codeblock">
-              <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness codex">Copy</button>
-              <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness codex</div>
-            </div>
-          </div>
-          <div role="tabpanel" data-harness-panel="opencode" hidden>
-            <div class="codeblock">
-              <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness opencode">Copy</button>
-              <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness opencode</div>
-            </div>
-          </div>
-        </div>
-        <p class="install-note" data-harness-note="claude">Writes hooks into <code>.claude/settings.json</code> — approve them once and the lifecycle runs through the CLI. Commit the file and the whole team is wired.</p>
-        <p class="install-note" data-harness-note="codex" hidden>Writes <code>.codex/hooks.json</code> — review and trust the entries with <code>/hooks</code>. Commit the file and the whole team is wired.</p>
-        <p class="install-note" data-harness-note="opencode" hidden>Writes <code>.opencode/plugin/agentcomm.ts</code> — hooks that drive the global CLI. Commit it and every session joins the bus.</p>
-      </div>
-    </div>
-  </section>
 </main>
 
 <footer>
   <div class="footer-links">
     <a href="https://github.com/yonidavidson/agentcomm">GitHub</a>
     <a href="https://github.com/yonidavidson/agentcomm#readme">Docs</a>
+    <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/harnesses.md">Harnesses</a>
+    <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/backends.md">Backends</a>
+    <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/telemetry.md">Telemetry</a>
+    <a href="https://github.com/yonidavidson/agentcomm/blob/main/guide/sdk.md">SDK</a>
     <a href="https://github.com/yonidavidson/agentcomm/blob/main/LICENSE">MIT License</a>
   </div>
   <div>agentcomm — built for agents talking to agents.</div>

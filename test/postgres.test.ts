@@ -13,7 +13,7 @@ const claimWorker = path.join(here, 'helpers', 'postgres-claim-worker.ts');
 
 const PG_URL = process.env.AGENTCOMM_TEST_POSTGRES_URL ?? 'postgresql://postgres:test@localhost:55432/agentcomm';
 
-// Requires a real Postgres reachable at PG_URL — see README "Development".
+// Requires a real Postgres reachable at PG_URL — see CONTRIBUTING.md.
 // Spin one up locally with:
 //   docker run -d --name agentcomm-pg-test -e POSTGRES_PASSWORD=test \
 //     -e POSTGRES_DB=agentcomm -p 55432:5432 postgres:16-alpine
