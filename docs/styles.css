@@ -301,18 +301,21 @@ td.mono { font-family: var(--mono); color: var(--line-git-text); font-weight: 60
 tr:last-child td { border-bottom: none; }
 .yes { color: var(--line-green); font-weight: 700; }
 .no { color: var(--dim); }
+/* the command list is two columns — it shouldn't inherit the backend table's width */
+.cmd-table table { min-width: 460px; }
+.cmd-table td.mono { white-space: nowrap; width: 1%; }
 
 /* ---- plugin panel ---- */
 .plugin-panel {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 36px;
-  align-items: center;
+  gap: 16px;
+  justify-items: center;
   background: var(--card);
   border: 1.5px solid var(--edge);
   border-radius: 18px;
   box-shadow: 0 2px 0 var(--edge);
-  padding: 42px;
+  padding: 36px 42px;
 }
 @media (max-width: 760px) {
   .plugin-panel { grid-template-columns: 1fr; }
@@ -326,39 +329,70 @@ tr:last-child td { border-bottom: none; }
 .harness-tabs button { min-height: 34px; padding: 6px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--dim); font: 600 0.82rem var(--display); cursor: pointer; }
 .harness-tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
 .harness-tabs button:focus-visible { outline: 3px solid var(--line-git); outline-offset: 2px; }
-.hero-installs { width: min(760px, 100%); margin-bottom: 22px; text-align: left; }
-.step-harness-switcher .harness-tabs { display: flex; }
-.step-harness-switcher .harness-tabs button { flex: 1; padding-inline: 6px; }
+.hero-installs { width: min(760px, 100%); margin: 0 auto 26px; text-align: left; }
 .plugin-installs .codeblock { min-width: 0; overflow-x: auto; }
 .install-note { margin: 0; font-size: 0.82rem; }
 main section[id] { scroll-margin-top: 140px; }
 
+/* ---- progressive disclosure: depth is one click away, not one scroll ---- */
+details.more { margin-top: 12px; }
+details.more > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  font: 600 0.82rem var(--display);
+  color: var(--dim);
+}
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before {
+  content: "▸";
+  font-family: var(--mono);
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary:hover { color: var(--ink); }
+details.more > summary:focus-visible { outline: 3px solid var(--line-git); outline-offset: 3px; border-radius: 4px; }
+details.more .codeblock { max-width: none; margin: 10px 0 0; font-size: 0.78rem; }
+
 /* ---- use cases: route cards ---- */
-.usecase-stack { display: flex; flex-direction: column; gap: 28px; margin-bottom: 56px; }
-.usecase-panel {
+.uc-card {
   --uc: var(--line-git);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   position: relative;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 36px;
-  align-items: center;
-  background: var(--card);
-  border: 1.5px solid var(--edge);
-  border-radius: 18px;
-  box-shadow: 0 2px 0 var(--edge);
-  padding: 38px;
+  padding-left: 24px;
 }
-.usecase-panel::before {
+.uc-card::before {
   content: "";
   position: absolute;
   top: 0; bottom: 0; left: 0;
-  width: 6px;
+  width: 5px;
   background: var(--uc);
 }
-.usecase-panel:nth-child(even) .usecase-copy { order: 2; }
-.usecase-panel:nth-child(even) .usecase-visual { order: 1; }
-.usecase-copy, .usecase-visual { min-width: 0; }
+.uc-card:hover { transform: none; border-color: var(--uc); }
+.uc-card:nth-child(1) { --uc: #f2a900; --uc-text: #1a2330; }
+.uc-card:nth-child(2) { --uc: #0e7c9c; }
+.uc-card:nth-child(3) { --uc: #7048b6; }
+.uc-card:nth-child(4) { --uc: #2456c8; }
+.uc-card h3 { font-family: var(--display); font-size: 1.05rem; margin: 0 0 8px; color: var(--ink); }
+.uc-card > details { align-self: stretch; margin-top: auto; padding-top: 10px; }
+
+/* ---- use cases: the two proofs ---- */
+.uc-proof {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 32px;
+  align-items: center;
+  margin: 40px 0 56px;
+}
+.uc-proof > div { min-width: 0; }
+@media (max-width: 860px) { .uc-proof { grid-template-columns: 1fr; } }
 .uc-tag {
   display: inline-block;
   font-family: var(--mono);
@@ -373,29 +407,6 @@ main section[id] { scroll-margin-top: 140px; }
   padding: 4px 12px;
   margin-bottom: 12px;
 }
-.usecase-panel h3 { font-family: var(--display); font-size: 1.35rem; margin: 0 0 10px; color: var(--ink); }
-.usecase-copy p { color: var(--dim); font-size: 0.95rem; margin: 0; }
-.uc-code { max-width: none; margin: 18px 0 0; font-size: 0.79rem; }
-.uc-note { font-size: 0.84rem; margin-top: 14px !important; }
-.usecase-visual .diagram-box { min-width: 128px; font-size: 0.78rem; padding: 12px 14px; }
-.uc-bus {
-  width: 100%;
-  border-color: var(--uc);
-  color: var(--uc-strong, var(--uc));
-  font-weight: 700;
-  position: relative;
-  overflow: hidden;
-}
-.uc-bus::after {
-  content: "";
-  position: absolute;
-  top: 0; bottom: 0;
-  width: 40%;
-  left: -40%;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--uc) 12%, transparent), transparent);
-  animation: bus-sweep 3.2s linear infinite;
-}
-@keyframes bus-sweep { to { left: 100%; } }
 .uc-img {
   display: block;
   width: 100%;
@@ -497,21 +508,18 @@ footer a:hover { color: var(--ink); }
   .codeblock { max-width: 100%; font-size: 0.78rem; }
   .section-head { margin-bottom: 34px; }
   .plugin-panel { padding: 24px 18px; gap: 24px; }
-  .usecase-panel { grid-template-columns: 1fr; padding: 22px 16px 22px 24px; gap: 22px; }
-  .usecase-panel:nth-child(even) .usecase-copy { order: 1; }
-  .usecase-panel:nth-child(even) .usecase-visual { order: 2; }
-  .usecase-stack { margin-bottom: 36px; }
   .enterprise-band { padding: 26px 18px; }
   .enterprise-head h3 { font-size: 1.35rem; }
   .enterprise-grid { grid-template-columns: 1fr; }
   .diagram-box { min-width: 100px; padding: 10px 12px; font-size: 0.76rem; }
-  .uc-code { font-size: 0.72rem; }
+  .uc-proof { margin: 28px 0 36px; }
+  details.more .codeblock { font-size: 0.72rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .ga-pop { animation: none; opacity: 1; }
-  .uc-bus::after { animation: none; }
+  details.more > summary::before { transition: none; }
 }
 
 /* ---- live board: departures, straight from the bus branch ---- */
