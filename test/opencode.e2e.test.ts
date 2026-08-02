@@ -1,7 +1,7 @@
 /**
  * Full end-to-end for the OpenCode integration: drives the REAL `opencode`
  * binary against a file:// bus and a local mock model, with the shipping
- * wiring — the generated hooks file (`agentcomm hooks --harness opencode` →
+ * wiring — the generated hooks file (`agentcomm install --harness opencode` →
  * `.opencode/plugin/agentcomm.ts`) shelling out to the `agentcomm` CLI on
  * PATH (what `npm install -g <release .tgz>` provides; here the repo's own
  * bin/ shim over dist/).
@@ -67,7 +67,7 @@ describe.skipIf(!RUN)('OpenCode generated hooks — real `opencode run`', () => 
     execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'ignore' });
   }, 120_000);
 
-  it('the hooks file written by `agentcomm hooks` registers the session via the CLI on PATH', async () => {
+  it('the hooks file written by `agentcomm install` registers the session via the CLI on PATH', async () => {
     const mock = await startMock();
     const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'agentcomm-oc-hooks-')));
     const cfgDir = path.join(dir, 'xdg', 'opencode');
@@ -97,7 +97,7 @@ describe.skipIf(!RUN)('OpenCode generated hooks — real `opencode run`', () => 
     };
 
     // Generate the hooks exactly the way a user (or auto-provisioning) does.
-    execFileSync(process.execPath, [cli, 'hooks', '--harness', 'opencode'], { cwd: dir, env });
+    execFileSync(process.execPath, [cli, 'install', '--harness', 'opencode'], { cwd: dir, env });
     await fs.access(path.join(dir, '.opencode', 'plugin', 'agentcomm.ts'));
 
     // Drive one real, non-interactive session (mock model → no external calls).

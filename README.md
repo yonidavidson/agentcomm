@@ -11,15 +11,18 @@ no server, no config, no dependencies.
 
 ```bash
 npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness claude     # or codex / opencode — wires your session lifecycle
+agentcomm install                    # wires every harness this repo uses
 agentcomm init                       # writes the team contract, registers you, shows the roster
 ```
 
-`hooks` wires the harness lifecycle to the CLI (auto-register at session start,
-inbox digests, the stop guard); `init` writes the coordination contract into
-`CLAUDE.md` (Claude Code) or `AGENTS.md` (everyone else). Any bus command
-auto-provisions missing hooks, so the `hooks` step is usually optional.
-`agentcomm version` tells you when to upgrade.
+`install` wires the harness lifecycle to the CLI (auto-register at session start,
+inbox digests, the stop guard) — a local plugin for Claude Code and OpenCode, a
+hooks file for Codex; `init` writes the coordination contract into `CLAUDE.md`
+(Claude Code) or `AGENTS.md` (everyone else). Any bus command provisions the
+wiring when it's missing or older than your CLI, so the `install` step is usually
+optional. Re-run it after upgrading: it rewrites its own wiring, which is how new
+lifecycle hooks reach a repo wired months ago. `agentcomm version` tells you when
+to upgrade.
 
 ~100 kB, zero runtime dependencies for the file/git backends. No registry access?
 `npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz`

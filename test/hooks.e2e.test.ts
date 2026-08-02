@@ -395,14 +395,14 @@ describe('plugin hooks: bus discipline made mechanical', () => {
 
     // The guard ships inside the generated wiring: have the CLI write it,
     // then lift the command exactly as Claude Code would run it.
-    execFileSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'hooks', '--harness', 'claude'], {
+    execFileSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'install', '--harness', 'claude'], {
       cwd: dir,
       stdio: 'ignore',
     });
-    const settings = JSON.parse(await fs.readFile(path.join(dir, '.claude', 'settings.json'), 'utf8')) as {
-      hooks: { PostToolUse: { hooks: { command: string }[] }[] };
-    };
-    const guardCmd = settings.hooks.PostToolUse[0]!.hooks[0]!.command;
+    const wiring = JSON.parse(
+      await fs.readFile(path.join(dir, '.claude', 'skills', 'agentcomm', 'hooks', 'hooks.json'), 'utf8'),
+    ) as { hooks: { PostToolUse: { hooks: { command: string }[] }[] } };
+    const guardCmd = wiring.hooks.PostToolUse[0]!.hooks[0]!.command;
 
     // fresh stamp, exactly as the node script writes it
     const key = dir.replace(/[^A-Za-z0-9]/g, '_');

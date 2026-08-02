@@ -38,13 +38,18 @@ Commands:
                            for --harness claude|codex|opencode|agents
                            (default: claude; all but claude write AGENTS.md),
                            registers you, and shows the roster
-  hooks                    Generate the harness hook wiring that drives the
-                           globally installed CLI: --harness claude writes
-                           .claude/settings.json hooks, codex writes
-                           .codex/hooks.json, opencode writes
-                           .opencode/plugin/agentcomm.ts. Bus commands also
-                           auto-provision these on connect. Static — never
-                           connects
+  install                  Write the harness wiring that drives the globally
+                           installed CLI, in the form each harness makes
+                           cheapest: claude → the local plugin
+                           .claude/skills/agentcomm/ (settings.json untouched),
+                           codex → .codex/hooks.json (foreign hooks preserved),
+                           opencode → .opencode/plugin/agentcomm.ts. Detects
+                           the harnesses present unless --harness says which.
+                           Re-run after upgrading the CLI: it REWRITES its own
+                           wiring, which is how new hooks reach an old repo.
+                           --check reports drift (exit 1), --uninstall removes
+                           it. Bus commands also auto-provision on connect.
+                           Static — never connects
   hook <event>             Run one lifecycle hook (called BY the harness via
                            the wiring above, not by hand): session-start,
                            stop-guard, prompt-digest, midturn-digest,
@@ -118,7 +123,12 @@ Flags:
                            sticky) — shown on the roster and in digests
   --status-auto <text>     register: set an automatic status (task list) that
                            yields to any explicit --status declaration
-  --harness <name>         init: claude (CLAUDE.md); codex|opencode|agents (AGENTS.md)
+  --harness <name>         init: claude (CLAUDE.md); codex|opencode|agents
+                           (AGENTS.md). install: claude|codex|opencode — which
+                           harness to wire, instead of the ones detected here
+  --check                  install: report drift instead of writing (exit 1 when
+                           the wiring is missing or older than this CLI)
+  --uninstall              install: remove the wiring this command wrote
   --type <text>            emit/events: the event type (skill-ran, skill-outcome, …)
   --name <text>            emit/events: what the event is about (a skill/tool name)
   --ref <text>             emit/events: correlation handle (branch, PR#, run id)
@@ -133,11 +143,11 @@ Flags:
 
 Env:
   AGENTCOMM_REPO             Repo pointer — same as --repo
-  AGENTCOMM_NO_AUTO_HOOKS=1  Don't auto-write missing harness hooks on connect
-                             (by default, connecting inside an opted-in repo
-                             that uses OpenCode but lacks the agentcomm hooks
-                             provisions .opencode/plugin/agentcomm.ts and
-                             notifies on stderr)
+  AGENTCOMM_NO_AUTO_HOOKS=1  Don't refresh harness wiring on connect (by
+                             default, connecting inside an opted-in repo whose
+                             wiring is missing — or older than this CLI — writes
+                             what \`agentcomm install\` would and says so on
+                             stderr)
   AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
   AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
@@ -238,8 +248,8 @@ async function main(argv: string[]): Promise<number> {
   // they never load a driver or open the backend. Handle before createBackend().
   if (command === 'describe') return cmdDescribe(cfg);
   if (command === 'conventions') return await cmdConventions(cfg);
-  // hooks writes local harness wiring — file output only, no bus.
-  if (command === 'hooks') return await cmdHooks(cfg, flags.harness);
+  // install writes local harness wiring — file output only, no bus.
+  if (command === 'install') return await cmdInstall(cfg, flags);
 
   if (command === 'daemon') return await cmdDaemon(cfg, positional[1]);
 
@@ -247,10 +257,11 @@ async function main(argv: string[]): Promise<number> {
   // returns — no backend connection, no network, unless --flush ships now.
   if (command === 'emit') return await cmdEmit(cfg, flags);
 
-  // Auto-provision missing harness hooks before connecting (issue #122): an
-  // agent that registers but never runs `agentcomm hooks` starts its NEXT
-  // session deaf — no auto-register, no inbox nudge. Consent-gated, one stat
-  // in the common case, stderr-only, and fails open (never blocks a connect).
+  // Refresh missing or stale harness wiring before connecting (issues #122,
+  // #152): an agent that registers but never runs `agentcomm install` starts
+  // its NEXT session deaf — no auto-register, no inbox nudge — and one wired
+  // before an upgrade keeps running the old lifecycle forever. Consent-gated,
+  // stderr-only, and fails open (never blocks a connect).
   if (process.env.AGENTCOMM_NO_AUTO_HOOKS !== '1') {
     await autoProvisionHooks().catch(() => {});
   }
@@ -795,118 +806,20 @@ async function cmdVersion(cfg: ResolvedConfig): Promise<number> {
   return 0;
 }
 
-const OPENCODE_HOOKS_FILE = '.opencode/plugin/agentcomm.ts';
 /**
- * The generated OpenCode hooks: a minimal local plugin that shells out to the
- * globally installed CLI (npm install -g @yonidavidson/agentcomm). Deliberately the
- * readable, editable, zero library imports — the whole OpenCode integration.
- */
-const OPENCODE_HOOKS_TEMPLATE = `// Generated by \`agentcomm hooks --harness opencode\` — commit it so every
-// OpenCode session in this repo joins the bus. Safe to edit; regenerating
-// never overwrites an existing file.
-//
-// Drives the globally installed agentcomm CLI (npm install -g @yonidavidson/agentcomm@latest).
-// Every hook fails open: a broken bus never wedges the session.
-import type { Plugin } from '@opencode-ai/plugin';
-
-export const AgentcommHooks: Plugin = async ({ directory, client, $ }) => {
-  const sh = $.cwd(directory).nothrow();
-
-  // Telemetry parity with Claude Code/Codex: normalize the harness payload
-  // and hand it to the CLI, which owns the repo's telemetry.track rule
-  // matching (inert without a telemetry config).
-  const telemetry = (payload: Record<string, unknown>) =>
-    sh\`echo \${JSON.stringify(payload)} | agentcomm hook telemetry\`.quiet();
-
-  // Session start: register on the repo bus (auto-detected from the git
-  // remote) under a session-unique alias.
-  await sh\`agentcomm register --status "opencode session"\`.quiet();
-  await telemetry({ hook_event_name: 'SessionStart' });
-
-  return {
-    // Tracked tool events → the CLI's rule matcher. Only the tools the rules
-    // can name; bash is pre-filtered so ordinary commands never spawn a CLI.
-    async 'tool.execute.after'(input) {
-      const args = (input as { args?: Record<string, unknown> }).args ?? {};
-      if (input.tool === 'skill' && typeof args.name === 'string') {
-        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: args.name } });
-      } else if (input.tool === 'task' && typeof args.subagent_type === 'string') {
-        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Task', tool_input: { subagent_type: args.subagent_type } });
-      } else if (input.tool === 'bash' && typeof args.command === 'string' && args.command.includes('merge')) {
-        await telemetry({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: args.command } });
-      }
-    },
-    // OpenCode's session.idle can't block, so the inbox guard degrades to a
-    // nudge: unread mail re-prompts the session instead of holding it open.
-    async event({ event }) {
-      if (event.type !== 'session.idle') return;
-      const sessionID = (event as { properties?: { sessionID?: string } }).properties?.sessionID;
-      if (!sessionID) return;
-      const peek = await sh\`agentcomm peek --json\`.quiet();
-      let unread: unknown[] = [];
-      try {
-        unread = JSON.parse(peek.text() || '[]');
-      } catch {
-        return; // off the bus, or the CLI is missing — fail open
-      }
-      if (!Array.isArray(unread) || unread.length === 0) return;
-      await client.session
-        .prompt({
-          path: { id: sessionID },
-          body: {
-            parts: [
-              {
-                type: 'text',
-                text: \`agentcomm: \${unread.length} unread message(s) — run "agentcomm inbox --json", handle them, then continue.\`,
-              },
-            ],
-          },
-        })
-        .catch(() => {});
-    },
-
-    // Session end is the last chance to ship the local event spool.
-    async dispose() {
-      await telemetry({ hook_event_name: 'SessionEnd' });
-      await sh\`agentcomm emit --flush\`.quiet();
-    },
-  };
-};
-
-export default AgentcommHooks;
-`;
-
-/** Write the OpenCode hooks file unless one exists (the user may have edited it — never clobber). */
-async function provisionOpencodeHooks(): Promise<'created' | 'already-present'> {
-  const { promises: fsp } = await import('node:fs');
-  const path = await import('node:path');
-  try {
-    await fsp.access(OPENCODE_HOOKS_FILE);
-    return 'already-present';
-  } catch {
-    await fsp.mkdir(path.dirname(OPENCODE_HOOKS_FILE), { recursive: true });
-    await fsp.writeFile(OPENCODE_HOOKS_FILE, OPENCODE_HOOKS_TEMPLATE);
-    return 'created';
-  }
-}
-
-/**
- * Connect-time hook provisioning (issue #122). Acts only when EVERY signal
- * agrees: the repo opted into the bus (marker/config/explicit backend), the
- * project visibly uses a harness (its dot-directory exists), and the wiring
- * is missing. Then it writes exactly what `hooks --harness <name>` writes,
- * and says so on stderr (stdout stays clean for --json consumers).
+ * Connect-time wiring provisioning (issue #122, reworked in #152). Acts only
+ * when every signal agrees: the repo opted into the bus, the project visibly
+ * uses a harness, and the wiring is missing or stale. Writing on STALE is the
+ * point — an agent that upgraded the CLI gets the new lifecycle wiring on its
+ * next bus command instead of never. Says so on stderr (stdout stays clean for
+ * --json consumers) and fails open.
  */
 async function autoProvisionHooks(): Promise<void> {
-  const { promises: fsp } = await import('node:fs');
   const cwd = process.cwd();
+  const { detectHarnesses, checkHarness, installHarness } = await import('./install.js');
 
   // Harness signals first — one stat per harness for repos that use none.
-  const dirExists = (d: string) => fsp.stat(d).then((s) => s.isDirectory()).catch(() => false);
-  const targets: ('claude' | 'codex' | 'opencode')[] = [];
-  if (await dirExists('.claude')) targets.push('claude');
-  if (await dirExists('.codex')) targets.push('codex');
-  if (await dirExists('.opencode')) targets.push('opencode');
+  const targets = await detectHarnesses(cwd);
   if (targets.length === 0) return;
 
   // Consent: the repo is on the bus (guidance-file marker / explicit backend,
@@ -915,172 +828,87 @@ async function autoProvisionHooks(): Promise<void> {
   const consented = (await onTheBus(cwd)) || (await loadConventions().catch(() => null))?.source != null;
   if (!consented) return;
 
-  const notify = (file: string) =>
-    process.stderr.write(
-      `agentcomm: hooks were missing — wrote ${file}; commit it so every session joins this bus (AGENTCOMM_NO_AUTO_HOOKS=1 disables this).\n`,
-    );
-
   for (const harness of targets) {
-    if (harness === 'opencode') {
-      const wired = await fsp
-        .access(OPENCODE_HOOKS_FILE)
-        .then(() => true)
-        .catch(() => false);
-      if (wired) continue;
-      // A legacy opencode.json still loading the retired in-process plugin
-      // counts as wired — generating shell-out hooks on top would double it.
-      const viaPlugin = await fsp
-        .readFile('opencode.json', 'utf8')
-        .then((raw) => raw.includes('agentcomm'))
-        .catch(() => false);
-      if (viaPlugin) continue;
-      if ((await provisionOpencodeHooks()) === 'created') notify(OPENCODE_HOOKS_FILE);
-    } else {
-      const file = harness === 'claude' ? CLAUDE_SETTINGS_FILE : CODEX_HOOKS_FILE;
-      const state = await provisionJsonHooks(file, harness, (hooks) => ({ hooks })).catch(() => null);
-      if (state === 'created' || state === 'merged') notify(file);
-    }
+    const { state } = await checkHarness(harness, cwd).catch(() => ({ state: 'current' as const }));
+    if (state === 'current') continue;
+    const result = await installHarness(harness, cwd).catch(() => null);
+    if (result?.state !== 'written') continue;
+    process.stderr.write(
+      `agentcomm: harness wiring was ${state} — wrote ${result.file}; commit it so every session joins this bus (AGENTCOMM_NO_AUTO_HOOKS=1 disables this).\n`,
+    );
   }
 }
 
-const CLAUDE_SETTINGS_FILE = '.claude/settings.json';
-const CODEX_HOOKS_FILE = '.codex/hooks.json';
-
 /**
- * The lifecycle hook wiring, per harness event — every command is the global
- * CLI (`agentcomm hook <event>`), so this config IS the whole integration.
- * Same shape for Claude Code (project .claude/settings.json `hooks` key) and
- * Codex (.codex/hooks.json).
+ * install — put this repo's harnesses on the bus by writing the wiring that
+ * connects their lifecycle to the globally installed CLI. Re-running refreshes
+ * it; that is how a CLI upgrade reaches repos that were wired months ago.
  */
-function harnessHooksConfig(harness: 'claude' | 'codex'): Record<string, unknown[]> {
-  const cmd = (c: string, timeout: number) => ({ type: 'command', command: c, timeout });
-  const config: Record<string, unknown[]> = {
-    SessionStart: [
-      {
-        matcher: 'startup|resume',
-        hooks: [cmd('agentcomm hook session-start', 15), cmd('agentcomm hook telemetry', 10)],
-      },
-    ],
-    SessionEnd: [{ hooks: [cmd('agentcomm hook telemetry', 20)] }],
-    Stop: [{ hooks: [cmd('agentcomm hook stop-guard', 15)] }],
-    UserPromptSubmit: [{ hooks: [cmd('agentcomm hook prompt-digest', 10)] }],
-    PostToolUse: [
-      {
-        // sh fast-path: skip spawning the CLI at all unless the 10-minute
-        // midturn stamp is stale (key derivation must match hook-run.ts).
-        hooks: [
-          cmd(
-            'sh -c \'S="${TMPDIR:-/tmp}/agentcomm-midturn-$(printf %s "${CLAUDE_PROJECT_DIR:-$PWD}" | tr -c "A-Za-z0-9" _)"; [ -n "$(find "$S" -mmin -10 2>/dev/null)" ] && exit 0; exec agentcomm hook midturn-digest\'',
-            10,
-          ),
-        ],
-      },
-      { matcher: 'Skill', hooks: [cmd('agentcomm hook telemetry', 10)] },
-      { matcher: 'Task|Agent', hooks: [cmd('agentcomm hook telemetry', 10)] },
-      {
-        matcher: 'Bash',
-        hooks: [
-          cmd('sh -c \'I=$(cat); case "$I" in *merge*) printf %s "$I" | agentcomm hook telemetry;; esac\'', 10),
-        ],
-      },
-    ],
-    TaskCreated: [{ hooks: [cmd('agentcomm hook task-status', 10)] }],
-    TaskCompleted: [{ hooks: [cmd('agentcomm hook task-status', 10)] }],
-  };
-  // Codex has no task events — don't advertise hooks it can never fire.
-  if (harness === 'codex') {
-    delete config.TaskCreated;
-    delete config.TaskCompleted;
-  }
-  return config;
-}
+async function cmdInstall(cfg: ResolvedConfig, flags: ParsedFlags): Promise<number> {
+  const { HARNESSES, HARNESS_LABEL, HARNESS_NOTE, detectHarnesses, checkHarness, installHarness, uninstallHarness } =
+    await import('./install.js');
+  const cwd = process.cwd();
 
-/**
- * Merge the agentcomm hook entries into a JSON settings file, preserving
- * everything already there. Never duplicates (an existing `agentcomm hook`
- * anywhere in the hooks section counts as wired); never clobbers a file it
- * cannot parse.
- */
-async function provisionJsonHooks(
-  file: string,
-  harness: 'claude' | 'codex',
-  wrap: (hooks: Record<string, unknown[]>) => Record<string, unknown>,
-): Promise<'created' | 'merged' | 'already-present'> {
-  const { promises: fsp } = await import('node:fs');
-  const path = await import('node:path');
-  let existing: Record<string, unknown> | null = null;
-  try {
-    existing = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw new Error(`agentcomm: ${file} exists but is not valid JSON — fix it or remove it, then rerun`);
-    }
-  }
-  if (existing && JSON.stringify(existing.hooks ?? {}).includes('agentcomm hook')) return 'already-present';
-  const ours = harnessHooksConfig(harness);
-  let out: Record<string, unknown>;
-  let state: 'created' | 'merged';
-  if (!existing) {
-    out = wrap(ours);
-    state = 'created';
+  let targets: import('./install.js').Harness[];
+  if (flags.harness) {
+    const requested = HARNESSES.find((h) => h === flags.harness);
+    if (!requested) fail(`install: --harness must be one of ${HARNESSES.join(', ')} (received ${flags.harness})`);
+    targets = [requested];
   } else {
-    const hooks = { ...((existing.hooks as Record<string, unknown[]>) ?? {}) };
-    for (const [event, entries] of Object.entries(ours)) {
-      hooks[event] = [...(hooks[event] ?? []), ...entries];
+    targets = [...(await detectHarnesses(cwd))];
+    if (targets.length === 0) {
+      fail(
+        'install: no harness detected here — expected .claude, .codex or .opencode in this repo. Pass --harness <claude|codex|opencode> to write the wiring anyway.',
+      );
     }
-    out = { ...existing, hooks };
-    state = 'merged';
-  }
-  await fsp.mkdir(path.dirname(file), { recursive: true });
-  await fsp.writeFile(file, JSON.stringify(out, null, 2) + '\n');
-  return state;
-}
-
-/**
- * hooks — generate the wiring that connects a harness's lifecycle to the
- * globally installed CLI. Every harness gets files that call `agentcomm`;
- * there is no plugin to install anywhere.
- */
-async function cmdHooks(cfg: ResolvedConfig, requestedHarness?: string): Promise<number> {
-  const harness = requestedHarness;
-  if (!harness) {
-    fail('hooks requires --harness <claude|codex|opencode>');
   }
 
-  let file: string;
-  let state: 'created' | 'merged' | 'already-present';
-  let note: string | null = null;
-  if (harness === 'claude') {
-    file = CLAUDE_SETTINGS_FILE;
-    state = await provisionJsonHooks(file, 'claude', (hooks) => ({ hooks }));
-    note = 'Claude Code asks once to approve project hooks — accept, then the whole lifecycle runs through the CLI.';
-  } else if (harness === 'codex') {
-    file = CODEX_HOOKS_FILE;
-    state = await provisionJsonHooks(file, 'codex', (hooks) => ({ hooks }));
-    note = 'Codex requires explicit trust for hooks: open /hooks, review the agentcomm entries, and trust them.';
-  } else if (harness === 'opencode') {
-    file = OPENCODE_HOOKS_FILE;
-    state = await provisionOpencodeHooks();
-  } else {
-    fail(`hooks: --harness must be one of claude, codex, opencode (received ${harness})`);
-  }
+  const mode = flags.uninstall ? 'uninstall' : flags.check ? 'check' : 'install';
+  const act = mode === 'uninstall' ? uninstallHarness : mode === 'check' ? checkHarness : installHarness;
+  const results = [];
+  for (const harness of targets) results.push(await act(harness, cwd));
 
+  // --check is a gate: stale or missing wiring is a non-zero exit, so CI and
+  // `doctor`-style scripts can catch a repo running last release's hooks.
+  const drifted = results.filter((r) => r.state === 'missing' || r.state === 'stale');
   if (cfg.json) {
-    emit({ harness, file, hooks: state });
+    emit({ mode, harnesses: results, ...(mode === 'check' ? { current: drifted.length === 0 } : {}) });
+    return mode === 'check' && drifted.length > 0 ? 1 : 0;
+  }
+
+  if (mode === 'check') {
+    for (const r of results) process.stdout.write(`${r.state === 'current' ? 'ok' : r.state}: ${r.file}\n`);
+    if (drifted.length > 0) {
+      process.stdout.write(`Run \`agentcomm install\` to write the wiring this version expects.\n`);
+      return 1;
+    }
     return 0;
   }
-  process.stdout.write(
-    state === 'already-present'
-      ? `hooks: ${file} already carries the agentcomm wiring — left untouched.\n`
-      : [
-          `hooks: ${file} ${state}.`,
-          'The hooks run the global CLI — make sure it is installed:',
-          `  ${INSTALL_COMMAND}`,
-          `Commit ${file} and every ${harness === 'claude' ? 'Claude Code' : harness === 'codex' ? 'Codex' : 'OpenCode'} session in this repo joins the bus.`,
-          ...(note ? [note] : []),
-          '',
-        ].join('\n'),
-  );
+
+  if (mode === 'uninstall') {
+    for (const r of results) {
+      process.stdout.write(
+        r.state === 'removed' ? `removed: ${r.file}\n` : `nothing to remove: ${r.file} carries no agentcomm wiring\n`,
+      );
+    }
+    return 0;
+  }
+
+  const wrote = results.filter((r) => r.state === 'written');
+  for (const r of results) {
+    process.stdout.write(r.state === 'written' ? `install: ${r.file} written.\n` : `install: ${r.file} already current.\n`);
+  }
+  if (wrote.length > 0) {
+    process.stdout.write(
+      [
+        'The wiring runs the global CLI — make sure it is installed:',
+        `  ${INSTALL_COMMAND}`,
+        `Commit ${wrote.map((r) => r.file).join(', ')} and every ${wrote.map((r) => HARNESS_LABEL[r.harness]).join(' / ')} session in this repo joins the bus.`,
+        ...wrote.map((r) => HARNESS_NOTE[r.harness]).filter((n): n is string => n !== null),
+        '',
+      ].join('\n'),
+    );
+  }
   return 0;
 }
 

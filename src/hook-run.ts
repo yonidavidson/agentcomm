@@ -2,10 +2,11 @@
  * `agentcomm hook <event>` — the harness lifecycle hooks, in the CLI.
  *
  * Ports the retired plugin hook scripts (hooks/*.mjs) verbatim: stdin JSON in,
- * hook-protocol JSON on stdout, exit 0 always. `hooks --harness claude|codex`
- * writes the config that points the harness here, so ONE globally-installed
- * CLI is the entire integration — no plugin, no marketplace, no bundled
- * scripts. Hooks must NEVER break a session: every path fails open.
+ * hook-protocol JSON on stdout, exit 0 always. `agentcomm install` writes the
+ * wiring that points the harness here, so ONE globally-installed CLI is the
+ * entire integration — no marketplace, no downloads, no bundled scripts (what
+ * install writes for Claude Code is a plugin manifest plus this command list,
+ * nothing executable). Hooks must NEVER break a session: every path fails open.
  *
  * Bus calls self-spawn the CLI (rather than going in-process) on purpose:
  * the child inherits this hook process's ancestry and env, so the derived

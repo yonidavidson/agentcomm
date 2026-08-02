@@ -2,37 +2,51 @@
 
 [← README](../README.md)
 
-One integration model everywhere: `agentcomm hooks --harness <name>` generates
-the file that wires your harness's lifecycle to the global CLI — session start
-registers you and briefs the session, prompt/mid-turn digests surface bus news,
-the stop guard holds the session while unread mail waits.
+One integration model everywhere: `agentcomm install` generates the wiring that
+connects your harness's lifecycle to the global CLI — session start registers you
+and briefs the session, prompt/mid-turn digests surface bus news, the stop guard
+holds the session while unread mail waits. It detects the harnesses your repo
+uses; `--harness <claude|codex|opencode>` names one instead.
 
 The generated files are committed to the repo, so the whole team is wired by the
-first person who runs it — and any bus command auto-provisions them when they're
-missing (`AGENTCOMM_NO_AUTO_HOOKS=1` opts out).
+first person who runs it — and any bus command provisions them when they're
+missing or older than your CLI (`AGENTCOMM_NO_AUTO_HOOKS=1` opts out).
+
+**Re-run `install` after upgrading the CLI.** It rewrites its own wiring, so new
+lifecycle hooks reach repos wired long ago; `agentcomm install --check` reports
+drift without writing (exit 1), and `--uninstall` removes it.
 
 ## Claude Code
 
 ```bash
-agentcomm hooks --harness claude     # writes hooks into .claude/settings.json
+agentcomm install --harness claude   # writes the local plugin .claude/skills/agentcomm/
 agentcomm init                       # writes CLAUDE.md, registers, shows the roster
 ```
 
-The hooks merge into existing project settings without touching anything else.
-Claude Code asks once to approve project hooks — accept, and the whole lifecycle
-(register, digests, stop guard, task-list → bus status, telemetry capture) runs
-through `agentcomm hook <event>`.
+A folder under a skills directory carrying `.claude-plugin/plugin.json` loads as
+a local plugin — `agentcomm@skills-dir` — with no marketplace and no install
+step, so **your `.claude/settings.json` is never touched** and the plugin's hooks
+merge with your team's own. Accept the workspace trust dialog, then
+`/reload-plugins`, and the whole lifecycle (register, digests, stop guard,
+task-list → bus status, telemetry capture) runs through `agentcomm hook <event>`.
+
+Start Claude Code at the repo root: project-scope skills-directory plugins load
+from the `.claude/skills/` of the directory you launch in and don't walk up from
+a subdirectory.
 
 ## Codex
 
 ```bash
-agentcomm hooks --harness codex      # writes .codex/hooks.json
+agentcomm install --harness codex    # writes .codex/hooks.json
 agentcomm init --harness codex       # writes AGENTS.md, registers, shows the roster
 ```
 
-Codex requires explicit trust for hooks: open `/hooks`, review the agentcomm
-entries, and trust them. Same lifecycle as Claude Code minus the task-list status
-mirroring (Codex has no task events).
+Codex hook layers accumulate rather than override, so agentcomm's entries sit
+alongside yours; `install` replaces only the entries that run `agentcomm hook`
+and leaves everything else in the file untouched. Codex requires explicit trust
+for hooks: open `/hooks`, review the agentcomm entries, and trust them. Same
+lifecycle as Claude Code minus the task-list status mirroring (Codex has no task
+events).
 
 ## OpenCode
 
@@ -40,13 +54,15 @@ mirroring (Codex has no task events).
 agents already onboard from a repo's `AGENTS.md`:
 
 ```bash
-agentcomm hooks --harness opencode     # writes .opencode/plugin/agentcomm.ts
+agentcomm install --harness opencode   # writes .opencode/plugin/agentcomm.ts
 agentcomm init --harness opencode      # writes AGENTS.md, registers, shows the roster
 ```
 
 The generated file is a plain OpenCode plugin that shells out to the global CLI —
-commit it and every OpenCode session in this repo joins the bus. It is small
-enough to read in full, and yours to edit:
+commit it and every OpenCode session in this repo joins the bus. OpenCode
+auto-loads every `*.ts` in `.opencode/plugin/` and they compose, so put your own
+handlers in a file next to it: `install` regenerates this one on every run. It is
+small enough to read in full:
 
 ```ts
 // .opencode/plugin/agentcomm.ts (generated — abridged)
@@ -84,6 +100,10 @@ That same shape is how you'd wire any other hook to the bus — e.g. a handler t
 session the way the Claude Code stop guard does.)
 
 > An earlier plugin system (Claude Code/Codex marketplaces, an in-process
-> OpenCode plugin) is fully retired — the CLI is the entire integration. A legacy
-> pinned `.tgz` in `opencode.json` keeps working and suppresses hook generation,
-> but new setups use the commands above.
+> OpenCode plugin) is fully retired — the CLI is the entire integration, and the
+> Claude Code plugin `install` writes carries no code of its own, only the list
+> of `agentcomm hook <event>` commands. Wiring written by the old `agentcomm
+> hooks` command is not migrated: run `agentcomm install`, then delete the
+> agentcomm block from `.claude/settings.json` so the lifecycle doesn't fire
+> twice. A legacy pinned `.tgz` in `opencode.json` is likewise not detected —
+> remove it if you have one.
