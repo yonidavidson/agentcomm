@@ -1,5 +1,5 @@
 {
   "name": "agentcomm",
   "description": "Puts every Claude Code session in this repo on the agentcomm message bus.",
-  "version": "0.19.3"
+  "version": "0.20.0"
 }

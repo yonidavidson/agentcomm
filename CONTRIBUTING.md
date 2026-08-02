@@ -58,8 +58,7 @@ gh workflow run release-cut.yml -f version=current   # or X.Y.Z as a guard
 The workflow is commit-free on main: it verifies the version guard, sanity-tests,
 tags, publishes the GitHub Release with generated notes, and hands off to
 `release.yml`, which publishes to the **npm registry** (trusted publishing / OIDC,
-with provenance — no token secret) and attaches the fallback install artifacts —
-the versioned `agentcomm-X.Y.Z.tgz` plus the constant-named `agentcomm-latest.tgz`
-that keeps `releases/latest/download/agentcomm-latest.tgz` always-newest. No docs
-follow-up: everything points at `@yonidavidson/agentcomm@latest` or the constant
-URL.
+with provenance — no token secret). That is the only channel: releases carried
+`npm pack` tarballs as a registry-less fallback until 0.21.0, and issue #155 has
+the download numbers that ended them. No docs follow-up — everything points at
+`@yonidavidson/agentcomm@latest`, which never needs a version bump.

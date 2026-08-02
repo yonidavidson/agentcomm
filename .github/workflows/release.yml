@@ -1,35 +1,28 @@
 name: release
 
-# Ships each GitHub Release to both distribution channels:
+# Ships each GitHub Release to the npm registry — the one distribution
+# channel. `npm publish` runs via npm trusted publishing (OIDC; no token
+# secret), so the publish carries provenance linking it to this workflow run.
 #
-#   1. npm registry (canonical) — `npm publish` via npm trusted publishing
-#      (OIDC; no token secret). Install/upgrade: `npm install -g @yonidavidson/agentcomm@latest`.
-#      Other systems embed the SDK with a plain `npm install @yonidavidson/agentcomm`.
-#   2. Release tarballs (fallback) — agentcomm-X.Y.Z.tgz plus the
-#      constant-named agentcomm-latest.tgz, so
-#      releases/latest/download/agentcomm-latest.tgz stays an always-newest
-#      install URL for registry-less environments.
+#   install / upgrade:  npm install -g @yonidavidson/agentcomm@latest
+#   embed the SDK:      npm install @yonidavidson/agentcomm
 #
-# Why a tarball fallback and not a `github:` spec: installers that git-clone
-# the whole repo choke on this monorepo (full CLI + committed dist/ across
-# its history). An `npm pack` tarball is ~100 kB (dist only, no history) and
-# installs in seconds from a URL.
+# Releases carried `npm pack` tarballs as a registry-less fallback until
+# 0.21.0 (issue #155). Three downloads in the six weeks after the registry
+# became canonical, against a pack step, an upload step, `contents: write`,
+# and an unattested second copy of every artifact — so the fallback went and
+# the registry is the answer everywhere.
 #
-# No secrets: tarball uploads use the built-in GITHUB_TOKEN; npm publish uses
-# OIDC trusted publishing (configure this repo+workflow as the trusted
-# publisher for the `agentcomm` package on npmjs.com — one-time setup).
+# No secrets: OIDC trusted publishing needs this repo+workflow configured as
+# the trusted publisher for the package on npmjs.com (one-time setup).
 
 on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Existing release tag to attach the tarball to (e.g. v0.16.9)'
-        required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish-npm:
@@ -55,48 +48,9 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if npm view "@yonidavidson/agentcomm@${VERSION}" version >/dev/null 2>&1; then
-            echo "::notice::agentcomm@${VERSION} already on the registry — skipping publish (re-run of the tarball attach?)"
+            echo "::notice::agentcomm@${VERSION} already on the registry — skipping publish (workflow re-run?)"
             exit 0
           fi
           # prepublishOnly runs the build; provenance links the publish to this workflow run.
           npm publish --provenance
           echo "::notice::Published agentcomm@${VERSION} to the npm registry"
-
-  attach-install-tarball:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build
-
-      - name: Pack the install tarball
-        id: pack
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          # `npm pack` emits yonidavidson-agentcomm-<version>.tgz for the
-          # scoped name (dist-only, per package.json "files"); take the
-          # filename from npm itself, then keep the historical asset names —
-          # README documents …/download/vX.Y.Z/agentcomm-X.Y.Z.tgz.
-          PACKED=$(npm pack --silent | tail -1)
-          CLI="agentcomm-${VERSION}.tgz"
-          cp "$PACKED" "$CLI"
-          # Constant-named copy: GitHub's releases/latest/download/<asset>
-          # redirect makes …/releases/latest/download/agentcomm-latest.tgz a
-          # stable always-newest URL for scripts and automations.
-          cp "$PACKED" agentcomm-latest.tgz
-          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
-          echo "Packed $CLI ($(du -h "$CLI" | cut -f1))"
-
-      - name: Upload tarballs to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: |
-          gh release upload "$TAG" "${{ steps.pack.outputs.cli }}" agentcomm-latest.tgz --clobber --repo "$GITHUB_REPOSITORY"
-          echo "::notice::Attached ${{ steps.pack.outputs.cli }} + agentcomm-latest.tgz to $TAG"

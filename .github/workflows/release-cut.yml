@@ -14,13 +14,12 @@ name: release-cut
 #   2. sanity    — typecheck + tests (docker-backed suites self-skip here;
 #                  the required `test` check already ran on every merge)
 #   3. tag + GitHub Release with generated notes
-#   4. dispatch release.yml to attach the install tarballs — the versioned
-#      CLI artifact plus the constant-named agentcomm-latest.tgz that makes
-#      releases/latest/download/agentcomm-latest.tgz an always-newest URL
-#      (explicit dispatch: events created with the built-in GITHUB_TOKEN
-#      never start `release: published` workflows on their own)
+#   4. dispatch release.yml to publish to the npm registry (explicit
+#      dispatch: events created with the built-in GITHUB_TOKEN never start
+#      `release: published` workflows on their own)
 #
-# No docs follow-up: README and the website use the constant latest URL.
+# No docs follow-up: README and the website say `@yonidavidson/agentcomm@latest`,
+# which needs no version bump.
 
 on:
   workflow_dispatch:
@@ -32,7 +31,7 @@ on:
 
 permissions:
   contents: write
-  actions: write # dispatches release.yml for the tarball attach
+  actions: write # dispatches release.yml for the npm publish
 
 concurrency: release-cut
 
@@ -84,12 +83,10 @@ jobs:
           git push origin "refs/tags/v${VERSION}"
           gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --verify-tag
 
-      - name: Attach the install tarballs (explicit dispatch — see header)
+      - name: Publish to npm (explicit dispatch — see header)
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: gh workflow run release.yml -f tag="v${VERSION}"
+        run: gh workflow run release.yml
 
-# No docs follow-up needed: README and the website point at the constant
-# releases/latest/download/agentcomm-latest.tgz URL, which GitHub redirects
-# to the newest release's asset automatically.
+# release.yml publishes whatever version main's package.json carries — the
+# one this job just tagged — so the dispatch needs no input.
