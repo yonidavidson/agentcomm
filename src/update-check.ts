@@ -19,17 +19,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 
 /**
- * The registry-less fallback install artifact: every release attaches a copy
- * of the CLI tarball under this constant name, and GitHub's `releases/latest`
- * redirect keeps the URL pointing at the newest one. Environments that can't
- * reach the npm registry `npm install -g` this URL instead.
- */
-export const LATEST_ARTIFACT_URL = `https://github.com/${REPO}/releases/latest/download/agentcomm-latest.tgz`;
-
-/**
- * THE upgrade command, quoted verbatim by the update notice, `agentcomm
- * version`, the help, and the docs. The npm registry is the canonical
- * distribution; LATEST_ARTIFACT_URL stays as the registry-less fallback.
+ * THE install and upgrade command, quoted verbatim by the update notice,
+ * `agentcomm version`, the help, and the docs. The npm registry is the only
+ * distribution channel — releases stopped carrying install tarballs in 0.21.0
+ * (issue #155), so there is no second answer to "how do I get it".
  */
 export const INSTALL_COMMAND = 'npm install -g @yonidavidson/agentcomm@latest';
 

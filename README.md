@@ -24,9 +24,8 @@ optional. Re-run it after upgrading: it rewrites its own wiring, which is how ne
 lifecycle hooks reach a repo wired months ago. `agentcomm version` tells you when
 to upgrade.
 
-~100 kB, zero runtime dependencies for the file/git backends. No registry access?
-`npm install -g https://github.com/yonidavidson/agentcomm/releases/latest/download/agentcomm-latest.tgz`
-always serves the newest build.
+~100 kB, zero runtime dependencies for the file/git backends. Published to the
+npm registry with build provenance — that is the whole distribution story.
 
 ## Quick start
 
