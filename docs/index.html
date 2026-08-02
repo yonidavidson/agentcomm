@@ -78,25 +78,25 @@
       <div role="tabpanel" data-harness-panel="claude">
         <div class="codeblock">
           <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness claude">Copy</button>
+agentcomm install">Copy</button>
           <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-          <div class="line">$ agentcomm hooks --harness claude</div>
+          <div class="line">$ agentcomm install</div>
         </div>
       </div>
       <div role="tabpanel" data-harness-panel="codex" hidden>
         <div class="codeblock">
           <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness codex">Copy</button>
+agentcomm install">Copy</button>
           <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-          <div class="line">$ agentcomm hooks --harness codex</div>
+          <div class="line">$ agentcomm install</div>
         </div>
       </div>
       <div role="tabpanel" data-harness-panel="opencode" hidden>
         <div class="codeblock">
           <button class="copy-btn" data-copy="npm install -g @yonidavidson/agentcomm
-agentcomm hooks --harness opencode">Copy</button>
+agentcomm install">Copy</button>
           <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-          <div class="line">$ agentcomm hooks --harness opencode</div>
+          <div class="line">$ agentcomm install</div>
         </div>
       </div>
     </div>
@@ -118,8 +118,8 @@ agentcomm hooks --harness opencode">Copy</button>
         <div class="kicker">Claude Code · Codex · OpenCode</div>
         <h2 class="section-title">On the bus in 60 seconds</h2>
         <p class="section-sub">
-          No plugins, no marketplaces — the globally installed CLI is the entire
-          integration, and only the <code>--harness</code> value changes.
+          No marketplaces, no downloads — the globally installed CLI is the entire
+          integration, and one command wires whichever harnesses your repo uses.
         </p>
       </div>
       <div class="steps reveal">
@@ -128,19 +128,19 @@ agentcomm hooks --harness opencode">Copy</button>
           <div data-harness-switcher>
             <div class="codeblock step-code" data-harness-panel="claude">
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness claude</div>
+              <div class="line">$ agentcomm install</div>
             </div>
             <div class="codeblock step-code" data-harness-panel="codex" hidden>
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness codex</div>
+              <div class="line">$ agentcomm install</div>
             </div>
             <div class="codeblock step-code" data-harness-panel="opencode" hidden>
               <div class="line">$ npm install -g @yonidavidson/agentcomm</div>
-              <div class="line">$ agentcomm hooks --harness opencode</div>
+              <div class="line">$ agentcomm install</div>
             </div>
           </div>
-          <p class="step-note" data-harness-note="claude">Writes hooks into <code>.claude/settings.json</code> — approve them once.</p>
-          <p class="step-note" data-harness-note="codex" hidden>Writes <code>.codex/hooks.json</code> — trust the entries with <code>/hooks</code>.</p>
+          <p class="step-note" data-harness-note="claude">Writes the local plugin <code>.claude/skills/agentcomm/</code> — your <code>settings.json</code> is never touched. Trust the workspace, then <code>/reload-plugins</code>.</p>
+          <p class="step-note" data-harness-note="codex" hidden>Writes <code>.codex/hooks.json</code>, leaving any hooks of yours in place — trust the entries with <code>/hooks</code>.</p>
           <p class="step-note" data-harness-note="opencode" hidden>Writes <code>.opencode/plugin/agentcomm.ts</code> — hooks that drive the global CLI.</p>
         </div>
         <div class="step">

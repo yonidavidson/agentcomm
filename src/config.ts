@@ -44,6 +44,8 @@ export interface ParsedFlags {
   ref?: string;
   attrs?: string;
   flush: boolean;
+  check: boolean;
+  uninstall: boolean;
   events?: string;
   since?: string;
   _: string[]; // positional args
@@ -55,7 +57,15 @@ export interface ParsedFlags {
  * is a positional in `_`.
  */
 export function parseArgs(argv: string[]): ParsedFlags {
-  const flags: ParsedFlags = { json: false, dryRun: false, flush: false, version: false, _: [] };
+  const flags: ParsedFlags = {
+    json: false,
+    dryRun: false,
+    flush: false,
+    version: false,
+    check: false,
+    uninstall: false,
+    _: [],
+  };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i]!;
     if (!tok.startsWith('--')) {
@@ -144,6 +154,12 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'flush':
         flags.flush = true;
+        break;
+      case 'check':
+        flags.check = true;
+        break;
+      case 'uninstall':
+        flags.uninstall = true;
         break;
       case 'events':
         flags.events = takeVal();
