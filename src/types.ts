@@ -73,8 +73,19 @@ export interface Claimable {
  * clock — the bus daemon uses this to warm its mirror in one round trip.
  */
 export interface Snapshottable {
-  /** All keys under `prefix` with their bodies, read at a single consistent point. */
-  snapshot(prefix: string): Promise<Map<string, Buffer>>;
+  /**
+   * Every key under `prefix` at a single consistent point, with the bodies
+   * `opts.bodies` selects (all of them when it is absent).
+   *
+   * The split matters because a bus's history only grows: re-reading every
+   * archived body on every poll makes the daemon cost scale with all history
+   * rather than with what is hot (issue #167). Keys are cheap to list, so
+   * callers still see the whole store and fetch a cold body on demand.
+   */
+  snapshot(
+    prefix: string,
+    opts?: { bodies?: (key: string) => boolean },
+  ): Promise<{ keys: string[]; bodies: Map<string, Buffer> }>;
 }
 
 /**
