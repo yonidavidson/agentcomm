@@ -123,45 +123,73 @@ export class Bus {
 
   // ── receiving ───────────────────────────────────────────────────────────
 
-  /** Consume: read all undelivered messages for `recipient`, archive under read/. */
-  async inbox(recipient: string): Promise<Message[]> {
+  /**
+   * Consume: read all undelivered messages for `recipient`, hand them to
+   * `deliver`, and only then archive under read/.
+   *
+   * The order is the contract (issue #158). Archiving as we read meant a
+   * command that died mid-flight — a harness timeout, a Ctrl-C, a broken pipe
+   * — left messages consumed AND undelivered: unrecoverable loss on the
+   * normal path. Delivering first makes the worst case a duplicate: whatever
+   * `deliver` accepted is out, and anything not archived is simply still
+   * pending. `deliver` must not resolve until the messages are durably in the
+   * caller's hands (the CLI waits for stdout to flush).
+   */
+  async inbox(
+    recipient: string,
+    opts: {
+      /** Hand the messages to the caller. Must resolve only once they are durably received. */
+      deliver?: (messages: Message[]) => Promise<void> | void;
+      /** Delivered but still pending (archiving failed) — they will arrive again. */
+      onUnarchived?: (keys: string[]) => void;
+    } = {},
+  ): Promise<Message[]> {
     assertName(recipient);
-    const keys = await this.backend.list(inboxPrefix(recipient));
-    const out: Message[] = [];
-    for (const key of keys) {
-      if (!key.endsWith('.json')) continue;
-      let msg: Message;
-      try {
-        msg = decode<Message>(await this.backend.get(key));
-      } catch {
-        continue; // skip a key that vanished (raced consumer) or is corrupt
-      }
-      // Archive (don't hard-delete): preserve the audit trail under read/.
-      const dst = readKeyFromInboxKey(key);
-      try {
-        await this.backend.move(key, dst);
-      } catch {
-        continue; // another consumer claimed it first
-      }
-      out.push(msg);
+    const pending = await this.pending(recipient);
+    const messages = pending.map((p) => p.message);
+    await opts.deliver?.(messages);
+    if (messages.length > 0) {
+      const failed = await this.archive(pending.map((p) => p.key));
+      if (failed.length > 0) opts.onUnarchived?.(failed);
     }
-    return out;
+    return messages;
   }
 
   /** Non-consuming: read undelivered messages for `recipient` without archiving. */
   async peek(recipient: string): Promise<Message[]> {
+    return (await this.pending(recipient)).map((p) => p.message);
+  }
+
+  /** Undelivered messages for `recipient`, each with the inbox key holding it. */
+  async pending(recipient: string): Promise<{ key: string; message: Message }[]> {
     assertName(recipient);
-    const keys = await this.backend.list(inboxPrefix(recipient));
-    const out: Message[] = [];
-    for (const key of keys) {
+    const out: { key: string; message: Message }[] = [];
+    for (const key of await this.backend.list(inboxPrefix(recipient))) {
       if (!key.endsWith('.json')) continue;
       try {
-        out.push(decode<Message>(await this.backend.get(key)));
+        out.push({ key, message: decode<Message>(await this.backend.get(key)) });
       } catch {
-        continue;
+        continue; // vanished (raced consumer) or corrupt
       }
     }
     return out;
+  }
+
+  /**
+   * Archive (don't hard-delete) inbox keys under read/, preserving the audit
+   * trail. Returns the keys that could NOT be archived — a raced consumer, or
+   * a store that went away mid-run; they stay pending and re-deliver.
+   */
+  async archive(keys: string[]): Promise<string[]> {
+    const failed: string[] = [];
+    for (const key of keys) {
+      try {
+        await this.backend.move(key, readKeyFromInboxKey(key));
+      } catch {
+        failed.push(key);
+      }
+    }
+    return failed;
   }
 
   /**
