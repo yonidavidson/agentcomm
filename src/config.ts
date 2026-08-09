@@ -46,6 +46,7 @@ export interface ParsedFlags {
   flush: boolean;
   check: boolean;
   uninstall: boolean;
+  all: boolean;
   events?: string;
   since?: string;
   _: string[]; // positional args
@@ -64,6 +65,7 @@ export function parseArgs(argv: string[]): ParsedFlags {
     version: false,
     check: false,
     uninstall: false,
+    all: false,
     _: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -160,6 +162,9 @@ export function parseArgs(argv: string[]): ParsedFlags {
         break;
       case 'uninstall':
         flags.uninstall = true;
+        break;
+      case 'all':
+        flags.all = true;
         break;
       case 'events':
         flags.events = takeVal();
