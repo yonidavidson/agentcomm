@@ -7,7 +7,8 @@ import { Bus } from './bus.js';
 import { parseArgs, resolveConfig, type ParsedFlags, type ResolvedConfig } from './config.js';
 import type { Backend, Message } from './types.js';
 import { fileURLToPath } from 'node:url';
-import { deriveIdentity, sessionHash } from './identity.js';
+import { deriveIdentity, pinnedSession, sessionHash } from './identity.js';
+import { recordAlias } from './session.js';
 import { INSTALL_COMMAND } from './update-check.js';
 import {
   EVENTS_PREFIX,
@@ -1088,14 +1089,14 @@ async function cmdBroadcast(
 async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
   const messages = await bus.inbox(me);
-  printMessages(messages, cfg);
+  printMessages(messages, cfg, me);
   return 0;
 }
 
 async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
   const messages = await bus.peek(me);
-  printMessages(messages, cfg);
+  printMessages(messages, cfg, me);
   return 0;
 }
 
@@ -1107,7 +1108,7 @@ async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promis
     else process.stderr.write(`wait: timed out after ${timeoutMs}ms\n`);
     return 2; // timeout
   }
-  printMessages(messages, cfg);
+  printMessages(messages, cfg, me);
   return 0; // delivered
 }
 
@@ -1277,13 +1278,15 @@ async function loadBackendPlugins(): Promise<void> {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-function printMessages(messages: Message[], cfg: ResolvedConfig): void {
+function printMessages(messages: Message[], cfg: ResolvedConfig, recipient?: string): void {
   if (cfg.json) {
     emit(messages);
     return;
   }
   if (messages.length === 0) {
-    process.stdout.write('(no messages)\n');
+    // Name the mailbox that was read: "no messages" reads as "no mail
+    // anywhere", which is exactly how a drifted alias hides (issue #157).
+    process.stdout.write(recipient ? `(no messages for ${recipient})\n` : '(no messages)\n');
     return;
   }
   for (const m of messages) {
@@ -1311,6 +1314,19 @@ async function resolveAgent(cfg: ResolvedConfig): Promise<string> {
       process.stderr.write(
         `agentcomm: acting as ${derivedIdentity} (${source} + session; --as or AGENTCOMM_AGENT overrides)\n`,
       );
+      // Alias drift is invisible from the read side — a different name is a
+      // different, EMPTY mailbox while mail keeps arriving at the old one
+      // (issue #157). The fingerprint is sticky now, so this fires only when
+      // the identity itself changed underneath us; say which name has the mail.
+      if (!pinnedSession()) {
+        const previous = await recordAlias(await sessionHash(), derivedIdentity).catch(() => null);
+        if (previous) {
+          process.stderr.write(
+            `agentcomm: NOTE — acting as ${derivedIdentity}, but this session previously acted as ${previous}. ` +
+              `Mail sent to ${previous} is in ${previous}'s mailbox: read it with \`--as ${previous}\`.\n`,
+          );
+        }
+      }
     }
   }
   if (!derivedIdentity) {
