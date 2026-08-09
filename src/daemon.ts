@@ -180,11 +180,38 @@ export async function runDaemon(uri: string): Promise<void> {
     });
   }
 
-  // warm mirror: full key set + bodies. On Snapshottable backends every poll
-  // is one round trip (bodies included); elsewhere the poll carries keys only
-  // and bodies fill lazily through the `get` passthrough — message blobs are
-  // immutable, and agent records (which mutate: heartbeats) are invalidated
-  // each poll so the next read refetches them.
+  // warm mirror: the full key set, plus the bodies worth holding. Message
+  // blobs are immutable, so a body already held is never re-read; agent
+  // records (which mutate: heartbeats) are refreshed every poll.
+  //
+  // What is NOT held warm is history (issue #167). A bus only grows, and
+  // re-reading every archived message and telemetry batch on every poll made
+  // the daemon's cost scale with all history instead of with what is hot —
+  // forever, on a store where nothing but the last few messages is live.
+  // Archives and events older than the window keep their KEY (so list, log,
+  // purge and channel discovery see the whole store, exactly as before) and
+  // their body fills on demand through the `get` passthrough.
+  const historyMs = Math.max(0, Number(process.env.AGENTCOMM_MIRROR_HISTORY_MS ?? 7 * 24 * 3600_000));
+  const HOT_PREFIXES = ['agents/', 'inbox/'];
+  /**
+   * ms timestamp encoded in an archive/event key, or null when it has none.
+   * Both layouts put a zero-padded, monotonic ms prefix on the filename:
+   * read/<recipient>/<ms>-<counter>_<id>.json and events/<ms>-<counter>_<id>.json.
+   */
+  const keyTime = (key: string): number | null => {
+    const m = /^0*(\d+)-/.exec(key.slice(key.lastIndexOf('/') + 1));
+    return m ? Number(m[1]) : null;
+  };
+  const withinWindow = (key: string): boolean => {
+    const ts = keyTime(key);
+    return ts === null || Date.now() - ts <= historyMs;
+  };
+  /** Should the mirror hold this key's body at all? */
+  const worthWarming = (key: string): boolean => HOT_PREFIXES.some((p) => key.startsWith(p)) || withinWindow(key);
+  /** Should THIS poll read it? Not if we already hold an immutable body. */
+  const needsRead = (key: string): boolean =>
+    key.startsWith('agents/') || (worthWarming(key) && !mirror.has(key));
+
   const mirror = new Map<string, Buffer>();
   let keys = new Set<string>();
 
@@ -237,23 +264,24 @@ export async function runDaemon(uri: string): Promise<void> {
 
   async function doPoll(): Promise<void> {
     const spooled = await snapshotSpool();
+    // Bodies this poll actually read (fresh agent records + keys we do not
+    // already hold), merged onto the ones already warm.
+    const fetched = new Map<string, Buffer>();
+    let next: Set<string>;
     if (isSnapshottable(backend)) {
-      const snap = await backend.snapshot('');
-      const present = new Set(snap.keys());
-      replaySpool(spooled, snap, present);
-      for (const k of snap.keys()) if (!present.has(k)) snap.delete(k);
-      mirror.clear();
-      for (const [k, v] of snap) mirror.set(k, v);
-      keys = present;
-      return;
+      const snap = await backend.snapshot('', { bodies: needsRead });
+      next = new Set(snap.keys);
+      for (const [k, v] of snap.bodies) fetched.set(k, v);
+    } else {
+      next = new Set(await backend.list(''));
     }
-    const bodies = new Map<string, Buffer>();
-    const next = new Set(await backend.list(''));
-    replaySpool(spooled, bodies, next);
+    replaySpool(spooled, fetched, next);
     for (const k of mirror.keys()) {
-      if (!next.has(k) || k.startsWith('agents/')) mirror.delete(k);
+      // drop what the store no longer has, what a fresher read supersedes,
+      // and history that has aged out of the warm window
+      if (!next.has(k) || k.startsWith('agents/') || !worthWarming(k)) mirror.delete(k);
     }
-    for (const [k, v] of bodies) if (next.has(k)) mirror.set(k, v);
+    for (const [k, v] of fetched) if (next.has(k)) mirror.set(k, v);
     keys = next;
   }
   // Coalesce: timer ticks, `refresh`, and post-claim polls that overlap a
