@@ -8,7 +8,7 @@ import { parseArgs, resolveConfig, type ParsedFlags, type ResolvedConfig } from 
 import type { Backend, Message } from './types.js';
 import { fileURLToPath } from 'node:url';
 import { deriveIdentity, pinnedSession, sessionHash } from './identity.js';
-import { recordAlias } from './session.js';
+import { leaseMailbox, recordAlias, releaseMailbox } from './session.js';
 import { INSTALL_COMMAND } from './update-check.js';
 import {
   EVENTS_PREFIX,
@@ -326,8 +326,33 @@ async function main(argv: string[]): Promise<number> {
         return 1;
     }
   } finally {
+    if (leasedAlias) await releaseMailbox(leasedAlias).catch(() => {});
     await backend.close?.();
   }
+}
+
+let leasedAlias: string | null = null;
+
+/**
+ * Announce that this process is acting as `me`, and say so when ANOTHER live
+ * process of this session is doing the same (issue #161). A subagent inherits
+ * its parent's identity, so `agentcomm inbox` from one drains the mailbox its
+ * parent is waiting on — silently, because the alias looks right. Identity
+ * stays per-session by design (a session is a mailbox); the fix is that
+ * sharing one stops being invisible.
+ */
+async function guardMailbox(me: string, command: string, kind: 'consuming' | 'status' | 'quiet'): Promise<void> {
+  const others = await leaseMailbox(me, command).catch(() => [] as Awaited<ReturnType<typeof leaseMailbox>>);
+  leasedAlias = me;
+  if (kind === 'quiet' || others.length === 0) return;
+  const who = others.map((o) => `pid ${o.pid} (\`agentcomm ${o.command}\`, since ${o.since})`).join(', ');
+  process.stderr.write(
+    kind === 'consuming'
+      ? `agentcomm: WARNING — another live process of this session is acting as "${me}": ${who}. ` +
+          `Reads CONSUME, so this takes mail addressed to it. If you are a subagent, use a mailbox of your own: --as ${me}-<role>.\n`
+      : `agentcomm: WARNING — another live process of this session is acting as "${me}": ${who}. ` +
+          `Your status replaces its line on the shared roster; register under your own --as if you are a separate actor.\n`,
+  );
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
@@ -708,7 +733,9 @@ This repo has a message bus for AI agents. When working here:
   the user; otherwise stay on your task.
 - If your harness has subagents, prefer a background listener subagent for
   \`wait\`/inbox management (one actor per mailbox — it owns the alias or
-  uses \`--as <you>-bus\`); keep quick sends inline.
+  uses \`--as <you>-bus\`); keep quick sends inline. A subagent derives the
+  SAME alias as its parent, so a bare \`inbox\` there drains the parent's
+  mail; the CLI warns when two live processes share a mailbox — heed it.
 `;
 
 async function cmdInit(bus: Bus, cfg: ResolvedConfig, requestedHarness?: string): Promise<number> {
@@ -949,6 +976,7 @@ async function cmdRegister(
   statusAuto?: boolean,
 ): Promise<number> {
   const me = await resolveAgent(cfg);
+  await guardMailbox(me, 'register', status !== undefined ? 'status' : 'quiet');
   const record = await registerWithCollisionCheck(bus, me, status, statusAuto);
   if (cfg.json) emit(record);
   else process.stdout.write(`registered ${record.name}\n`);
@@ -1108,6 +1136,7 @@ async function cmdBroadcast(
  */
 async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
+  await guardMailbox(me, 'inbox', 'consuming');
   await bus.inbox(me, {
     deliver: (messages) => printMessages(messages, cfg, me),
     onUnarchived: (keys) =>
@@ -1120,6 +1149,7 @@ async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
 
 async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
+  await guardMailbox(me, 'peek', 'quiet'); // reading is harmless; hold the lease so a concurrent consumer sees us
   const messages = await bus.peek(me);
   await printMessages(messages, cfg, me);
   // peek leaves the mail unread by design; say how to clear it once acted on,
@@ -1138,6 +1168,7 @@ async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
  */
 async function cmdAck(bus: Bus, cfg: ResolvedConfig, all: boolean, ids: string[]): Promise<number> {
   const me = await resolveAgent(cfg);
+  await guardMailbox(me, 'ack', 'consuming');
   if (!all && ids.length === 0) {
     fail('ack requires message ids (from `peek`/`inbox --json`) or --all: agentcomm ack <id…> | agentcomm ack --all');
   }
@@ -1161,6 +1192,10 @@ async function cmdAck(bus: Bus, cfg: ResolvedConfig, all: boolean, ids: string[]
 
 async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promise<number> {
   const me = await resolveAgent(cfg);
+  // wait is non-consuming, but it HOLDS the mailbox for its whole timeout —
+  // the listener pattern. Leasing here is what lets a concurrent `inbox`
+  // report that it is about to drain someone's mail (issue #161).
+  await guardMailbox(me, 'wait', 'quiet');
   const messages = await bus.wait(me, timeoutMs);
   if (messages.length === 0) {
     if (cfg.json) emit([]);
@@ -1173,6 +1208,7 @@ async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promis
 
 async function cmdClaim(bus: Bus, cfg: ResolvedConfig, queue: string | undefined): Promise<number> {
   const me = await resolveAgent(cfg);
+  await guardMailbox(me, 'claim', 'quiet'); // a shared queue is MEANT to have many claimers
   if (!queue) {
     fail('claim requires --queue <name>');
   }

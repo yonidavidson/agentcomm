@@ -181,3 +181,84 @@ export async function recordAlias(session: string, alias: string): Promise<strin
 function hash(seed: string): string {
   return createHash('sha1').update(seed).digest('hex').slice(0, 12);
 }
+
+// ── mailbox leases (issue #161) ─────────────────────────────────────────────
+
+/**
+ * A subagent inherits its parent's git identity and process tree, so it
+ * derives the parent's alias — and since reads consume, one `agentcomm inbox`
+ * from a subagent drains the mailbox its parent is waiting on. Identity stays
+ * per-session on purpose (a session IS a mailbox; see the sticky fingerprint
+ * above), so what is needed is not a different name but VISIBILITY: while a
+ * process is acting as an alias it leaves a lease behind, and anything
+ * destructive done to a leased mailbox by another live process says so.
+ *
+ * Leases are local files: the case they cover — two processes of one agent
+ * session on one machine — is exactly the local case.
+ */
+export interface Lease {
+  alias: string;
+  pid: number;
+  /** What that process is doing, for a message a human can act on. */
+  command: string;
+  since: string;
+}
+
+/** Leases older than this are ignored even if the pid is somehow still alive. */
+const LEASE_TTL_MS = 30 * 60_000;
+
+const leaseFile = (alias: string, pid: number): string => path.join(stateDir(), `lease-${alias}-${pid}.json`);
+
+const pidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Take a lease on `alias` for this process and return the OTHER live holders.
+ * Callers decide what to say about them — a consuming read on a mailbox
+ * another process is holding is worth a loud warning; a heartbeat is not.
+ */
+export async function leaseMailbox(alias: string, command: string): Promise<Lease[]> {
+  const others: Lease[] = [];
+  const dir = stateDir();
+  let names: string[] = [];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    /* no state yet */
+  }
+  for (const name of names) {
+    if (!name.startsWith(`lease-${alias}-`) || !name.endsWith('.json')) continue;
+    const file = path.join(dir, name);
+    try {
+      const lease = JSON.parse(await fs.readFile(file, 'utf8')) as Lease;
+      const stale = Date.now() - Date.parse(lease.since) > LEASE_TTL_MS;
+      if (lease.pid === process.pid) continue;
+      if (stale || !pidAlive(lease.pid)) {
+        await fs.rm(file, { force: true }).catch(() => {});
+        continue;
+      }
+      if (lease.alias === alias) others.push(lease);
+    } catch {
+      await fs.rm(file, { force: true }).catch(() => {});
+    }
+  }
+  const mine: Lease = { alias, pid: process.pid, command, since: new Date().toISOString() };
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(leaseFile(alias, process.pid), JSON.stringify(mine));
+  } catch {
+    /* a lease is advisory — never fail a command over it */
+  }
+  return others;
+}
+
+/** Drop this process's lease. Called when the command ends. */
+export async function releaseMailbox(alias: string): Promise<void> {
+  await fs.rm(leaseFile(alias, process.pid), { force: true }).catch(() => {});
+}
