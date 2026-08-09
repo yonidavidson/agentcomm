@@ -306,3 +306,45 @@ describe('archive batches when the backend can (issue #159)', () => {
     expect((await inner.list('inbox/bob/')).length).toBe(0);
   });
 });
+
+/**
+ * Read and clear were the same operation (issue #160): `peek` shows without
+ * consuming, `inbox` consumes what it shows, and nothing cleared mail read
+ * any other way — so an agent that had read and answered every message still
+ * showed N unread forever.
+ */
+describe('ack clears mail already read (issue #160)', () => {
+  it('acks by id without re-fetching bodies, and reports ids that are not pending', async () => {
+    const backend = new LocalBackend(await mkTmp());
+    const bus = new Bus(backend);
+    const one = await bus.send({ from: 'alice', to: 'bob', body: 'one' });
+    const two = await bus.send({ from: 'alice', to: 'bob', body: 'two' });
+    await bus.send({ from: 'alice', to: 'bob', body: 'three' });
+
+    expect(await bus.peek('bob')).toHaveLength(3); // read, non-destructively
+
+    const acked = await bus.ack('bob', [one.id, two.id, 'not-a-real-id']);
+    expect(acked.acked.sort()).toEqual([one.id, two.id].sort());
+    expect(acked.unknown).toEqual(['not-a-real-id']);
+    expect(acked.failed).toEqual([]);
+
+    expect((await bus.peek('bob')).map((m) => m.body)).toEqual(['three']);
+    expect((await backend.list('read/bob/')).length).toBe(2); // archived, not deleted
+  });
+
+  it('--all clears the whole mailbox; acking an empty one is a no-op', async () => {
+    const bus = new Bus(new LocalBackend(await mkTmp()));
+    for (const body of ['a', 'b']) await bus.send({ from: 'alice', to: 'bob', body });
+    expect((await bus.ack('bob', 'all')).acked).toHaveLength(2);
+    expect(await bus.peek('bob')).toHaveLength(0);
+    expect(await bus.ack('bob', 'all')).toEqual({ acked: [], unknown: [], failed: [] });
+  });
+
+  it('one agent cannot ack another agent mailbox message', async () => {
+    const bus = new Bus(new LocalBackend(await mkTmp()));
+    const mine = await bus.send({ from: 'alice', to: 'bob', body: 'for bob' });
+    const result = await bus.ack('carol', [mine.id]);
+    expect(result.unknown).toEqual([mine.id]);
+    expect(await bus.peek('bob')).toHaveLength(1);
+  });
+});
