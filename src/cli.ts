@@ -158,6 +158,10 @@ Env:
                              stderr)
   AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
   AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
+  AGENTCOMM_MIRROR_HISTORY_MS  How much archive/telemetry history the daemon
+                             keeps warm (default 7d). Older keys stay listable
+                             and readable; their bodies just load on demand,
+                             so a poll costs what is hot, not all history
   AGENTCOMM_BACKEND_PLUGINS  comma/whitespace-separated module specifiers to
                              import before resolving --backend, so a
                              third-party package can register a new URI

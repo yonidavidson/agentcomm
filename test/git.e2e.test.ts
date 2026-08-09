@@ -77,17 +77,36 @@ describe('GitBackend (local bare remotes — same code path as any host)', () =>
     const { uri, cache } = await bareRemote();
     const b = await open(uri, cache);
 
-    expect((await b.snapshot('')).size).toBe(0); // branch not born yet
+    expect((await b.snapshot('')).keys).toEqual([]); // branch not born yet
 
     await b.put('inbox/a/001.json', Buffer.from('one'));
     await b.put('inbox/b/001.json', Buffer.from('two'));
     await b.put('agents/a.json', Buffer.from('{"alias":"a"}'));
 
     const all = await b.snapshot('');
-    expect([...all.keys()].sort()).toEqual(['agents/a.json', 'inbox/a/001.json', 'inbox/b/001.json']);
-    for (const [k, v] of all) expect(v.equals(await b.get(k))).toBe(true); // bodies match per-key reads
+    expect([...all.keys].sort()).toEqual(['agents/a.json', 'inbox/a/001.json', 'inbox/b/001.json']);
+    for (const [k, v] of all.bodies) expect(v.equals(await b.get(k))).toBe(true); // bodies match per-key reads
 
-    expect([...(await b.snapshot('inbox/a/')).keys()]).toEqual(['inbox/a/001.json']);
+    expect((await b.snapshot('inbox/a/')).keys).toEqual(['inbox/a/001.json']);
+  }, 60000);
+
+  it('snapshot reads only the bodies asked for, but reports every key (issue #167)', async () => {
+    const { uri, cache } = await bareRemote();
+    const b = await open(uri, cache);
+    await b.put('agents/a.json', Buffer.from('{"alias":"a"}'));
+    await b.put('read/a/000000000000001-000000_old.json', Buffer.from('ancient history'));
+    await b.put('inbox/a/000000000000002-000000_new.json', Buffer.from('live mail'));
+
+    const warm = await b.snapshot('', { bodies: (key) => !key.startsWith('read/') });
+    // the archive still EXISTS as far as list/log/purge are concerned...
+    expect(warm.keys).toContain('read/a/000000000000001-000000_old.json');
+    // ...its body just was not read
+    expect([...warm.bodies.keys()].sort()).toEqual([
+      'agents/a.json',
+      'inbox/a/000000000000002-000000_new.json',
+    ]);
+    // and it is still one `get` away
+    expect((await b.get('read/a/000000000000001-000000_old.json')).toString()).toBe('ancient history');
   }, 60000);
 
   it('move is ATOMIC — one commit relocates the key', async () => {
