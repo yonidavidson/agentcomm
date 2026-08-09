@@ -104,6 +104,45 @@ describe('CLI e2e (sqlite backend)', () => {
     expect(bare.stderr).toMatch(/ack requires message ids/);
   });
 
+  it('send flags a recipient that is not reading; a consuming read clears the flag (issue #162)', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+
+    // never registered: nothing is known to be reading that mailbox
+    const cold = await run(['send', 'ghost', 'anyone there?', '--as', 'alice', '--backend', db]);
+    expect(cold.stdout).toMatch(/warning — ghost has never registered on this bus/);
+
+    await run(['register', '--as', 'bob', '--backend', db]);
+    // first message to a registered agent is not suspicious on its own
+    const first = await run(['send', 'bob', 'one', '--as', 'alice', '--backend', db]);
+    expect(first.stdout).not.toMatch(/warning/);
+
+    // mail stacking up with no consuming read ever = worth saying
+    const second = await run(['send', 'bob', 'two', '--as', 'alice', '--backend', db]);
+    expect(second.stdout).toMatch(/warning — bob has 2 unread and has never consumed its mailbox/);
+
+    const roster = JSON.parse((await run(['agents', '--backend', db, '--json'])).stdout) as {
+      name: string;
+      unread: number;
+      lastRead?: string;
+    }[];
+    expect(roster.find((a) => a.name === 'bob')).toMatchObject({ unread: 2 });
+    expect(roster.find((a) => a.name === 'bob')!.lastRead).toBeUndefined();
+
+    // bob reads: the warning stops and the roster records the read
+    await run(['inbox', '--as', 'bob', '--backend', db, '--json']);
+    const after = await run(['send', 'bob', 'three', '--as', 'alice', '--backend', db]);
+    expect(after.stdout).not.toMatch(/warning/);
+    const read = (JSON.parse((await run(['agents', '--backend', db, '--json'])).stdout) as { name: string; lastRead?: string }[])
+      .find((a) => a.name === 'bob')!.lastRead;
+    expect(read).toBeTruthy();
+
+    // and network surfaces mail queued for a name nobody registered
+    const net = JSON.parse((await run(['network', '--backend', db, '--json'])).stdout) as {
+      unclaimed: { name: string; unread: number }[];
+    };
+    expect(net.unclaimed).toEqual([{ name: 'ghost', unread: 1 }]);
+  });
+
   it('network reports active/idle agents, statuses, and recent activity', async () => {
     const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
     const env = { ...process.env, AGENTCOMM_SESSION: 'net-test', AGENTCOMM_NO_GIT_PROBE: '1' };
