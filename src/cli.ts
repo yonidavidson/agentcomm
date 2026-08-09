@@ -58,10 +58,14 @@ Commands:
                            task-status, telemetry. Stdin JSON in, hook
                            JSON out, always exits 0
   register                 Register/heartbeat the calling agent (--as)
-  agents                   List registered agents
+  agents                   List registered agents — with each one's unread
+                           depth and how long ago it last consumed its mailbox
   network                  Situation report: who is on the bus and what
                            they're doing (active/idle + recent activity)
-  send <to> [body]         Send a message (body from arg or stdin)
+  send <to> [body]         Send a message (body from arg or stdin). Warns when
+                           the recipient is not reading: unread piling up, no
+                           consuming read in AGENTCOMM_STALE_READ_MS (6h), or
+                           no registration under that name at all
   broadcast [body]         Send to every registered agent except yourself
   inbox                    Consume undelivered messages (archived under read/) —
                            printed first, archived after, so an interrupted
@@ -158,6 +162,8 @@ Env:
                              stderr)
   AGENTCOMM_DAEMON=1|0       Default all commands through / away from the daemon
   AGENTCOMM_POLL_MS          Daemon remote-poll interval (default 10000)
+  AGENTCOMM_STALE_READ_MS    How long a recipient can go without consuming
+                             before \`send\` flags it (default 6h)
   AGENTCOMM_MIRROR_HISTORY_MS  How much archive/telemetry history the daemon
                              keeps warm (default 7d). Older keys stay listable
                              and readable; their bodies just load on demand,
@@ -986,9 +992,19 @@ async function cmdRegister(
 async function cmdAgents(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const list = await bus.agents();
   const mySession = await sessionHash();
+  // Who is actually CONSUMING (issue #162) — a roster of names says nothing
+  // about whether work routed to them is being picked up.
+  const unread = await bus.unreadCounts().catch(() => ({}) as Record<string, number>);
   const isActive = (a: { lastSeen: string }) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
   if (cfg.json) {
-    emit(list.map((a) => ({ ...a, thisSession: a.session === mySession, active: isActive(a) })));
+    emit(
+      list.map((a) => ({
+        ...a,
+        unread: unread[a.name] ?? 0,
+        thisSession: a.session === mySession,
+        active: isActive(a),
+      })),
+    );
   } else if (list.length === 0) {
     process.stdout.write('(no agents registered)\n');
   } else {
@@ -996,7 +1012,9 @@ async function cmdAgents(bus: Bus, cfg: ResolvedConfig): Promise<number> {
       const mine = a.session === mySession ? '  (this session)' : '';
       const live = isActive(a) ? '  · active' : '';
       const doing = a.status ? `  — ${a.status}` : '';
-      process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}${live}${mine}${doing}\n`);
+      const waiting = unread[a.name] ? `  · ${unread[a.name]} unread` : '';
+      const read = a.lastRead ? `  · read ${relTime(a.lastRead)}` : unread[a.name] ? '  · never read' : '';
+      process.stdout.write(`${a.name}\tlast seen ${a.lastSeen}${live}${mine}${waiting}${read}${doing}\n`);
     }
   }
   return 0;
@@ -1026,16 +1044,27 @@ async function cmdNetwork(
 ): Promise<number> {
   const list = await bus.agents();
   const mySession = await sessionHash();
+  const unread = await bus.unreadCounts().catch(() => ({}) as Record<string, number>);
   const isActive = (a: { lastSeen: string }) => Date.now() - Date.parse(a.lastSeen) < 10 * 60_000;
   const active = list.filter(isActive).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
   const idle = list.filter((a) => !isActive(a)).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
   const recent = await recentMessages(backend, 5);
+  // Mail addressed to a name that never registered: queued forever, and
+  // invisible on a roster built from registrations alone (issue #162).
+  const unclaimed = Object.entries(unread).filter(([name]) => !list.some((a) => a.name === name));
 
   if (cfg.json) {
+    const withUnread = (a: (typeof list)[number], live: boolean) => ({
+      ...a,
+      unread: unread[a.name] ?? 0,
+      thisSession: a.session === mySession,
+      active: live,
+    });
     emit({
       bus: cfg.backendUri,
-      active: active.map((a) => ({ ...a, thisSession: a.session === mySession, active: true })),
-      idle: idle.map((a) => ({ ...a, thisSession: a.session === mySession, active: false })),
+      active: active.map((a) => withUnread(a, true)),
+      idle: idle.map((a) => withUnread(a, false)),
+      unclaimed: unclaimed.map(([name, count]) => ({ name, unread: count })),
       recent,
     });
     return 0;
@@ -1044,7 +1073,8 @@ async function cmdNetwork(
   const line = (a: (typeof list)[number]): string => {
     const mine = a.session === mySession ? ' (you)' : '';
     const doing = a.status ? a.status : '—';
-    return `  ${(a.name + mine).padEnd(24)} ${doing.padEnd(42).slice(0, 42)} ${relTime(a.lastSeen)}`;
+    const waiting = unread[a.name] ? ` ${unread[a.name]} unread` : '';
+    return `  ${(a.name + mine).padEnd(24)} ${doing.padEnd(42).slice(0, 42)} ${relTime(a.lastSeen)}${waiting}`;
   };
 
   process.stdout.write(`bus  ${cfg.backendUri}\n\n`);
@@ -1057,6 +1087,13 @@ async function cmdNetwork(
   }
   if (idle.length) {
     process.stdout.write(`idle (${idle.length})\n${idle.map(line).join('\n')}\n\n`);
+  }
+  if (unclaimed.length) {
+    process.stdout.write(
+      `unread for nobody (no registration under that name)\n${unclaimed
+        .map(([name, count]) => `  ${name.padEnd(24)} ${count} message(s) queued`)
+        .join('\n')}\n\n`,
+    );
   }
   if (recent.length) {
     process.stdout.write('recent\n');
@@ -1109,9 +1146,33 @@ async function cmdSend(
   }
   const body = rest.length > 1 ? rest.slice(1).join(' ') : await readStdin();
   const msg = await bus.send({ from: me, to, body, subject, thread });
-  if (cfg.json) emit(msg);
-  else process.stdout.write(`sent ${msg.id} → ${to}\n`);
+  // `sent` has only ever meant QUEUED. Say so when the evidence says nobody
+  // is picking it up (issue #162) — a recipient with mail stacking up and no
+  // read for hours is worth knowing about before you route work to it.
+  const delivery = await deliveryWarning(bus, to).catch(() => null);
+  if (cfg.json) emit({ ...msg, ...(delivery ? { warning: delivery } : {}) });
+  else process.stdout.write(`sent ${msg.id} → ${to}\n${delivery ? `agentcomm: warning — ${delivery}\n` : ''}`);
   return 0;
+}
+
+/** How stale a recipient's last read has to be before a send is worth flagging. */
+const STALE_READ_MS = Number(process.env.AGENTCOMM_STALE_READ_MS ?? 6 * 3600_000);
+
+/** Why this send may not reach anyone, or null when the recipient looks healthy. */
+async function deliveryWarning(bus: Bus, to: string): Promise<string | null> {
+  const record = (await bus.agents()).find((a) => a.name === to);
+  const unread = await bus.unread(to);
+  if (!record) {
+    return `${to} has never registered on this bus — nothing is known to be reading that mailbox (${unread} message(s) waiting).`;
+  }
+  if (unread <= 1) return null; // the one we just sent, or an empty box: normal
+  const read = record.lastRead ? Date.now() - Date.parse(record.lastRead) : null;
+  if (read !== null && read < STALE_READ_MS) return null;
+  return (
+    `${to} has ${unread} unread and ` +
+    (record.lastRead ? `has not consumed its mailbox since ${record.lastRead}` : 'has never consumed its mailbox') +
+    ` (last seen ${relTime(record.lastSeen)}).`
+  );
 }
 
 async function cmdBroadcast(
@@ -1137,6 +1198,7 @@ async function cmdBroadcast(
 async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
   await guardMailbox(me, 'inbox', 'consuming');
+  await bus.markRead(me).catch(() => {}); // "someone is reading X" — see cmdSend (issue #162)
   await bus.inbox(me, {
     deliver: (messages) => printMessages(messages, cfg, me),
     onUnarchived: (keys) =>
@@ -1173,6 +1235,7 @@ async function cmdAck(bus: Bus, cfg: ResolvedConfig, all: boolean, ids: string[]
     fail('ack requires message ids (from `peek`/`inbox --json`) or --all: agentcomm ack <id…> | agentcomm ack --all');
   }
   const result = await bus.ack(me, all ? 'all' : ids);
+  await bus.markRead(me).catch(() => {});
   if (cfg.json) {
     await writeOut(JSON.stringify({ agent: me, ...result }, null, 2) + '\n');
     return result.unknown.length > 0 ? 1 : 0;
