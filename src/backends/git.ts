@@ -244,19 +244,26 @@ export class GitBackend implements Backend, Batchable, Claimable, Snapshottable 
   }
 
   /**
-   * One fetch, then every body read from local objects at that tip — the
-   * daemon's warm path. Key-by-key `get` would pay a fetch per key.
+   * One fetch, then bodies read from local objects at that tip — the daemon's
+   * warm path. Key-by-key `get` would pay a fetch per key. Listing names is
+   * cheap (`ls-tree`); reading blobs is not, so `opts.bodies` picks which
+   * ones are worth the batch (issue #167).
    */
-  async snapshot(prefix: string): Promise<Map<string, Buffer>> {
+  async snapshot(
+    prefix: string,
+    opts?: { bodies?: (key: string) => boolean },
+  ): Promise<{ keys: string[]; bodies: Map<string, Buffer> }> {
     const out = new Map<string, Buffer>();
     const tip = await this.tip();
-    if (tip === null) return out;
+    if (tip === null) return { keys: [], bodies: out };
     const full = this.k(prefix);
-    const names = (await this.git(['ls-tree', '-r', '--name-only', '-z', tip]))
+    const all = (await this.git(['ls-tree', '-r', '--name-only', '-z', tip]))
       .toString('utf8')
       .split('\0')
       .filter((p) => p.length > 0 && p.startsWith(full) && p.startsWith(this.keyPrefix));
-    if (names.length === 0) return out;
+    const keys = all.map((p) => p.slice(this.keyPrefix.length));
+    const names = opts?.bodies ? all.filter((p) => opts.bodies!(p.slice(this.keyPrefix.length))) : all;
+    if (names.length === 0) return { keys, bodies: out };
     const batch = await this.git(['cat-file', '--batch'], {
       input: Buffer.from(names.map((p) => `${tip}:${p}`).join('\n') + '\n'),
     });
@@ -272,7 +279,7 @@ export class GitBackend implements Backend, Batchable, Claimable, Snapshottable 
       out.set(p.slice(this.keyPrefix.length), Buffer.from(batch.subarray(off, off + size)));
       off += size + 1; // body + trailing newline
     }
-    return out;
+    return { keys, bodies: out };
   }
 
   async list(prefix: string): Promise<string[]> {
