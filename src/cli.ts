@@ -31,6 +31,7 @@ Agent quickstart (if you are an AI agent):
   agentcomm inbox --json                              # consume instructions that may be waiting
   agentcomm network                                   # who else is here, what they're doing
   agentcomm send <to> "<body>"  ·  agentcomm wait     # coordinate — reply on the sender's --thread
+  agentcomm peek  ·  agentcomm ack --all              # read without consuming, then clear what you handled
   Re-check your inbox before reporting your task done.
   Full etiquette: agentcomm conventions · bus semantics: agentcomm describe
 
@@ -62,8 +63,13 @@ Commands:
                            they're doing (active/idle + recent activity)
   send <to> [body]         Send a message (body from arg or stdin)
   broadcast [body]         Send to every registered agent except yourself
-  inbox                    Consume undelivered messages (archived under read/)
+  inbox                    Consume undelivered messages (archived under read/) —
+                           printed first, archived after, so an interrupted
+                           read costs a duplicate, never a lost message
   peek                     Show undelivered messages without consuming
+  ack <id…> | --all        Clear mail you already read some other way (peek, a
+                           digest): archives it without re-fetching. Exit 1
+                           when an id is not pending for you
   wait                     Block until a message arrives (exit 0) or timeout (exit 2)
   claim                    Atomically dequeue one message from --queue (SQL backends only)
   emit                     Record a telemetry event (--type, --name, --ref,
@@ -130,6 +136,7 @@ Flags:
   --check                  install: report drift instead of writing (exit 1 when
                            the wiring is missing or older than this CLI)
   --uninstall              install: remove the wiring this command wrote
+  --all                    ack: clear every message pending for you
   --type <text>            emit/events: the event type (skill-ran, skill-outcome, …)
   --name <text>            emit/events: what the event is about (a skill/tool name)
   --ref <text>             emit/events: correlation handle (branch, PR#, run id)
@@ -296,6 +303,8 @@ async function main(argv: string[]): Promise<number> {
         return await cmdInbox(bus, cfg);
       case 'peek':
         return await cmdPeek(bus, cfg);
+      case 'ack':
+        return await cmdAck(bus, cfg, flags.all, positional.slice(1));
       case 'wait':
         return await cmdWait(bus, cfg, flags.timeout ?? 30000);
       case 'claim':
@@ -686,7 +695,9 @@ This repo has a message bus for AI agents. When working here:
   (active/idle agents, their statuses, recent activity).
 - Coordinate with other agents via \`send\`/\`wait\` (subjects: task, ack,
   done, question, status; reply on the sender's --thread).
-- Always check your inbox before reporting work done.
+- Always check your inbox before reporting work done. \`inbox\` consumes;
+  \`peek\` shows without consuming and \`agentcomm ack --all\` clears what you
+  have handled, so mail you read another way stops counting as unread.
 - Stuck? Declare it: \`agentcomm register --status "blocked: <what you
   need>"\` — other agents' digests will recruit help. If a digest shows
   someone else blocked and you KNOW the answer, send it without asking
@@ -1107,7 +1118,41 @@ async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
   const messages = await bus.peek(me);
   await printMessages(messages, cfg, me);
+  // peek leaves the mail unread by design; say how to clear it once acted on,
+  // or the unread count (and the stop guard) never drops (issue #160).
+  if (!cfg.json && messages.length > 0) {
+    await writeOut(`— ${messages.length} still unread; clear what you have handled: agentcomm ack --all\n`);
+  }
   return 0;
+}
+
+/**
+ * Clear mail that was read some other way — `peek`, a digest, a delivery this
+ * process could not consume. Read and clear used to be the same operation, so
+ * an agent that had read and answered every message still faced a stop guard
+ * demanding it read them (issue #160).
+ */
+async function cmdAck(bus: Bus, cfg: ResolvedConfig, all: boolean, ids: string[]): Promise<number> {
+  const me = await resolveAgent(cfg);
+  if (!all && ids.length === 0) {
+    fail('ack requires message ids (from `peek`/`inbox --json`) or --all: agentcomm ack <id…> | agentcomm ack --all');
+  }
+  const result = await bus.ack(me, all ? 'all' : ids);
+  if (cfg.json) {
+    await writeOut(JSON.stringify({ agent: me, ...result }, null, 2) + '\n');
+    return result.unknown.length > 0 ? 1 : 0;
+  }
+  await writeOut(
+    [
+      `acked ${result.acked.length} message(s) for ${me}`,
+      ...(result.failed.length ? [`could not archive: ${result.failed.join(', ')} — still pending`] : []),
+      ...(result.unknown.length
+        ? [`not pending for ${me}: ${result.unknown.join(', ')} (already acked, or addressed to another alias)`]
+        : []),
+      '',
+    ].join('\n'),
+  );
+  return result.unknown.length > 0 ? 1 : 0;
 }
 
 async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promise<number> {
