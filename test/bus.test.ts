@@ -187,3 +187,80 @@ describe('status precedence: explicit wins while fresh, task refreshes when stal
     await backend.close?.();
   });
 });
+
+/**
+ * Delivery before consumption (issue #158). Archiving as we read meant an
+ * `inbox` that died mid-flight — a harness timeout, a Ctrl-C — left messages
+ * consumed AND undelivered. These pin the order, and the failure mode when
+ * the archive step is the thing that breaks.
+ */
+describe('inbox delivers before it consumes (issue #158)', () => {
+  /** A backend that records op order and can be told to fail every move. */
+  class Recording implements Backend {
+    readonly ops: string[] = [];
+    breakMove = false;
+    constructor(private readonly inner: Backend) {}
+    put(key: string, data: Buffer): Promise<void> {
+      return this.inner.put(key, data);
+    }
+    get(key: string): Promise<Buffer> {
+      return this.inner.get(key);
+    }
+    list(prefix: string): Promise<string[]> {
+      return this.inner.list(prefix);
+    }
+    delete(key: string): Promise<void> {
+      return this.inner.delete(key);
+    }
+    exists(key: string): Promise<boolean> {
+      return this.inner.exists(key);
+    }
+    async move(src: string, dst: string): Promise<void> {
+      this.ops.push(`move ${src}`);
+      if (this.breakMove) throw new Error('store went away');
+      return this.inner.move(src, dst);
+    }
+  }
+
+  const busWith = async (): Promise<{ bus: Bus; backend: Recording }> => {
+    const backend = new Recording(new LocalBackend(await mkTmp()));
+    const bus = new Bus(backend);
+    for (const body of ['one', 'two']) await bus.send({ from: 'alice', to: 'bob', body });
+    return { bus, backend };
+  };
+
+  it('hands every message to the caller before archiving any of them', async () => {
+    const { bus, backend } = await busWith();
+    const got = await bus.inbox('bob', {
+      deliver: (messages) => {
+        backend.ops.push(`deliver ${messages.length}`);
+      },
+    });
+    expect(got.map((m) => m.body)).toEqual(['one', 'two']);
+    expect(backend.ops[0]).toBe('deliver 2');
+    expect(backend.ops.filter((o) => o.startsWith('move'))).toHaveLength(2);
+  });
+
+  it('a delivery that throws consumes nothing — the mail is still there', async () => {
+    const { bus, backend } = await busWith();
+    await expect(
+      bus.inbox('bob', {
+        deliver: () => {
+          throw new Error('pipe closed');
+        },
+      }),
+    ).rejects.toThrow(/pipe closed/);
+    expect(backend.ops).toHaveLength(0);
+    expect((await bus.peek('bob')).map((m) => m.body)).toEqual(['one', 'two']);
+  });
+
+  it('an archive that fails re-delivers rather than losing: reported, still pending', async () => {
+    const { bus, backend } = await busWith();
+    backend.breakMove = true;
+    const unarchived: string[] = [];
+    const got = await bus.inbox('bob', { onUnarchived: (keys) => unarchived.push(...keys) });
+    expect(got.map((m) => m.body)).toEqual(['one', 'two']);
+    expect(unarchived).toHaveLength(2);
+    expect((await bus.peek('bob')).map((m) => m.body)).toEqual(['one', 'two']);
+  });
+});

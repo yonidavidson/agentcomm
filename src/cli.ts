@@ -1086,17 +1086,27 @@ async function cmdBroadcast(
   return 0;
 }
 
+/**
+ * Consume the mailbox — print first, archive after (issue #158). An `inbox`
+ * that dies mid-flight used to leave messages consumed AND unprinted; now the
+ * worst case is a message that stays pending and arrives twice.
+ */
 async function cmdInbox(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
-  const messages = await bus.inbox(me);
-  printMessages(messages, cfg, me);
+  await bus.inbox(me, {
+    deliver: (messages) => printMessages(messages, cfg, me),
+    onUnarchived: (keys) =>
+      process.stderr.write(
+        `agentcomm: ${keys.length} message(s) were delivered but could not be archived — they stay pending and will arrive again.\n`,
+      ),
+  });
   return 0;
 }
 
 async function cmdPeek(bus: Bus, cfg: ResolvedConfig): Promise<number> {
   const me = await resolveAgent(cfg);
   const messages = await bus.peek(me);
-  printMessages(messages, cfg, me);
+  await printMessages(messages, cfg, me);
   return 0;
 }
 
@@ -1108,7 +1118,7 @@ async function cmdWait(bus: Bus, cfg: ResolvedConfig, timeoutMs: number): Promis
     else process.stderr.write(`wait: timed out after ${timeoutMs}ms\n`);
     return 2; // timeout
   }
-  printMessages(messages, cfg, me);
+  await printMessages(messages, cfg, me);
   return 0; // delivered
 }
 
@@ -1278,22 +1288,33 @@ async function loadBackendPlugins(): Promise<void> {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-function printMessages(messages: Message[], cfg: ResolvedConfig, recipient?: string): void {
-  if (cfg.json) {
-    emit(messages);
-    return;
-  }
+/**
+ * Write to stdout and resolve only once the bytes are handed to the OS.
+ * `inbox` archives what it has delivered, so "delivered" has to mean out of
+ * this process, not queued inside it (issue #158).
+ */
+function writeOut(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    process.stdout.write(text, () => resolve());
+  });
+}
+
+async function printMessages(messages: Message[], cfg: ResolvedConfig, recipient?: string): Promise<void> {
+  if (cfg.json) return writeOut(JSON.stringify(messages, null, 2) + '\n');
   if (messages.length === 0) {
     // Name the mailbox that was read: "no messages" reads as "no mail
     // anywhere", which is exactly how a drifted alias hides (issue #157).
-    process.stdout.write(recipient ? `(no messages for ${recipient})\n` : '(no messages)\n');
-    return;
+    return writeOut(recipient ? `(no messages for ${recipient})\n` : '(no messages)\n');
   }
-  for (const m of messages) {
-    const subj = m.subject ? ` [${m.subject}]` : '';
-    const thr = m.thread ? ` (thread ${m.thread})` : '';
-    process.stdout.write(`from ${m.from} at ${m.ts}${subj}${thr}\n  ${m.body}\n`);
-  }
+  return writeOut(
+    messages
+      .map((m) => {
+        const subj = m.subject ? ` [${m.subject}]` : '';
+        const thr = m.thread ? ` (thread ${m.thread})` : '';
+        return `from ${m.from} at ${m.ts}${subj}${thr}\n  ${m.body}\n`;
+      })
+      .join(''),
+  );
 }
 
 let derivedIdentity: string | null | undefined; // memo: undefined = not derived yet
