@@ -279,6 +279,40 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect((JSON.parse(syncRemote.stdout) as unknown[]).length).toBe(2);
   });
 
+  it('consuming acks from the outbox and never re-delivers before the drain (issue #159)', async () => {
+    const dir = await mkTmp();
+    const FROZEN = { AGENTCOMM_FLUSH_MS: '600000' }; // flusher effectively off
+    await run(['register', '--as', 'alpha', '--daemon'], dir, FROZEN);
+    for (const body of ['one', 'two', 'three']) {
+      await run(['send', 'alpha', body, '--as', 'beta', '--daemon', '--sync'], dir, FROZEN);
+    }
+
+    const first = await run(['inbox', '--as', 'alpha', '--daemon', '--json'], dir, FROZEN);
+    expect((JSON.parse(first.stdout) as { body: string }[]).map((m) => m.body)).toEqual(['one', 'two', 'three']);
+
+    // The archive is still spooled — the store has not seen it yet...
+    const onStore = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+    expect((JSON.parse(onStore.stdout) as unknown[]).length).toBe(3);
+
+    // ...but the daemon's own view must NOT resurrect them across a poll,
+    // however many times it re-lists the store.
+    await new Promise((r) => setTimeout(r, 900)); // > poll interval
+    const second = await run(['inbox', '--as', 'alpha', '--daemon', '--json'], dir, FROZEN);
+    expect(JSON.parse(second.stdout)).toEqual([]);
+
+    // stop drains: the archive lands on the store exactly once
+    await run(['daemon', 'stop'], dir);
+    let pending = -1;
+    for (let i = 0; i < 20 && pending !== 0; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const after = await run(['peek', '--as', 'alpha', '--direct', '--json'], dir);
+      pending = (JSON.parse(after.stdout) as unknown[]).length;
+    }
+    expect(pending).toBe(0);
+    const archived = await fs.readdir(path.join(dir, '.bus', 'read', 'alpha'));
+    expect(archived).toHaveLength(3);
+  });
+
   it('outbox survives a daemon crash: a fresh daemon delivers the leftovers', async () => {
     const dir = await mkTmp();
     const FROZEN = { AGENTCOMM_FLUSH_MS: '600000' };

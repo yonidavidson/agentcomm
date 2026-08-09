@@ -77,6 +77,18 @@ export interface Snapshottable {
   snapshot(prefix: string): Promise<Map<string, Buffer>>;
 }
 
+/**
+ * Optional capability: apply many moves as ONE store operation. Consuming a
+ * mailbox archives every message it delivered; key-by-key that is a network
+ * round trip per message (a git commit+push each), which is what made `inbox`
+ * time out where `peek` was instant (issue #159). Backends that can commit a
+ * batch declare it here; the Bus falls back to per-key moves without it.
+ */
+export interface Batchable {
+  /** Move every pair, atomically where the store allows it. */
+  moveMany(moves: { src: string; dst: string }[]): Promise<void>;
+}
+
 /** Optional capability: block until a message arrives (push instead of poll). */
 export interface Waitable {
   /**
@@ -88,6 +100,10 @@ export interface Waitable {
 
 export function isClaimable(b: Backend): b is Backend & Claimable {
   return typeof (b as Partial<Claimable>).claim === 'function';
+}
+
+export function isBatchable(b: Backend): b is Backend & Batchable {
+  return typeof (b as Partial<Batchable>).moveMany === 'function';
 }
 
 export function isWaitable(b: Backend): b is Backend & Waitable {

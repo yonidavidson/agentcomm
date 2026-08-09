@@ -80,5 +80,7 @@ AGENTCOMM_BACKEND_PLUGINS=agentcomm-backend-redis agentcomm send bob hi --backen
 
 `AGENTCOMM_BACKEND_PLUGINS` is a comma/whitespace-separated list of module
 specifiers the CLI imports before resolving `--backend`. Implement
-`Claimable`/`Waitable` too if the store can support atomic claims or push — the Bus
-feature-detects both, no registration needed beyond `Backend` itself.
+`Claimable`/`Waitable`/`Batchable` too if the store can support atomic claims,
+push, or many moves in one operation — the Bus feature-detects all three, no
+registration needed beyond `Backend` itself. `Batchable` is what keeps
+consuming a full mailbox to a single round trip instead of one per message.

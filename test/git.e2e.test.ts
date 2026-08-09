@@ -100,6 +100,28 @@ describe('GitBackend (local bare remotes — same code path as any host)', () =>
     await expect(b.move('inbox/a/1.json', 'read/a/1.json')).rejects.toThrow(/key not found/);
   }, 60000);
 
+  it('consuming a mailbox is ONE commit, not one per message (issue #159)', async () => {
+    const { uri, cache } = await bareRemote();
+    const bus = new Bus(await open(uri, cache));
+    for (const body of ['one', 'two', 'three', 'four']) await bus.send({ from: 'p', to: 'reader', body });
+
+    const remote = uri.replace('git+file://', '');
+    const commits = (): number =>
+      Number(execFileSync('git', ['-C', remote, 'rev-list', '--count', 'agentcomm']).toString().trim());
+    const before = commits();
+
+    const got = await bus.inbox('reader');
+    expect(got.map((m) => m.body)).toEqual(['one', 'two', 'three', 'four']);
+    // four messages archived by a single push — key-by-key this was four
+    // fetch → commit → push round trips, and `inbox` timed out before the
+    // last one landed.
+    expect(commits() - before).toBe(1);
+
+    const backend = await open(uri, cache);
+    expect((await backend.list('read/reader/')).length).toBe(4);
+    expect((await backend.list('inbox/reader/')).length).toBe(0);
+  }, 60000);
+
   it('Bus semantics + claim: FIFO dequeue, archives under read/, null on empty', async () => {
     const { uri, cache } = await bareRemote();
     const bus = new Bus(await open(uri, cache));

@@ -264,3 +264,45 @@ describe('inbox delivers before it consumes (issue #158)', () => {
     expect((await bus.peek('bob')).map((m) => m.body)).toEqual(['one', 'two']);
   });
 });
+
+/**
+ * Archiving a consumed mailbox is ONE store operation where the backend can
+ * do it (issue #159) — key-by-key it was a network round trip per message,
+ * which is what made `inbox` time out on a remote bus.
+ */
+describe('archive batches when the backend can (issue #159)', () => {
+  it('uses moveMany once, and falls back to per-key moves when the batch fails', async () => {
+    const inner = new LocalBackend(await mkTmp());
+    let batches = 0;
+    let singles = 0;
+    let breakBatch = false;
+    const backend: Backend & { moveMany(m: { src: string; dst: string }[]): Promise<void> } = {
+      put: (k, d) => inner.put(k, d),
+      get: (k) => inner.get(k),
+      list: (p) => inner.list(p),
+      delete: (k) => inner.delete(k),
+      exists: (k) => inner.exists(k),
+      move: (s, d) => {
+        singles++;
+        return inner.move(s, d);
+      },
+      moveMany: async (moves) => {
+        batches++;
+        if (breakBatch) throw new Error('batch rejected');
+        for (const { src, dst } of moves) await inner.move(src, dst);
+      },
+    };
+    const bus = new Bus(backend);
+    for (const body of ['a', 'b', 'c']) await bus.send({ from: 'x', to: 'bob', body });
+
+    expect(await bus.inbox('bob')).toHaveLength(3);
+    expect(batches).toBe(1);
+    expect(singles).toBe(0);
+
+    breakBatch = true;
+    for (const body of ['d', 'e']) await bus.send({ from: 'x', to: 'bob', body });
+    expect(await bus.inbox('bob')).toHaveLength(2);
+    expect(singles).toBe(2); // batch refused → each message still archived
+    expect((await inner.list('inbox/bob/')).length).toBe(0);
+  });
+});

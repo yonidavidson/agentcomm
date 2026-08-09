@@ -179,7 +179,12 @@ export class SocketBackend implements Backend {
   }
 
   async move(src: string, dst: string): Promise<void> {
-    ok(await this.rpc.call('move', { src, dst }));
+    ok(await this.rpc.call('move', { src, dst, sync: this.syncWrites }));
+  }
+
+  /** Archiving a mailbox is ONE call (issue #159), not one per message. */
+  async moveMany(moves: { src: string; dst: string }[]): Promise<void> {
+    ok(await this.rpc.call('moveMany', { moves, sync: this.syncWrites }));
   }
 
   async info(): Promise<Record<string, unknown>> {
