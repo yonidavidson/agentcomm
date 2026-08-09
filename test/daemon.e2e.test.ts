@@ -313,6 +313,33 @@ describe('bus daemon: same semantics, immediate answers', () => {
     expect(archived).toHaveLength(3);
   });
 
+  it('keeps only recent history warm, but still serves the old (issue #167)', async () => {
+    const dir = await mkTmp();
+    // an archived message from long ago, and a fresh one — both on the store
+    const archive = path.join(dir, '.bus', 'read', 'alpha');
+    await fs.mkdir(archive, { recursive: true });
+    const oldTs = String(Date.now() - 30 * 24 * 3600_000).padStart(15, '0');
+    await fs.writeFile(
+      path.join(archive, `${oldTs}-000000_ancient.json`),
+      JSON.stringify({ id: 'ancient', from: 'beta', to: 'alpha', body: 'from a month ago', ts: new Date(0).toISOString() }),
+    );
+
+    const WINDOW = { AGENTCOMM_MIRROR_HISTORY_MS: String(7 * 24 * 3600_000) };
+    await run(['register', '--as', 'alpha', '--daemon'], dir, WINDOW);
+    await run(['send', 'alpha', 'today', '--as', 'beta', '--daemon', '--sync'], dir, WINDOW);
+
+    // the aged-out archive is still a first-class key: log finds it and reads
+    // its body through the passthrough, exactly as if it were warm
+    const log = await run(['log', '--limit', '10', '--daemon', '--json'], dir, WINDOW);
+    const bodies = (JSON.parse(log.stdout) as { body: string }[]).map((m) => m.body);
+    expect(bodies).toContain('from a month ago');
+    expect(bodies).toContain('today');
+
+    // and purge still sees it (list is unaffected by what the mirror holds)
+    const purge = await run(['purge', '--older-than', '14d', '--dry-run', '--daemon', '--json'], dir, WINDOW);
+    expect((JSON.parse(purge.stdout) as { count: number }).count).toBe(1);
+  });
+
   it('outbox survives a daemon crash: a fresh daemon delivers the leftovers', async () => {
     const dir = await mkTmp();
     const FROZEN = { AGENTCOMM_FLUSH_MS: '600000' };
