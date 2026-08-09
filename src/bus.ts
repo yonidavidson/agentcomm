@@ -57,6 +57,7 @@ export class Bus {
       name,
       registeredAt: existing?.registeredAt ?? now,
       lastSeen: now,
+      ...(existing?.lastRead ? { lastRead: existing.lastRead } : {}),
       ...(session ? { session } : {}),
       ...(nextStatus ? { status: nextStatus, statusAuto: nextAuto, statusAt: nextStatusAt } : {}),
     };
@@ -80,6 +81,45 @@ export class Bus {
     }
     out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
+  }
+
+  /**
+   * Record that `name` consumed its mailbox. A send reports success whether
+   * or not anyone is reading; this is the other half of that story, and it
+   * costs one write on a command agents run a handful of times a session.
+   *
+   * Only an EXISTING registration is stamped. Reading must not create one:
+   * registrations are never purged, so a one-off `inbox --as someone` would
+   * put a permanent ghost on the roster. An unregistered reader simply has
+   * no read history — which is exactly what `send` reports about it.
+   */
+  async markRead(name: string): Promise<void> {
+    assertName(name);
+    const existing = await this.tryGetAgent(name);
+    if (!existing) return;
+    const now = new Date().toISOString();
+    await this.backend.put(agentKey(name), encode({ ...existing, lastSeen: now, lastRead: now }));
+  }
+
+  /**
+   * Undelivered message count per recipient, from KEYS alone — one list, no
+   * bodies. Mailboxes with no registration count too: mail addressed to a
+   * name nobody is reading is precisely what needs surfacing.
+   */
+  async unreadCounts(): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {};
+    for (const key of await this.backend.list('inbox/')) {
+      if (!key.endsWith('.json')) continue;
+      const recipient = key.slice('inbox/'.length, key.indexOf('/', 'inbox/'.length));
+      if (recipient) counts[recipient] = (counts[recipient] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  /** Undelivered count for one recipient — the cheap pre-send check. */
+  async unread(recipient: string): Promise<number> {
+    assertName(recipient);
+    return (await this.backend.list(inboxPrefix(recipient))).filter((k) => k.endsWith('.json')).length;
   }
 
   private async tryGetAgent(name: string): Promise<AgentRecord | null> {
@@ -345,4 +385,11 @@ export interface AgentRecord {
   statusAuto?: boolean;
   /** ISO 8601 time the status was set — bounds how long an explicit one stays sticky. */
   statusAt?: string;
+  /**
+   * ISO 8601 time this agent last CONSUMED its mailbox (issue #162). `sent`
+   * only ever meant "queued"; this is what makes "and someone read it"
+   * answerable — a recipient with mail piling up and no read for hours is
+   * worth surfacing to whoever is sending it work.
+   */
+  lastRead?: string;
 }

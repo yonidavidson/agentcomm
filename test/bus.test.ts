@@ -348,3 +348,43 @@ describe('ack clears mail already read (issue #160)', () => {
     expect(await bus.peek('bob')).toHaveLength(1);
   });
 });
+
+/**
+ * `sent` has only ever meant QUEUED (issue #162). These cover the two facts
+ * that make "and someone read it" answerable: a per-recipient unread depth,
+ * and when each agent last consumed its mailbox.
+ */
+describe('delivery visibility (issue #162)', () => {
+  it('counts unread per recipient, including mailboxes nobody registered', async () => {
+    const bus = new Bus(new LocalBackend(await mkTmp()));
+    await bus.register('bob');
+    await bus.send({ from: 'alice', to: 'bob', body: '1' });
+    await bus.send({ from: 'alice', to: 'bob', body: '2' });
+    await bus.send({ from: 'alice', to: 'ghost', body: 'nobody home' });
+
+    expect(await bus.unreadCounts()).toEqual({ bob: 2, ghost: 1 });
+    expect(await bus.unread('bob')).toBe(2);
+    expect(await bus.unread('nobody')).toBe(0);
+  });
+
+  it('markRead stamps lastRead, and a heartbeat preserves it', async () => {
+    const bus = new Bus(new LocalBackend(await mkTmp()));
+    await bus.register('bob', 'sess');
+    expect((await bus.agents())[0]!.lastRead).toBeUndefined();
+
+    await bus.markRead('bob');
+    const read = (await bus.agents())[0]!.lastRead;
+    expect(read).toBeTruthy();
+
+    await bus.register('bob', 'sess'); // heartbeat must not erase the read stamp
+    expect((await bus.agents())[0]!.lastRead).toBe(read);
+  });
+
+  it('markRead never conjures a registration — a one-off read leaves no ghost', async () => {
+    const bus = new Bus(new LocalBackend(await mkTmp()));
+    await bus.markRead('walk-in');
+    // registrations are never purged; a `inbox --as someone` must not create
+    // a permanent roster entry
+    expect(await bus.agents()).toEqual([]);
+  });
+});
