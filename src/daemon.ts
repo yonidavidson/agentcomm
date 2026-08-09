@@ -2,10 +2,11 @@
  * The bus daemon: one background process per bus URI that polls the real
  * backend on its own clock and serves CLI processes over a unix socket.
  *
- * Reads come from a warm mirror (staleness ≤ the poll interval); writes go
- * through to the real backend immediately and update the mirror, so
- * read-your-write always holds. `claim` is forwarded verbatim — atomicity
- * must come from the store, never from a cache.
+ * Reads come from a warm mirror (staleness ≤ the poll interval); writes are
+ * accepted onto a durable disk outbox, applied to the mirror at once and
+ * delivered to the real store on the daemon's clock, so read-your-write
+ * always holds while no client waits out a remote round trip. `claim` is
+ * forwarded verbatim — atomicity must come from the store, never a cache.
  *
  * The socket binds BEFORE the first poll (issue #144): warming a large bus
  * key-by-key can take minutes on round-trip-per-read stores, and a daemon
@@ -14,7 +15,7 @@
  * block until the warm-up finishes.
  *
  * The protocol is newline-delimited JSON, the Backend interface verbatim:
- *   → {id, op: 'get'|'put'|'list'|'delete'|'exists'|'move'|'claim'|'info'|'stop', ...}
+ *   → {id, op: 'get'|'put'|'list'|'delete'|'exists'|'move'|'moveMany'|'claim'|'info'|'stop', ...}
  *   ← {id, ok: true, ...} | {id, ok: false, error, code?}
  * Buffers travel base64-encoded in `data`.
  */
@@ -24,7 +25,7 @@ import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createBackend } from './backends/index.js';
-import { isClaimable, isSnapshottable, type Backend } from './types.js';
+import { isBatchable, isClaimable, isSnapshottable, type Backend } from './types.js';
 
 export function daemonDir(): string {
   return process.env.AGENTCOMM_DAEMON_DIR ?? path.join(os.homedir(), '.cache', 'agentcomm', 'd');
@@ -40,12 +41,22 @@ interface Req {
   key?: string;
   src?: string;
   dst?: string;
+  moves?: { src: string; dst: string }[];
   prefix?: string;
   queue?: string;
   owner?: string;
   data?: string; // base64
   sync?: boolean;
 }
+
+/**
+ * One deferred write in the outbox. `op` is absent on entries written by
+ * pre-0.21 daemons, which only ever spooled puts — treat those as puts.
+ */
+type SpoolEntry =
+  | { op?: 'put'; key: string; data: string }
+  | { op: 'move'; moves: { src: string; dst: string }[] }
+  | { op: 'delete'; key: string };
 
 export async function runDaemon(uri: string): Promise<void> {
   // github:// pays REST quota per poll (5,000/hr shared) — default gently
@@ -86,17 +97,20 @@ export async function runDaemon(uri: string): Promise<void> {
   };
   if (await probePeer()) await bowOut();
 
-  // Outbox spool: puts are accepted onto disk and delivered by the flusher,
+  // Outbox spool: writes are accepted onto disk and delivered by the flusher,
   // so `send` acks in milliseconds while delivery (a git push, an API call)
   // happens on the daemon's clock — FIFO, retried, surviving restarts.
+  // Consuming reads spool too (issue #159): archiving a mailbox key-by-key
+  // against a remote store is a round trip per message, which is what made
+  // `inbox` time out where `peek` was instant.
   const spoolDir = sockPath + '.spool';
   await fs.mkdir(spoolDir, { recursive: true });
   let spoolSeq = 0;
   let flushFailures = 0;
-  async function spoolAdd(key: string, data: Buffer): Promise<void> {
+  async function spoolAdd(entry: SpoolEntry): Promise<void> {
     const name = `${String(Date.now()).padStart(14, '0')}-${String(++spoolSeq).padStart(6, '0')}`;
     const tmp = path.join(spoolDir, '.' + name);
-    await fs.writeFile(tmp, JSON.stringify({ key, data: data.toString('base64') }));
+    await fs.writeFile(tmp, JSON.stringify(entry));
     await fs.rename(tmp, path.join(spoolDir, name)); // atomic appearance
   }
   async function spoolDepth(): Promise<number> {
@@ -115,14 +129,31 @@ export async function runDaemon(uri: string): Promise<void> {
     spoolChain = next.catch(() => {});
     return next;
   }
+  /** Apply one outbox entry against the real store. */
+  async function deliver(entry: SpoolEntry): Promise<void> {
+    if (entry.op === 'delete') return backend.delete(entry.key);
+    if (entry.op === 'move') {
+      // One store operation where the backend can (a single git commit for a
+      // whole mailbox); otherwise pair by pair. A pair whose source is
+      // already gone was archived by someone else — not an error.
+      if (isBatchable(backend) && entry.moves.length > 1) return backend.moveMany(entry.moves);
+      for (const { src, dst } of entry.moves) {
+        await backend.move(src, dst).catch((err: NodeJS.ErrnoException) => {
+          if (err?.code !== 'ENOENT') throw err;
+        });
+      }
+      return;
+    }
+    return backend.put(entry.key, Buffer.from(entry.data, 'base64'));
+  }
+
   function flush(): Promise<void> {
     return withSpool(async () => {
       const entries = (await fs.readdir(spoolDir)).filter((f) => !f.startsWith('.')).sort();
       for (const f of entries) {
         const file = path.join(spoolDir, f);
         try {
-          const { key, data } = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
-          await backend.put(key, Buffer.from(data, 'base64'));
+          await deliver(JSON.parse(await fs.readFile(file, 'utf8')) as SpoolEntry);
           await fs.rm(file, { force: true });
           flushFailures = 0;
         } catch {
@@ -132,14 +163,14 @@ export async function runDaemon(uri: string): Promise<void> {
       }
     });
   }
-  /** If `key` is still spooled, rewrite/remove it locally and return true. */
+  /** If `key` is a still-spooled PUT, rewrite/remove it locally and return true. */
   function spoolTake(key: string, rewriteTo?: string): Promise<boolean> {
     return withSpool(async () => {
       for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.')).sort()) {
         const file = path.join(spoolDir, f);
         try {
-          const entry = JSON.parse(await fs.readFile(file, 'utf8')) as { key: string; data: string };
-          if (entry.key !== key) continue;
+          const entry = JSON.parse(await fs.readFile(file, 'utf8')) as SpoolEntry;
+          if (entry.op === 'move' || entry.op === 'delete' || entry.key !== key) continue;
           if (rewriteTo) await fs.writeFile(file, JSON.stringify({ ...entry, key: rewriteTo }));
           else await fs.rm(file, { force: true });
           return true;
@@ -162,16 +193,13 @@ export async function runDaemon(uri: string): Promise<void> {
    * other order can miss it mid-flush for a full poll cycle. Runs under the
    * flush mutex (issue #79): reading a spool file while the flusher rm's it
    * silently dropped the key for a cycle under load. */
-  function snapshotSpool(): Promise<string[]> {
+  function snapshotSpool(): Promise<SpoolEntry[]> {
     return withSpool(async () => {
-      const spooled: string[] = [];
+      const spooled: SpoolEntry[] = [];
       try {
-        for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.'))) {
+        for (const f of (await fs.readdir(spoolDir)).filter((x) => !x.startsWith('.')).sort()) {
           try {
-            const { key } = JSON.parse(await fs.readFile(path.join(spoolDir, f), 'utf8')) as {
-              key: string;
-            };
-            spooled.push(key);
+            spooled.push(JSON.parse(await fs.readFile(path.join(spoolDir, f), 'utf8')) as SpoolEntry);
           } catch { /* entry mid-write */ }
         }
       } catch { /* spool gone (shutdown) */ }
@@ -179,24 +207,53 @@ export async function runDaemon(uri: string): Promise<void> {
     });
   }
 
+  /**
+   * Replay the undelivered outbox over what the store currently says, in FIFO
+   * order. Without this a poll would resurrect keys an accepted-but-not-yet-
+   * flushed archive already consumed — the store still has them — and the
+   * message would be delivered twice (issue #159).
+   */
+  function replaySpool(ops: SpoolEntry[], bodies: Map<string, Buffer>, present: Set<string>): void {
+    for (const entry of ops) {
+      if (entry.op === 'delete') {
+        bodies.delete(entry.key);
+        present.delete(entry.key);
+      } else if (entry.op === 'move') {
+        for (const { src, dst } of entry.moves) {
+          const body = bodies.get(src) ?? mirror.get(src) ?? mirror.get(dst);
+          bodies.delete(src);
+          present.delete(src);
+          if (body) bodies.set(dst, body);
+          present.add(dst);
+        }
+      } else {
+        // spooled but not delivered yet — keep the local body
+        const body = bodies.get(entry.key) ?? mirror.get(entry.key) ?? Buffer.from(entry.data, 'base64');
+        bodies.set(entry.key, body);
+        present.add(entry.key);
+      }
+    }
+  }
+
   async function doPoll(): Promise<void> {
     const spooled = await snapshotSpool();
     if (isSnapshottable(backend)) {
       const snap = await backend.snapshot('');
-      for (const k of spooled) {
-        const body = snap.get(k) ?? mirror.get(k);
-        if (body) snap.set(k, body); // spooled but not delivered yet — keep the local body
-      }
+      const present = new Set(snap.keys());
+      replaySpool(spooled, snap, present);
+      for (const k of snap.keys()) if (!present.has(k)) snap.delete(k);
       mirror.clear();
       for (const [k, v] of snap) mirror.set(k, v);
-      keys = new Set([...snap.keys(), ...spooled]);
+      keys = present;
       return;
     }
-    const listed = await backend.list('');
-    const next = new Set([...listed, ...spooled]);
+    const bodies = new Map<string, Buffer>();
+    const next = new Set(await backend.list(''));
+    replaySpool(spooled, bodies, next);
     for (const k of mirror.keys()) {
       if (!next.has(k) || k.startsWith('agents/')) mirror.delete(k);
     }
+    for (const [k, v] of bodies) if (next.has(k)) mirror.set(k, v);
     keys = next;
   }
   // Coalesce: timer ticks, `refresh`, and post-claim polls that overlap a
@@ -262,29 +319,44 @@ export async function runDaemon(uri: string): Promise<void> {
         if (req.sync) {
           await backend.put(req.key!, buf);
         } else {
-          await spoolAdd(req.key!, buf); // durable locally; flusher delivers
+          await spoolAdd({ op: 'put', key: req.key!, data: buf.toString('base64') }); // durable locally; flusher delivers
         }
         mirror.set(req.key!, buf);
         keys.add(req.key!);
         return { ok: true, queued: !req.sync };
       }
       case 'delete':
-        if (!(await spoolTake(req.key!))) await backend.delete(req.key!);
+        if (!(await spoolTake(req.key!))) {
+          if (req.sync) await backend.delete(req.key!);
+          else await spoolAdd({ op: 'delete', key: req.key! });
+        }
         mirror.delete(req.key!);
         keys.delete(req.key!);
         return { ok: true };
-      case 'move': {
-        if (!(await spoolTake(req.src!, req.dst!))) {
-          await backend.move(req.src!, req.dst!);
+      case 'move':
+      case 'moveMany': {
+        // Consuming a mailbox acks from the outbox, exactly like a send
+        // (issue #159): the client is not held for a remote round trip per
+        // archived message. The mirror moves the keys now, and the poll
+        // replays the undelivered outbox so the store's stale view cannot
+        // resurrect them.
+        const moves = req.op === 'move' ? [{ src: req.src!, dst: req.dst! }] : (req.moves ?? []);
+        const deferred: { src: string; dst: string }[] = [];
+        for (const { src, dst } of moves) {
+          if (!(await spoolTake(src, dst))) deferred.push({ src, dst });
         }
-        const body = mirror.get(req.src!);
-        mirror.delete(req.src!);
-        keys.delete(req.src!);
-        if (body) {
-          mirror.set(req.dst!, body);
-          keys.add(req.dst!);
+        if (deferred.length > 0) {
+          if (req.sync) await deliver({ op: 'move', moves: deferred });
+          else await spoolAdd({ op: 'move', moves: deferred });
         }
-        return { ok: true };
+        for (const { src, dst } of moves) {
+          const body = mirror.get(src);
+          mirror.delete(src);
+          keys.delete(src);
+          if (body) mirror.set(dst, body);
+          keys.add(dst);
+        }
+        return { ok: true, queued: !req.sync };
       }
       case 'claim': {
         if (!claimable) return { ok: false, code: 'ENOTSUP', error: 'backend does not support claim' };

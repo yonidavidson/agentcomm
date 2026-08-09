@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { type Backend, type Claimable, type Message, type Snapshottable } from '../types.js';
+import { type Backend, type Batchable, type Claimable, type Message, type Snapshottable } from '../types.js';
 
 /**
  * GitBackend — the generic "commits are the storage" transport, host-agnostic
@@ -34,7 +34,15 @@ import { type Backend, type Claimable, type Message, type Snapshottable } from '
  *   - `claim` is implemented (Claimable) via optimistic CAS — race-free
  *     shared work queues with zero infrastructure.
  */
-export class GitBackend implements Backend, Claimable, Snapshottable {
+/**
+ * Cap on a single git invocation. A remote that accepts the connection and
+ * then goes quiet leaves `git` blocked forever, which reaches the caller as a
+ * command that simply never returns — indistinguishable from a deadlock
+ * (issue #159). A clear, attributable error is always better.
+ */
+const GIT_TIMEOUT_MS = Math.max(1000, Number(process.env.AGENTCOMM_GIT_TIMEOUT_MS ?? 120_000));
+
+export class GitBackend implements Backend, Batchable, Claimable, Snapshottable {
   /** Each poll is a real fetch — cheap against local remotes, a round trip against hosts. */
   readonly pollIntervalMs = 2000;
 
@@ -98,13 +106,28 @@ export class GitBackend implements Backend, Claimable, Snapshottable {
       });
       const out: Buffer[] = [];
       const err: Buffer[] = [];
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, GIT_TIMEOUT_MS);
+      timer.unref?.();
       child.stdout.on('data', (d: Buffer) => out.push(d));
       child.stderr.on('data', (d: Buffer) => err.push(d));
-      child.on('error', (e) =>
-        reject(e.message.includes('ENOENT') ? new Error('agentcomm: the git+ backends need the `git` binary on PATH') : e),
-      );
+      child.on('error', (e) => {
+        clearTimeout(timer);
+        reject(e.message.includes('ENOENT') ? new Error('agentcomm: the git+ backends need the `git` binary on PATH') : e);
+      });
       child.on('close', (code) => {
-        if (code === 0) resolve(Buffer.concat(out));
+        clearTimeout(timer);
+        if (timedOut) {
+          reject(
+            new Error(
+              `agentcomm: git ${args[0]} on ${this.remote} timed out after ${GIT_TIMEOUT_MS}ms ` +
+                '(unreachable or very slow remote; raise AGENTCOMM_GIT_TIMEOUT_MS if this is normal for your bus)',
+            ),
+          );
+        } else if (code === 0) resolve(Buffer.concat(out));
         else {
           const e = new Error(
             `agentcomm: git ${args[0]} failed (exit ${code}): ${Buffer.concat(err).toString('utf8').trim().slice(0, 400)}`,
@@ -284,6 +307,37 @@ export class GitBackend implements Backend, Claimable, Snapshottable {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Archive a whole mailbox in ONE commit (issue #159). Consuming N messages
+   * key-by-key is N fetch→commit→push round trips — seconds each, and the
+   * command times out long before the last one lands. Batched, it is one.
+   */
+  async moveMany(moves: { src: string; dst: string }[]): Promise<void> {
+    if (moves.length === 0) return;
+    if (moves.length === 1) return this.move(moves[0]!.src, moves[0]!.dst);
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const tip = await this.tip();
+      if (tip === null) throw notFound(moves[0]!.src);
+      const add: { key: string; blob: string }[] = [];
+      const remove: string[] = [];
+      for (const { src, dst } of moves) {
+        let blob: string;
+        try {
+          blob = (await this.git(['rev-parse', `${tip}:${this.k(src)}`])).toString('utf8').trim();
+        } catch {
+          continue; // already moved by someone else — not this batch's problem
+        }
+        add.push({ key: dst, blob });
+        remove.push(src);
+      }
+      if (remove.length === 0) return;
+      const message = `agentcomm: archive ${remove.length} message(s) [${randomUUID().slice(0, 8)}]`;
+      if (await this.commitAndPush(tip, message, { add, remove })) return;
+      await sleep(30 * attempt + Math.floor(Math.random() * 80));
+    }
+    throw new Error(`agentcomm: git moveMany kept losing push races — extremely contended bus?`);
   }
 
   async move(src: string, dst: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isClaimable, isWaitable, type Backend, type Message } from './types.js';
+import { isBatchable, isClaimable, isWaitable, type Backend, type Message } from './types.js';
 
 /** How long an explicit status stays sticky before a newer task can refresh it. */
 const EXPLICIT_STICKY_MS = Number(process.env.AGENTCOMM_EXPLICIT_STICKY_MS ?? 15 * 60_000);
@@ -181,6 +181,19 @@ export class Bus {
    * a store that went away mid-run; they stay pending and re-deliver.
    */
   async archive(keys: string[]): Promise<string[]> {
+    if (keys.length === 0) return [];
+    // One store operation for the whole mailbox where the backend can do it
+    // (issue #159): key-by-key, archiving a full inbox is a network round
+    // trip per message and the command times out before it finishes.
+    if (isBatchable(this.backend)) {
+      try {
+        await this.backend.moveMany(keys.map((key) => ({ src: key, dst: readKeyFromInboxKey(key) })));
+        return [];
+      } catch {
+        // fall through: retry key-by-key, so a batch that failed as a whole
+        // still archives whatever it individually can
+      }
+    }
     const failed: string[] = [];
     for (const key of keys) {
       try {
