@@ -176,6 +176,29 @@ export class Bus {
   }
 
   /**
+   * Clear mail that has already been read (issue #160). `peek` shows messages
+   * without consuming and `inbox` consumes what it shows — with only those
+   * two, an agent that read its mail the non-destructive way could never mark
+   * it read, so the unread count (and the stop guard behind it) stayed stuck
+   * at N forever. Acking works off the KEYS: no body is re-fetched, and ids
+   * that are not pending are reported rather than silently ignored.
+   */
+  async ack(
+    recipient: string,
+    ids: string[] | 'all',
+  ): Promise<{ acked: string[]; unknown: string[]; failed: string[] }> {
+    assertName(recipient);
+    const keys = (await this.backend.list(inboxPrefix(recipient))).filter((k) => k.endsWith('.json'));
+    const byId = new Map(keys.map((key) => [messageIdFromKey(key), key] as const));
+    const wanted = ids === 'all' ? [...byId.keys()] : ids;
+    const unknown = wanted.filter((id) => !byId.has(id));
+    const targets = wanted.filter((id) => byId.has(id));
+    const failedKeys = await this.archive(targets.map((id) => byId.get(id)!));
+    const failed = targets.filter((id) => failedKeys.includes(byId.get(id)!));
+    return { acked: targets.filter((id) => !failed.includes(id)), unknown, failed };
+  }
+
+  /**
    * Archive (don't hard-delete) inbox keys under read/, preserving the audit
    * trail. Returns the keys that could NOT be archived — a raced consumer, or
    * a store that went away mid-run; they stay pending and re-deliver.
@@ -263,6 +286,10 @@ function inboxKey(recipient: string, seq: string, id: string): string {
 }
 function readKeyFromInboxKey(inboxKey: string): string {
   return 'read/' + inboxKey.slice('inbox/'.length);
+}
+/** The message id a key carries: inbox/<to>/<seq>_<id>.json — no read needed. */
+function messageIdFromKey(key: string): string {
+  return key.slice(key.lastIndexOf('_') + 1).replace(/\.json$/, '');
 }
 
 // ── sequence generation ─────────────────────────────────────────────────────

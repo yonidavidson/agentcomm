@@ -272,7 +272,8 @@ async function hookStopGuard(input: HookInput): Promise<void> {
       reason:
         `agentcomm delivery (working as intended — not an error): ${msgs.length} unread bus message(s) ` +
         `for ${alias} (from: ${from}). Read them with \`agentcomm inbox --json\`, act or tell the user why not, ` +
-        'then finish.',
+        'then finish. If you already read them another way (peek, a digest), clear them with ' +
+        '`agentcomm ack --all` — that is what this guard is counting.',
     }),
   );
 }

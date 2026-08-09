@@ -74,6 +74,36 @@ describe('CLI e2e (sqlite backend)', () => {
     expect(JSON.parse(empty.stdout)).toEqual([]);
   });
 
+  it('peek → ack clears the unread count without a consuming read (issue #160)', async () => {
+    const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
+    const first = JSON.parse((await run(['send', 'bob', 'one', '--as', 'alice', '--backend', db, '--json'])).stdout) as {
+      id: string;
+    };
+    await run(['send', 'bob', 'two', '--as', 'alice', '--backend', db, '--json']);
+
+    // read non-destructively — the human view says how to clear it
+    const peeked = await run(['peek', '--as', 'bob', '--backend', db]);
+    expect(peeked.stdout).toMatch(/2 still unread; clear what you have handled: agentcomm ack --all/);
+
+    const one = await run(['ack', first.id, '--as', 'bob', '--backend', db, '--json']);
+    expect(one.code).toBe(0);
+    expect(JSON.parse(one.stdout)).toMatchObject({ agent: 'bob', acked: [first.id], unknown: [] });
+    expect((JSON.parse((await run(['peek', '--as', 'bob', '--backend', db, '--json'])).stdout) as unknown[]).length).toBe(1);
+
+    // an id that is not pending is an explicit non-zero, not a silent success
+    const bogus = await run(['ack', 'deadbeef', '--as', 'bob', '--backend', db]);
+    expect(bogus.code).toBe(1);
+    expect(bogus.stdout).toMatch(/not pending for bob: deadbeef/);
+
+    const all = await run(['ack', '--all', '--as', 'bob', '--backend', db]);
+    expect(all.stdout).toMatch(/acked 1 message\(s\) for bob/);
+    expect(JSON.parse((await run(['peek', '--as', 'bob', '--backend', db, '--json'])).stdout)).toEqual([]);
+
+    const bare = await run(['ack', '--as', 'bob', '--backend', db]);
+    expect(bare.code).toBe(1);
+    expect(bare.stderr).toMatch(/ack requires message ids/);
+  });
+
   it('network reports active/idle agents, statuses, and recent activity', async () => {
     const db = `sqlite://${path.join(await mkTmp(), 'bus.db')}`;
     const env = { ...process.env, AGENTCOMM_SESSION: 'net-test', AGENTCOMM_NO_GIT_PROBE: '1' };
