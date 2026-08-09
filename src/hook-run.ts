@@ -42,36 +42,6 @@ async function readStdinJson(): Promise<HookInput> {
   }
 }
 
-/**
- * Align the derived alias with the agent's own Bash commands. Both inherit
- * the terminal-session env, so usually nothing is needed; in the gppid
- * fallback the agent's CLI lands on the harness pid — our ancestor too.
- */
-async function sessionEnv(): Promise<Record<string, string>> {
-  if (
-    process.env.AGENTCOMM_SESSION ||
-    process.env.ITERM_SESSION_ID ||
-    process.env.TERM_SESSION_ID ||
-    process.env.TMUX_PANE
-  ) {
-    return {};
-  }
-  try {
-    const ps = (pid: number | string, field: string): Promise<string> =>
-      new Promise((res, rej) =>
-        execFile('ps', ['-o', `${field}=`, '-p', String(pid)], (e, out) => (e ? rej(e) : res(out.trim()))),
-      );
-    const parent = process.ppid;
-    const comm = await ps(parent, 'comm');
-    // hooks run as `sh -c agentcomm …` or as a direct child of the harness;
-    // the harness process is the first non-shell ancestor
-    const harness = /(^|\/)(sh|bash|zsh|dash)$/.test(comm) ? await ps(parent, 'ppid') : String(parent);
-    return { AGENTCOMM_SESSION: `gppid:${harness}` };
-  } catch {
-    return {};
-  }
-}
-
 interface CliResult {
   json: unknown;
   stderr: string;
@@ -84,7 +54,11 @@ interface CliResult {
  */
 async function cli(args: string[], cwd: string, timeoutMs = 10_000): Promise<CliResult | null> {
   try {
-    const env = { ...process.env, ...(await sessionEnv()) };
+    // No session pinning here: the CLI's sticky session state (issue #157)
+    // recognises the harness process as a shared ancestor of both this hook's
+    // child and the agent's own Bash commands, so both land on ONE mailbox
+    // however deep either happens to run.
+    const env = process.env;
     return await new Promise((resolve) => {
       const child = execFile(
         process.execPath,

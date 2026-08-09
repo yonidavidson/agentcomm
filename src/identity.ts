@@ -11,33 +11,46 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import * as os from 'node:os';
+import { stickySession } from './session.js';
 
 const execFileP = promisify(execFile);
 
 let sessionHashMemo: string | undefined;
 
-/**
- * A fingerprint of THIS session, stable across the many invocations one agent
- * session makes: AGENTCOMM_SESSION, else the terminal session id, else the
- * harness process (grandparent pid). Suffixes derived aliases and is recorded
- * in registrations, so tooling can tell "stale me" from "someone else".
- */
-export async function sessionHash(): Promise<string> {
-  if (sessionHashMemo !== undefined) return sessionHashMemo;
-  let session =
+/** An explicitly pinned session id (env), or '' when we have to derive one. */
+export function pinnedSession(): string {
+  return (
     process.env.AGENTCOMM_SESSION ??
     process.env.ITERM_SESSION_ID ??
     process.env.TERM_SESSION_ID ??
     process.env.TMUX_PANE ??
-    '';
-  if (!session) {
-    try {
-      session = 'gppid:' + (await execFileP('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
-    } catch {
-      session = 'ppid:' + String(process.ppid);
-    }
+    ''
+  );
+}
+
+/**
+ * A fingerprint of THIS session, stable across the many invocations one agent
+ * session makes: AGENTCOMM_SESSION, else the terminal session id, else a
+ * STICKY fingerprint remembered for this process tree (issue #157 — deriving
+ * it from one fixed ancestor made it drift whenever a wrapper process added a
+ * level, silently moving the agent to a different, empty mailbox). Suffixes
+ * derived aliases and is recorded in registrations, so tooling can tell
+ * "stale me" from "someone else".
+ */
+export async function sessionHash(): Promise<string> {
+  if (sessionHashMemo !== undefined) return sessionHashMemo;
+  const pinned = pinnedSession();
+  if (pinned) {
+    sessionHashMemo = createHash('sha1').update(pinned).digest('hex').slice(0, 12);
+    return sessionHashMemo;
   }
-  sessionHashMemo = createHash('sha1').update(session).digest('hex').slice(0, 12);
+  sessionHashMemo = await stickySession(async () => {
+    try {
+      return 'gppid:' + (await execFileP('ps', ['-o', 'ppid=', '-p', String(process.ppid)])).stdout.trim();
+    } catch {
+      return 'ppid:' + String(process.ppid);
+    }
+  });
   return sessionHashMemo;
 }
 
