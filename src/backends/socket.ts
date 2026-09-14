@@ -12,7 +12,19 @@ import { promises as fs } from 'node:fs';
 import type { Backend, Message } from '../types.js';
 import { socketPathFor } from '../daemon.js';
 
-type Pending = { resolve: (v: Record<string, unknown>) => void; reject: (e: Error) => void };
+// A backlogged daemon (its outbox flusher queued behind a slow op under heavy contention,
+// e.g. many processes sharing one git+https bus) used to leave a client call pending
+// forever — no error, no way to tell a hang apart from ordinary latency. Every call now
+// fails loudly after this many ms instead. The daemon design keeps client calls off the
+// network path (writes spool locally and flush asynchronously), so a healthy daemon should
+// answer well within this; it is not sized for git's own round-trip time.
+const RPC_TIMEOUT_MS = Math.max(1000, Number(process.env.AGENTCOMM_RPC_TIMEOUT_MS ?? 20_000));
+
+type Pending = {
+  resolve: (v: Record<string, unknown>) => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 class Rpc {
   private seq = 0;
@@ -32,6 +44,7 @@ class Rpc {
           const p = this.pending.get(res.id);
           if (p) {
             this.pending.delete(res.id);
+            clearTimeout(p.timer);
             p.resolve(res);
           }
         } catch {
@@ -40,7 +53,10 @@ class Rpc {
       }
     });
     const fail = (err?: Error) => {
-      for (const p of this.pending.values()) p.reject(err ?? new Error('daemon connection closed'));
+      for (const p of this.pending.values()) {
+        clearTimeout(p.timer);
+        p.reject(err ?? new Error('daemon connection closed'));
+      }
       this.pending.clear();
     };
     sock.on('error', fail);
@@ -50,7 +66,17 @@ class Rpc {
   call(op: string, fields: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(
+          new Error(
+            `agentcomm: daemon did not respond to "${op}" within ${RPC_TIMEOUT_MS}ms ` +
+              '(it may be backlogged under heavy load; raise AGENTCOMM_RPC_TIMEOUT_MS, or retry with --direct)',
+          ),
+        );
+      }, RPC_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(id, { resolve, reject, timer });
       this.sock.write(JSON.stringify({ id, op, ...fields }) + '\n');
     });
   }
